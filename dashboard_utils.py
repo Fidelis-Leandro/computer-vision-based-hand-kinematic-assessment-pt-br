@@ -455,7 +455,7 @@ def compute_realtime_metrics(
         if cv <= 0.20:
             regularity = "Regular"
         elif cv <= 0.40:
-            regularity = "Moderate"
+            regularity = "Moderado"
         else:
             regularity = "Irregular"
     else:
@@ -507,7 +507,7 @@ def regularity_label(regularity: str, cv: float) -> str:
     """
     if regularity == "Regular":
         emoji = "✅"
-    elif regularity == "Moderate":
+    elif regularity == "Moderado":
         emoji = "🟡"
     else:
         emoji = "❌"

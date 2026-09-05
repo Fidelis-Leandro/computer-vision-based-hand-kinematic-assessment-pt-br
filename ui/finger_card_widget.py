@@ -383,7 +383,7 @@ class FingerCardWidget(QGroupBox):
         # The clinician can assess at a glance without reading the word.
         if regularity == "Regular":
             reg_text = "✅ Regular"
-        elif regularity in ("Irregular", "Moderate"):
+        elif regularity in ("Irregular", "Moderado"):
             reg_text = f"{'❌' if regularity == 'Irregular' else '🟡'} {regularity}"
         else:
             reg_text = regularity

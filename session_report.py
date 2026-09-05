@@ -326,7 +326,7 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             if cv <= 0.20:
                 regularity = "Regular"
             elif cv <= 0.40:
-                regularity = "Moderate"
+                regularity = "Moderado"
             else:
                 regularity = "Irregular"
         else:
