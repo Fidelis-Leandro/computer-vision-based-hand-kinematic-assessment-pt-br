@@ -146,3 +146,49 @@ tzdata==2026.3
 - **Nenhuma regra clínica ASSH foi alterada.**
 - **Os 25 cabeçalhos CSV imutáveis permanecem rigorosamente preservados.**
 - **Nenhum código Python foi modificado.**
+
+---
+
+## 8. Aditivo — Ambiente Virtual e Testes Reproduzíveis
+
+- **Data e Hora da Validação:** 2026-09-05 17:55:00 (Horário de Brasília / UTC-3)
+- **Python Base Utilizado:** `C:\Users\leand\AppData\Local\Programs\Python\Python311\python.exe` (Python 3.11.9)
+- **Caminho da `.venv` Local Criada:** `C:\Users\leand\OneDrive\Documentos\GitHub\computer-vision-based-hand-kinematic-assessment PT-BR\.venv\Scripts\python.exe`
+- **Resultado da Instalação de `requirements.txt`:** Sucesso absoluto (código 0). Todas as dependências especificadas foram resolvidas e instaladas sem necessidade de alteração no `requirements.txt`.
+- **Instalação do `pytest`:** Instalado exclusivamente na `.venv` local na versão `pytest 9.1.1` (com `pluggy 1.6.0`, `iniconfig 2.3.0`, `pygments 2.21.0`).
+- **Resultado de `pip check`:** `No broken requirements found.` (Nenhum conflito de dependências detectado).
+- **Versões Efetivamente Instaladas das Dependências Principais na `.venv`:**
+  - `mediapipe`: `0.10.14`
+  - `opencv-python`: `4.11.0.86`
+  - `opencv-contrib-python`: `4.11.0.86`
+  - `opencv-python-headless`: não instalado (não aplicável)
+  - `numpy`: `1.26.4` (respeitando estritamente a restrição `<2.0.0`)
+  - `PyQt6`: `6.11.0`
+  - `PyQt6-Qt6`: `6.11.2`
+  - `PyQt6_sip`: `13.12.0`
+  - `pyqtgraph`: `0.14.0`
+  - `fpdf2`: `2.8.8`
+  - `matplotlib`: `3.11.1`
+  - `psutil`: `7.2.2`
+  - `pytest`: `9.1.1`
+- **Resultado dos Imports Principais:** `Imports principais: OK` (`cv2`, `mediapipe`, `numpy`, `PyQt6`, `pyqtgraph`, `from fpdf import FPDF`).
+- **Resultado da Compilação dos Arquivos do Projeto (`compileall`):**
+  - Comando: `.\.venv\Scripts\python.exe -m compileall -q -x "[\\/]\.venv" .`
+  - Código de saída: `0` (100% dos arquivos Python do projeto compilam sem erros de sintaxe).
+- **Resultado da Execução dos Testes (`pytest`):**
+  - Comando: `.\.venv\Scripts\python.exe -m pytest -v`
+  - Código de saída: `0` (Sucesso absoluto)
+  - Total de testes coletados: **7**
+  - Testes aprovados: **7 (100%)**
+    1. `tests/test_kinematic_assessment.py::test_straight_hand_angles` — PASSED
+    2. `tests/test_kinematic_assessment.py::test_flexed_hand_angles_positive` — PASSED
+    3. `tests/test_kinematic_assessment.py::test_tam_increases_with_flexion` — PASSED
+    4. `tests/test_kinematic_assessment.py::test_thumb_tam_is_calculated` — PASSED
+    5. `tests/test_kinematic_assessment.py::test_csv_contains_thumb_tam` — PASSED
+    6. `tests/test_kinematic_assessment.py::test_thumb_classification_logic` — PASSED
+    7. `tests/test_kinematic_assessment.py::test_dashboard_utils_classify_hand_state` — PASSED
+  - Testes falhos: **0**
+  - Testes ignorados: **0**
+  - Erros de coleta: **0**
+- **Conflitos ou Erros Encontrados:** Nenhum conflito de pacotes. Todos os testes unitários preexistentes passam com 100% de sucesso.
+- **Confirmação de Integridade:** Não houve nenhuma alteração em código Python do projeto, cálculos, regras clínicas, thresholds ou arquivos de documentação além deste relatório.
