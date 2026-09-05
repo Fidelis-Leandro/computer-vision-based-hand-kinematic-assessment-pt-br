@@ -143,8 +143,8 @@ def classify_functional_session(
     success_rate_excellent = repetition_stats["success_rate_excellent"]
 
     rom = realtime_metrics.get("rom", 0.0)
-    mean_velocity = realtime_metrics.get("avg_velocity", 0.0)
-    regularity = realtime_metrics.get("regularity", "-")
+    mean_velocity = realtime_metrics.get("vel_media", 0.0)
+    regularity = realtime_metrics.get("regularidade", "-")
 
     min_req = (
         valid_cycles >= 5 and

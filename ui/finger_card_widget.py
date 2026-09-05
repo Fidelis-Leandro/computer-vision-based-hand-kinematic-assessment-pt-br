@@ -335,8 +335,8 @@ class FingerCardWidget(QGroupBox):
                           "closed": bool, "assh_label": str, "assh_color": str}
 
         Expected structure of 'metrics' (from compute_realtime_metrics()):
-            {"rom": float, "avg_velocity": float, "peak_velocity": float,
-             "freq_hz": float, "cv": float, "regularity": str, "n_picos": int}
+            {"rom": float, "vel_media": float, "vel_pico": float,
+             "freq_hz": float, "cv": float, "regularidade": str, "n_picos": int}
 
         Parameters:
             state: Dictionary with current angles and ASSH classification for the finger.
@@ -362,17 +362,17 @@ class FingerCardWidget(QGroupBox):
 
         # --- Kinetic metrics ---
         rom: float = float(metrics.get("rom", 0.0))
-        avg_velocity: float = float(metrics.get("avg_velocity", 0.0))
-        peak_velocity: float  = float(metrics.get("peak_velocity",  0.0))
+        vel_media: float = float(metrics.get("vel_media", 0.0))
+        vel_pico: float  = float(metrics.get("vel_pico",  0.0))
         freq_hz: float   = float(metrics.get("freq_hz",   0.0))
-        regularity: str = str(metrics.get("regularity", "—"))
+        regularity: str = str(metrics.get("regularidade", "—"))
 
         # Format rom in degrees with one decimal place.
         self._metric_labels["ROM"].setText(f"{rom:.1f}°")
 
         # Format velocities in degrees per second with one decimal place.
-        self._metric_labels["Avg. Vel."].setText(f"{avg_velocity:.1f} °/s")
-        self._metric_labels["Peak Vel."].setText(f"{peak_velocity:.1f} °/s")
+        self._metric_labels["Avg. Vel."].setText(f"{vel_media:.1f} °/s")
+        self._metric_labels["Peak Vel."].setText(f"{vel_pico:.1f} °/s")
 
         # Format frequency in Hz with two decimal places.
         # Two decimals are needed because slow movements (0.25Hz) and
@@ -534,7 +534,7 @@ class FingerCardsPanel(QWidget):
 
             metrics_per_finger: Dictionary {finger: metrics_dict} where each dict is
                                 the output of compute_realtime_metrics() for that finger.
-                                Contains rom, avg_velocity, peak_velocity, freq_hz, etc.
+                                Contains rom, vel_media, vel_pico, freq_hz, etc.
 
             tam_buffers_per_finger: Dictionary {finger: [float]} with the TAM history
                                     for each card's mini-chart.

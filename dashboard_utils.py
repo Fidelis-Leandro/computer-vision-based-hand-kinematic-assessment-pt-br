@@ -377,11 +377,11 @@ def compute_realtime_metrics(
     Returns:
     {
         "rom": float,
-        "avg_velocity": float,
-        "peak_velocity": float,
+        "vel_media": float,
+        "vel_pico": float,
         "freq_hz": float,
         "cv": float,
-        "regularity": str,
+        "regularidade": str,
         "n_picos": int,
     }
     """
@@ -391,11 +391,11 @@ def compute_realtime_metrics(
     if len(angles) < 2 or len(times) < 2 or len(angles) != len(times):
         return {
             "rom": 0.0,
-            "avg_velocity": 0.0,
-            "peak_velocity": 0.0,
+            "vel_media": 0.0,
+            "vel_pico": 0.0,
             "freq_hz": 0.0,
             "cv": 0.0,
-            "regularity": "Regular",
+            "regularidade": "Regular",
             "n_picos": 0,
         }
 
@@ -408,8 +408,8 @@ def compute_realtime_metrics(
         if d_time > 1e-6:
             velocities.append(d_angle / d_time)
 
-    avg_velocity = _safe_mean(velocities, default=0.0)
-    peak_velocity = max(velocities) if velocities else 0.0
+    vel_media = _safe_mean(velocities, default=0.0)
+    vel_pico = max(velocities) if velocities else 0.0
 
     peaks = _detect_peaks(
         angle_values=angles,
@@ -466,11 +466,11 @@ def compute_realtime_metrics(
 
     return {
         "rom": float(rom),
-        "avg_velocity": float(avg_velocity),
-        "peak_velocity": float(peak_velocity),
+        "vel_media": float(vel_media),
+        "vel_pico": float(vel_pico),
         "freq_hz": float(freq_hz),
         "cv": float(cv),
-        "regularity": regularity,
+        "regularidade": regularity,
         "n_picos": int(n_picos),
     }
 
@@ -539,8 +539,8 @@ def compute_session_metrics_from_buffers(
 
     Returns:
         {
-            "INDEX":  {rom, avg_velocity, peak_velocity, freq_hz, cv,
-                       regularity, n_picos},
+            "INDEX":  {rom, vel_media, vel_pico, freq_hz, cv,
+                       regularidade, n_picos},
             "MIDDLE": {...},
             "RING":   {...},
             "PINKY":  {...},

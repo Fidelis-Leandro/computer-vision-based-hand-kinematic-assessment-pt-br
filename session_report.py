@@ -256,9 +256,9 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     Returns a dict per finger containing:
     - tam_final, tam_medio, tam_max, tam_min
     - rom
-    - avg_velocity, peak_velocity (°/s)
+    - vel_media, vel_pico (°/s)
     - freq_hz
-    - regularity, cv
+    - regularidade, cv
     - assh_label, assh_color
     - mcp_medio, pip_medio, dip_medio (or ip_medio for the thumb)
     """
@@ -293,8 +293,8 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             if d_time > 1e-6:
                 velocities.append(d_angle / d_time)
 
-        avg_velocity = _safe_mean(velocities)
-        peak_velocity = max(velocities) if velocities else 0.0
+        vel_media = _safe_mean(velocities)
+        vel_pico = max(velocities) if velocities else 0.0
 
         # Frequency and regularity via peak detection
         peaks = _detect_peaks(tam_values, timestamps)
@@ -338,11 +338,11 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
         realtime_metrics_for_hybrid = {
             "rom": rom,
-            "avg_velocity": avg_velocity,
-            "peak_velocity": peak_velocity,
+            "vel_media": vel_media,
+            "vel_pico": vel_pico,
             "freq_hz": freq_hz,
             "cv": cv,
-            "regularity": regularity,
+            "regularidade": regularity,
         }
 
         repetition_stats = detect_valid_repetitions(tam_values, timestamps, finger)
@@ -367,10 +367,10 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "tam_max": round(tam_max, 1),
             "tam_min": round(tam_min, 1),
             "rom": round(rom, 1),
-            "avg_velocity": round(avg_velocity, 1),
-            "peak_velocity": round(peak_velocity, 1),
+            "vel_media": round(vel_media, 1),
+            "vel_pico": round(vel_pico, 1),
             "freq_hz": round(freq_hz, 2),
-            "regularity": regularity,
+            "regularidade": regularity,
             "cv": round(cv, 3),
             "n_picos": n_picos,
             "articular_class": articular_class,
@@ -400,10 +400,10 @@ def _empty_finger_summary(finger: str) -> Dict[str, Any]:
         "tam_max": 0.0,
         "tam_min": 0.0,
         "rom": 0.0,
-        "avg_velocity": 0.0,
-        "peak_velocity": 0.0,
+        "vel_media": 0.0,
+        "vel_pico": 0.0,
         "freq_hz": 0.0,
-        "regularity": "-",
+        "regularidade": "-",
         "cv": 0.0,
         "n_picos": 0,
         "articular_class": {"label": "Ruim", "color": "#ef4444"},
@@ -585,7 +585,7 @@ def _build_interpretation(summary: Dict[str, Dict[str, Any]]) -> str:
         top_regular = [
             FINGER_LABELS[f].lower()
             for f, s in sorted_by_tam[:2]
-            if s["regularity"] == "Regular"
+            if s["regularidade"] == "Regular"
         ]
         if top_regular:
             p1 += " and greater temporal regularity"
@@ -600,9 +600,9 @@ def _build_interpretation(summary: Dict[str, Dict[str, Any]]) -> str:
             issues: List[str] = []
             if s["rom"] < 30:
                 issues.append("reduced rom")
-            if s["avg_velocity"] < 20:
+            if s["vel_media"] < 20:
                 issues.append("lower mean velocity")
-            if s["regularity"] == "Irregular":
+            if s["regularidade"] == "Irregular":
                 issues.append("higher irregularity")
             if issues:
                 p2_parts.append(f"The {nome} finger showed {', '.join(issues)}.")
@@ -772,10 +772,10 @@ def _add_main_table(
             f"{s['tam_max']:.0f}°",
             f"{s['tam_min']:.0f}°",
             f"{s['rom']:.0f}°",
-            f"{s['avg_velocity']:.0f}°/s",
-            f"{s['peak_velocity']:.0f}°/s",
+            f"{s['vel_media']:.0f}°/s",
+            f"{s['vel_pico']:.0f}°/s",
             f"{s['freq_hz']:.2f}Hz",
-            s["regularity"],
+            s["regularidade"],
             s["articular_class"]["label"],
         ]
 
