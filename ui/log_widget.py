@@ -131,7 +131,7 @@ class LogWidget(QTextEdit):
         self.log("Sistema de Goniometria Digital inicializado.")
 
     # =========================================================================
-    # PUBLIC INTERFACE
+    # INTERFACE PÚBLICA
     # =========================================================================
 
     def log(self, message: str) -> None:
@@ -218,7 +218,7 @@ class LogWidget(QTextEdit):
         self.log("Log reiniciado para nova sessão.")
 
     # =========================================================================
-    # INTERNAL METHODS
+    # MÉTODOS INTERNOS
     # =========================================================================
 
     def _scroll_to_bottom(self) -> None:

@@ -124,7 +124,7 @@ class SessionHeaderWidget(QWidget):
         self._start_time: Optional[datetime] = None
 
     # =========================================================================
-    # FORM SECTION BUILDERS
+    # CONSTRUTORES DO FORMULÁRIO
     # =========================================================================
 
     def _build_patient_field(self, layout: QHBoxLayout) -> None:
