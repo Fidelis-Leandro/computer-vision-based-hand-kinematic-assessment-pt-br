@@ -159,9 +159,9 @@ def test_thumb_classification_logic():
     label_thumb, _ = assh_classify_thumb(100.0)
     label_others, _ = assh_classify(100.0)
     
-    # 100 degrees is "Good" for thumb (max ~120) but "Poor" for long finger (max ~270)
-    assert label_thumb == "Good"
-    assert label_others == "Poor"
+    # 100 degrees is "Bom" for thumb (max ~120) but "Ruim" for long finger (max ~270)
+    assert label_thumb == "Bom"
+    assert label_others == "Ruim"
     
 def test_dashboard_utils_classify_hand_state():
     # 7. Dashboard and utility functions do not break with THUMB_TAM
@@ -176,4 +176,4 @@ def test_dashboard_utils_classify_hand_state():
     assert "THUMB" in state["finger_states"]
     assert state["finger_states"]["THUMB"]["TAM"] == 90.0
     assert state["finger_states"]["THUMB"]["closed"] == True
-    assert state["finger_states"]["THUMB"]["assh_label"] == "Good"
+    assert state["finger_states"]["THUMB"]["assh_label"] == "Bom"

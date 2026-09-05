@@ -489,8 +489,8 @@ def _build_data_template(pw: int, ph: int) -> np.ndarray:
 
     lines = [
         "Ranges: MCP 85-90 | PIP 100-120 | DIP 60-80 | ABD 15-20",
-        "TAM fingers: >=260 Excellent | 195-259 Good | 130-194 Fair | <130 Poor",
-        "TAM thumb (MCP+IP max~120): >=110 Exc | 80-109 Good | 50-79 Fair | <50 Poor",
+        "TAM dedos: >=260 Excelente | 195-259 Bom | 130-194 Razoável | <130 Ruim",
+        "TAM polegar (MCP+IP max~120): >=110 Exc | 80-109 Bom | 50-79 Razoável | <50 Ruim",
     ]
     for i, line in enumerate(lines):
         y = fy + 4 + i * 14

@@ -49,18 +49,18 @@ def assh_classify(tam: float) -> Tuple[str, str]:
         (label, color_hex)
 
     Ranges:
-    - >= 260° : Excellent
-    - 195–259°: Good
-    - 130–194°: Fair
-    - < 130°  : Poor
+    - >= 260° : Excelente
+    - 195–259°: Bom
+    - 130–194°: Razoável
+    - < 130°  : Ruim
     """
     if tam >= 260.0:
-        return "Excellent", "#22c55e"
+        return "Excelente", "#22c55e"
     if tam >= 195.0:
-        return "Good", "#eab308"
+        return "Bom", "#eab308"
     if tam >= 130.0:
-        return "Fair", "#f97316"
-    return "Poor", "#ef4444"
+        return "Razoável", "#f97316"
+    return "Ruim", "#ef4444"
 
 
 def assh_classify_thumb(tam: float) -> Tuple[str, str]:
@@ -74,18 +74,18 @@ def assh_classify_thumb(tam: float) -> Tuple[str, str]:
         (label, color_hex)
 
     Ranges:
-    - >= 110° : Excellent
-    - 80–109° : Good
-    - 50–79°  : Fair
-    - < 50°   : Poor
+    - >= 110° : Excelente
+    - 80–109° : Bom
+    - 50–79°  : Razoável
+    - < 50°   : Ruim
     """
     if tam >= 110.0:
-        return "Excellent", "#22c55e"
+        return "Excelente", "#22c55e"
     if tam >= 80.0:
-        return "Good", "#eab308"
+        return "Bom", "#eab308"
     if tam >= 50.0:
-        return "Fair", "#f97316"
-    return "Poor", "#ef4444"
+        return "Razoável", "#f97316"
+    return "Ruim", "#ef4444"
 
 
 def tam_progress(tam: float, max_tam: float = 270.0) -> float:

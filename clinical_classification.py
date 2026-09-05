@@ -22,31 +22,31 @@ def classify_articular_tam(finger: str, best_tam_session: float) -> Dict[str, st
 
     Regras:
     - Para INDEX, MIDDLE, RING, PINKY:
-        Excellent: >= 260
-        Good:      195–259
-        Fair:      130–194
-        Poor:      < 130
+        Excelente: >= 260
+        Bom:       195–259
+        Razoável:  130–194
+        Ruim:      < 130
     - Para THUMB:
-        Excellent: > 120
-        Good:      100–120
-        Poor:      < 100
+        Excelente: > 120
+        Bom:       100–120
+        Ruim:      < 100
     """
     if finger == "THUMB":
         if best_tam_session > 120.0:
-            return {"label": "Excellent", "color": COLOR_EXCELLENT, "source": "articular_tam"}
+            return {"label": "Excelente", "color": COLOR_EXCELLENT, "source": "articular_tam"}
         elif best_tam_session >= 100.0:
-            return {"label": "Good", "color": COLOR_GOOD, "source": "articular_tam"}
+            return {"label": "Bom", "color": COLOR_GOOD, "source": "articular_tam"}
         else:
-            return {"label": "Poor", "color": COLOR_POOR, "source": "articular_tam"}
+            return {"label": "Ruim", "color": COLOR_POOR, "source": "articular_tam"}
     else:
         if best_tam_session >= 260.0:
-            return {"label": "Excellent", "color": COLOR_EXCELLENT, "source": "articular_tam"}
+            return {"label": "Excelente", "color": COLOR_EXCELLENT, "source": "articular_tam"}
         elif best_tam_session >= 195.0:
-            return {"label": "Good", "color": COLOR_GOOD, "source": "articular_tam"}
+            return {"label": "Bom", "color": COLOR_GOOD, "source": "articular_tam"}
         elif best_tam_session >= 130.0:
-            return {"label": "Fair", "color": COLOR_FAIR, "source": "articular_tam"}
+            return {"label": "Razoável", "color": COLOR_FAIR, "source": "articular_tam"}
         else:
-            return {"label": "Poor", "color": COLOR_POOR, "source": "articular_tam"}
+            return {"label": "Ruim", "color": COLOR_POOR, "source": "articular_tam"}
 
 def detect_valid_repetitions(
     tam_series: List[float],
@@ -154,16 +154,16 @@ def classify_functional_session(
     )
 
     if min_req and success_rate_excellent >= 0.80:
-        label = "Excellent"
+        label = "Excelente"
         color = COLOR_EXCELLENT
     elif min_req and success_rate_good >= 0.80:
-        label = "Good"
+        label = "Bom"
         color = COLOR_GOOD
     elif valid_cycles >= 3 and success_rate_good >= 0.50:
-        label = "Fair"
+        label = "Razoável"
         color = COLOR_FAIR
     else:
-        label = "Poor"
+        label = "Ruim"
         color = COLOR_POOR
 
     return {
@@ -195,20 +195,20 @@ def classify_final_session_result(
     target_good = 100.0 if finger == "THUMB" else 180.0
     target_exc = 120.0 if finger == "THUMB" else 220.0
 
-    final_label = "Poor"
+    final_label = "Ruim"
     explanation = "Desempenho abaixo das metas funcionais e articulares esperadas durante a sessão."
 
-    if art_label in ["Fair", "Poor"] and func_label == "Excellent" and valid_cycles >= 5 and success_rate_excellent >= 0.80:
-        final_label = "Good"
+    if art_label in ["Razoável", "Ruim"] and func_label == "Excelente" and valid_cycles >= 5 and success_rate_excellent >= 0.80:
+        final_label = "Bom"
         explanation = f"atingiu picos funcionais excelentes em {excellent_hits} de {valid_cycles} repetições válidas, demonstrando boa coordenação apesar do TAM clássico reduzido."
-    elif art_label == "Good" and func_label == "Excellent":
-        final_label = "Excellent"
+    elif art_label == "Bom" and func_label == "Excelente":
+        final_label = "Excelente"
         explanation = f"combinou um bom TAM clássico com excelente consistência funcional, superando a meta de excelência em {(success_rate_excellent*100):.0f}% dos ciclos."
-    elif art_label == "Poor" and func_label == "Good" and valid_cycles >= 5 and success_rate_good >= 0.80:
-        final_label = "Fair"
+    elif art_label == "Ruim" and func_label == "Bom" and valid_cycles >= 5 and success_rate_good >= 0.80:
+        final_label = "Razoável"
         explanation = f"embora o TAM máximo tenha sido baixo, manteve consistência funcional com {(success_rate_good*100):.0f}% das repetições acima da meta."
     else:
-        ranks = {"Excellent": 4, "Good": 3, "Fair": 2, "Poor": 1}
+        ranks = {"Excelente": 4, "Bom": 3, "Razoável": 2, "Ruim": 1}
         r_art = ranks[art_label]
         r_func = ranks[func_label]
 
@@ -227,19 +227,19 @@ def classify_final_session_result(
                 explanation = "falta de consistência ou ciclos funcionais válidos limitou a pontuação da sessão."
 
     # TETOS FINAIS
-    if final_label == "Excellent" and best_peak < target_exc:
-        final_label = "Good" if best_peak >= target_good else "Fair"
+    if final_label == "Excelente" and best_peak < target_exc:
+        final_label = "Bom" if best_peak >= target_good else "Razoável"
         explanation += " (pontuação limitada porque o pico absoluto não atingiu a meta de excelência)."
 
-    if final_label == "Good" and best_peak < target_good:
-        final_label = "Fair" if art_label == "Fair" else "Poor"
+    if final_label == "Bom" and best_peak < target_good:
+        final_label = "Razoável" if art_label == "Razoável" else "Ruim"
         explanation += " (pontuação limitada porque o pico absoluto não atingiu a meta de bom)."
 
     colors = {
-        "Excellent": COLOR_EXCELLENT,
-        "Good":      COLOR_GOOD,
-        "Fair":      COLOR_FAIR,
-        "Poor":      COLOR_POOR,
+        "Excelente": COLOR_EXCELLENT,
+        "Bom":       COLOR_GOOD,
+        "Razoável":  COLOR_FAIR,
+        "Ruim":      COLOR_POOR,
     }
 
     return {
@@ -252,11 +252,11 @@ def classify_final_session_result(
 def generate_clinical_observation_text(final_hybrid: Dict[str, str]) -> str:
     """Gera um texto automático de observação clínica baseado no rótulo final."""
     lbl = final_hybrid["label"]
-    if lbl == "Excellent":
+    if lbl == "Excelente":
         return "Desempenho funcional consistente, com flexões repetidas atingindo o intervalo de excelência durante a sessão."
-    elif lbl == "Good":
+    elif lbl == "Bom":
         return "Boa execução funcional, com múltiplas repetições acima da meta angular esperada."
-    elif lbl == "Fair":
+    elif lbl == "Razoável":
         return "Movimento funcional presente, mas com menor consistência ou taxa de sucesso."
     else:
         return "Desempenho abaixo da meta funcional esperada durante a sessão."

@@ -114,11 +114,11 @@ FINGER_COLORS: Dict[str, str] = {
 }
 
 ASSH_COLORS_RGB: Dict[str, Tuple[int, int, int]] = {
-    "Excellent": (34, 197, 94),
-    "Good":      (234, 179, 8),
-    "Fair":      (249, 115, 22),
+    "Excelente": (34, 197, 94),
+    "Bom":       (234, 179, 8),
+    "Razoável":  (249, 115, 22),
     "Regular":   (249, 115, 22),
-    "Poor":      (239, 68, 68),
+    "Ruim":      (239, 68, 68),
 }
 
 REPORT_TITLE = "Digital Hand Goniometry — Session Report"
@@ -406,9 +406,9 @@ def _empty_finger_summary(finger: str) -> Dict[str, Any]:
         "regularity": "-",
         "cv": 0.0,
         "n_picos": 0,
-        "articular_class": {"label": "Poor", "color": "#ef4444"},
-        "functional_class": {"label": "Poor", "color": "#ef4444"},
-        "hybrid_class": {"label": "Poor", "color": "#ef4444", "explanation": "No data available for analysis."},
+        "articular_class": {"label": "Ruim", "color": "#ef4444"},
+        "functional_class": {"label": "Ruim", "color": "#ef4444"},
+        "hybrid_class": {"label": "Ruim", "color": "#ef4444", "explanation": "No data available for analysis."},
     }
     if finger == "THUMB":
         entry["mcp_medio"] = 0.0
@@ -531,8 +531,8 @@ def build_clinical_observation(summary: Dict[str, Dict[str, Any]]) -> str:
     if not valid:
         return "Insufficient data to generate a clinical observation."
 
-    ranks = {"Excellent": 4, "Good": 3, "Fair": 2, "Poor": 1}
-    worst_label = "Excellent"
+    ranks = {"Excelente": 4, "Bom": 3, "Razoável": 2, "Ruim": 1}
+    worst_label = "Excelente"
     worst_rank = 4
 
     for s in valid.values():
@@ -924,9 +924,9 @@ def _add_legend(pdf: _ReportPDF) -> None:
         ("IP (Interphalangeal — Thumb)",
          "Joint between the phalanges of the thumb (equivalent to the DIP of long fingers)."),
         ("ASSH",
-         "Functional classification (long fingers): Excellent (>=260°), Good (195–259°), Fair (130–194°), Poor (<130°)."),
+         "Classificação funcional (dedos longos): Excelente (>=260°), Bom (195–259°), Razoável (130–194°), Ruim (<130°)."),
         ("ASSH (Thumb)",
-         "Adapted functional classification (thumb): Excellent (>=110°), Good (80–109°), Fair (50–79°), Poor (<50°)."),
+         "Classificação funcional adaptada (polegar): Excelente (>=110°), Bom (80–109°), Razoável (50–79°), Ruim (<50°)."),
         ("TAM final",
          "Total finger mobility value at the end of the session."),
         ("TAM mean",
