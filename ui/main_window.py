@@ -317,7 +317,12 @@ class MainWindow(QMainWindow):
             """
         )
 
-        # --- Botões de controle de sessão ---
+        # --- Botões de controle de sessão (Compatibilidade / Transição) ---
+        # NOTA DE COMPATIBILIDADE: Os botões abaixo são mantidos instanciados em memória
+        # para preservar compatibilidade com a máquina de estados (_set_state) e signals.
+        # A interface visual ativa migrou as ações pós-sessão para a Tela 3 (Página 2,
+        # Fases 5A e 5B) e o botão Iniciar para a Tela 1 (Página 1, Fase 2).
+        # Apenas self.btn_end é posicionado visualmente na barra fixa superior (_assessment_bar).
 
         # Botão Nova Sessão — para resetar o sistema a qualquer momento
         self.btn_new_session = QPushButton("🔄  Nova Sessão")
@@ -1051,16 +1056,25 @@ class MainWindow(QMainWindow):
 
     def _build_button_row(self) -> QHBoxLayout:
         """
-        Constrói a linha horizontal com todos os botões de controle.
+        Constrói a linha horizontal legada com os botões de controle de sessão.
 
-        Ordem dos botões:
-            [Iniciar] [Encerrar] | [Gerar PDF] [Exportar CSV] [Abrir Pasta]
+        Status de compatibilidade:
+            Método mantido por compatibilidade de API interna. Não é inserido
+            em nenhum layout visível da interface desde a Fase 6 do redesign.
 
-        O separador visual (stretch) entre os dois grupos distingue
-        ações de sessão (esquerda) de ações de exportação (direita).
+        Comportamento dos componentes:
+            - Os botões retornados continuam instanciados em self._create_widgets()
+              e conectados aos seus respectivos slots em self._connect_signals().
+            - self.btn_end ('Encerrar Sessão') é o único botão reaproveitado
+              visualmente na interface, sendo inserido na barra fixa superior
+              (_assessment_bar), externa à área de rolagem.
+            - Os demais botões legados (self.btn_new_session, self.btn_start,
+              self.btn_pdf, self.btn_csv, self.btn_historico) permanecem em memória
+              e gerenciados por self._set_state(), mas não são exibidos na Página 0
+              (a experiência clínica pós-sessão foi migrada para a Tela 3 / Página 2).
 
         Retorna:
-            QHBoxLayout pronto para ser adicionado ao layout principal.
+            QHBoxLayout estruturado com os controles legados.
         """
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
