@@ -372,9 +372,9 @@ class MetricsWidget(QGroupBox):
         self._card_frame.set_value(str(result.frame_id))
 
         # Extract hand state from the dictionary returned by classify_hand_state().
-        # Expected keys: "hand_open" (bool) and "closed_count" (int, 0–5).
-        hand_open: bool = result.hand_state.get("hand_open", True)
-        closed_count: int = result.hand_state.get("closed_count", 0)
+        # Expected keys: "mao_aberta" (bool) and "dedos_fechados" (int, 0–5).
+        hand_open: bool = result.hand_state.get("mao_aberta", True)
+        closed_count: int = result.hand_state.get("dedos_fechados", 0)
 
         # Propagate data to the specialized state card.
         self._card_hand.update_state(

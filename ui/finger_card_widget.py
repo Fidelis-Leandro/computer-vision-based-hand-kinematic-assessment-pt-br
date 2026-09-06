@@ -24,7 +24,7 @@ Metrics displayed per card (from the scientific pipeline):
     Mini-chart    : TAM history over the last BUFFER_SIZE points (PyQtGraph).
 
 Data sources:
-    state   ← classify_hand_state()["finger_states"][finger]
+    state   ← classify_hand_state()["estados_dedos"][finger]
     metrics ← compute_realtime_metrics(angle_buffer, time_buffer)
 
 Why one card per finger?
@@ -330,9 +330,9 @@ class FingerCardWidget(QGroupBox):
         Expected structure of 'state' (from classify_hand_state()):
             Long fingers: {"MCP": float, "PIP": float, "DIP": float,
                           "ABD": float, "TAM": float,
-                          "closed": bool, "assh_label": str, "assh_color": str}
+                          "fechado": bool, "rotulo_assh": str, "cor_assh": str}
             Thumb:        {"MCP": float, "IP": float, "TAM": float,
-                          "closed": bool, "assh_label": str, "assh_color": str}
+                          "fechado": bool, "rotulo_assh": str, "cor_assh": str}
 
         Expected structure of 'metrics' (from compute_realtime_metrics()):
             {"rom": float, "vel_media": float, "vel_pico": float,
@@ -348,8 +348,8 @@ class FingerCardWidget(QGroupBox):
         self._lbl_tam_value.setText(f"{tam:.1f}°")
 
         # --- ASSH classification with dynamic color ---
-        assh_label: str = state.get("assh_label", "—")
-        assh_color: str = state.get("assh_color", "#94a3b8")
+        assh_label: str = state.get("rotulo_assh", "—")
+        assh_color: str = state.get("cor_assh", "#94a3b8")
 
         self._lbl_assh.setText(assh_label)
 
@@ -460,7 +460,7 @@ class FingerCardsPanel(QWidget):
         layout.addWidget(self.finger_cards)
         # In _on_result():
         self.finger_cards.update_all(
-            result.hand_state["finger_states"],
+            result.hand_state["estados_dedos"],
             result.metrics_per_finger,
             result.tam_buffers_snapshot,
         )
@@ -529,7 +529,7 @@ class FingerCardsPanel(QWidget):
 
         Parameters:
             finger_states: Dictionary {finger: state_dict} returned by
-                           classify_hand_state()["finger_states"].
+                           classify_hand_state()["estados_dedos"].
                            Contains current angles and ASSH classification per finger.
 
             metrics_per_finger: Dictionary {finger: metrics_dict} where each dict is

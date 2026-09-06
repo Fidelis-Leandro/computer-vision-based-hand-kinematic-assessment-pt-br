@@ -172,8 +172,8 @@ def test_dashboard_utils_classify_hand_state():
     angles["THUMB"]["TAM"] = 90.0
     
     state = classify_hand_state(angles)
-    assert "finger_states" in state
-    assert "THUMB" in state["finger_states"]
-    assert state["finger_states"]["THUMB"]["TAM"] == 90.0
-    assert state["finger_states"]["THUMB"]["closed"] == True
-    assert state["finger_states"]["THUMB"]["assh_label"] == "Bom"
+    assert "estados_dedos" in state
+    assert "THUMB" in state["estados_dedos"]
+    assert state["estados_dedos"]["THUMB"]["TAM"] == 90.0
+    assert state["estados_dedos"]["THUMB"]["fechado"] == True
+    assert state["estados_dedos"]["THUMB"]["rotulo_assh"] == "Bom"

@@ -95,7 +95,7 @@ class ProcessingResult:
                        ABD and TAM for long fingers; MCP, IP and TAM for the thumb.
 
         hand_state: Dictionary returned by classify_hand_state(). Contains
-                    finger_states (each finger's state), closed_count and hand_open.
+                    estados_dedos (each finger's state), dedos_fechados and mao_aberta.
 
         metrics_per_finger: {finger_name: metrics_dict} where each dict is the
                             output of compute_realtime_metrics() — rom,
@@ -591,7 +591,7 @@ class ProcessingWorker(QThread):
         result = ProcessingResult(
             frame_overlay=frame_bgr.copy(),
             angles_smooth={},
-            hand_state={"finger_states": {}, "closed_count": 0, "hand_open": True},
+            hand_state={"estados_dedos": {}, "dedos_fechados": 0, "mao_aberta": True},
             metrics_per_finger={},
             hand_detected=False,
             frame_id=self._frame_id,

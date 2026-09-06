@@ -588,7 +588,7 @@ class MainWindow(QMainWindow):
         # Updates the 5 individual cards with clinical metrics and mini-charts.
         # get_tam_buffers() returns a thread-safe copy of the worker's deques.
         self.finger_cards.update_all(
-            finger_states=r.hand_state.get("finger_states", {}),
+            finger_states=r.hand_state.get("estados_dedos", {}),
             metrics_per_finger=r.metrics_per_finger,
             tam_buffers_per_finger=r.tam_buffers_snapshot,
         )

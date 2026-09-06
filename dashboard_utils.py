@@ -112,29 +112,29 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
 
     Returns:
     {
-        "finger_states": {
+        "estados_dedos": {
             "INDEX": {
                 "MCP": float,
                 "PIP": float,
                 "DIP": float,
                 "ABD": float,
                 "TAM": float,
-                "closed": bool,
-                "assh_label": str,
-                "assh_color": str,
+                "fechado": bool,
+                "rotulo_assh": str,
+                "cor_assh": str,
             },
             "THUMB": {
                 "MCP": float,
                 "IP": float,
                 "TAM": float,   # proxy: MCP + IP
-                "closed": bool,
-                "assh_label": str,
-                "assh_color": str,
+                "fechado": bool,
+                "rotulo_assh": str,
+                "cor_assh": str,
             },
             ...
         },
-        "closed_count": int,
-        "hand_open": bool,
+        "dedos_fechados": int,
+        "mao_aberta": bool,
     }
     """
     finger_states: Dict[str, Dict[str, float]] = {}
@@ -156,9 +156,9 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
                 "MCP": mcp,
                 "IP": ip,
                 "TAM": tam,
-                "closed": closed,
-                "assh_label": assh_label,
-                "assh_color": assh_color,
+                "fechado": closed,
+                "rotulo_assh": assh_label,
+                "cor_assh": assh_color,
             }
         else:
             mcp = float(finger_data.get("MCP", 0.0))
@@ -179,17 +179,17 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
                 "DIP": dip,
                 "ABD": abd,
                 "TAM": tam,
-                "closed": closed,
-                "assh_label": assh_label,
-                "assh_color": assh_color,
+                "fechado": closed,
+                "rotulo_assh": assh_label,
+                "cor_assh": assh_color,
             }
 
     hand_open = closed_count < 4
 
     return {
-        "finger_states": finger_states,
-        "closed_count": closed_count,
-        "hand_open": hand_open,
+        "estados_dedos": finger_states,
+        "dedos_fechados": closed_count,
+        "mao_aberta": hand_open,
     }
 
 
