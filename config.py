@@ -1,164 +1,165 @@
 """
-config.py — Centralized system configuration for Digital Hand Goniometry
-=========================================================================
+config.py — Configuração centralizada do sistema de Goniometria Digital da Mão
+===============================================================================
 
-This file is the single source of truth for all numeric parameters and
-configuration constants. No magic numbers should appear scattered throughout
-the rest of the codebase.
+Este arquivo é a única fonte de verdade para todos os parâmetros numéricos e
+constantes de configuração. Nenhum número mágico deve aparecer disperso pelo
+restante do código.
 
-Design philosophy:
-    In real-time systems like this one, changing a parameter in one place
-    and having it propagate to all modules is fundamental for maintenance
-    and calibration. Without this file, values would need to be tracked
-    and replaced across multiple files, which inevitably causes
-    inconsistencies.
+Filosofia de design:
+    Em sistemas de tempo real como este, alterar um parâmetro em um único lugar
+    e propagá-lo para todos os módulos é fundamental para manutenção e
+    calibração. Sem este arquivo, os valores precisariam ser rastreados e
+    substituídos em múltiplos arquivos, o que inevitavelmente causa
+    inconsistências.
 
-Configuration categories:
-    1. Camera and video capture
-    2. Smoothing pipeline (EMA -> Kalman)
-    3. Hand detection (MediaPipe)
-    4. Graphical interface (PyQt6 / PyQtGraph)
-    5. Session recording (CSV)
-    6. Clinical finger mapping
-    7. Logging system
-    8. Main window
+Categorias de configuração:
+    1. Câmera e captura de vídeo
+    2. Pipeline de suavização (EMA → Kalman)
+    3. Detecção de mão (MediaPipe)
+    4. Interface gráfica (PyQt6 / PyQtGraph)
+    5. Gravação de sessão (CSV)
+    6. Mapeamento clínico de dedos
+    7. Sistema de log
+    8. Janela principal
 """
 
 # =============================================================================
-# 1. CAMERA AND VIDEO CAPTURE
+# 1. CÂMERA E CAPTURA DE VÍDEO
 # =============================================================================
 
-# Camera index in the operating system.
-# 0 = default camera (usually the built-in webcam).
-# If multiple cameras are available, change to 1, 2, etc.
+# Índice da câmera no sistema operacional.
+# 0 = câmera padrão (geralmente a webcam integrada).
+# Se houver múltiplas câmeras disponíveis, alterar para 1, 2, etc.
 CAMERA_INDEX: int = 0
 
-# Target camera resolution.
-# 1280x720 (HD) provides good quality for landmark tracking,
-# but consumes more CPU than 640x480. Adjust if the machine is slow.
+# Resolução alvo da câmera.
+# 1280x720 (HD) oferece boa qualidade para rastreamento de landmarks,
+# mas consome mais CPU do que 640x480. Ajustar se a máquina for lenta.
 CAMERA_WIDTH: int = 1280
 CAMERA_HEIGHT: int = 720
 
-# Target frames per second requested from the camera driver.
-# The driver may not honor this value exactly — the actual FPS
-# is measured and displayed in real time by CameraWorker.
+# Frames por segundo solicitados ao driver da câmera.
+# O driver pode não honrar este valor exatamente — o FPS real
+# é medido e exibido em tempo real pelo CameraWorker.
 TARGET_FPS: int = 30
 
 # =============================================================================
-# 2. SMOOTHING PIPELINE (EMA -> KALMAN)
+# 2. PIPELINE DE SUAVIZAÇÃO (EMA → KALMAN)
 # =============================================================================
 
-# Exponential Moving Average (EMA) smoothing factor.
-# Value between 0 and 1: higher values make the filter react faster to motion
-# but reduce smoothing. Lower values produce smoother output with more lag.
-# 0.30 was calibrated experimentally for clinical real-time goniometry:
-# smooths camera tremor without introducing perceptible lag in slow movements.
+# Fator de suavização EMA (Exponential Moving Average).
+# Valor entre 0 e 1: valores maiores fazem o filtro reagir mais rápido ao
+# movimento, mas reduzem a suavização. Valores menores produzem saída mais
+# suave com maior atraso.
+# 0.30 foi calibrado experimentalmente para goniometria clínica em tempo real:
+# suaviza o tremor da câmera sem introduzir atraso perceptível em movimentos lentos.
 EMA_ALPHA: float = 0.30
 
-# Scalar Kalman Filter parameters.
+# Parâmetros do Filtro de Kalman escalar.
 #
-# KALMAN_Q (process noise): represents uncertainty in the motion model.
-# A small value (0.01) assumes the joint angle changes slowly and smoothly.
-# Increasing Q makes the filter react faster to sudden changes.
+# KALMAN_Q (ruído do processo): representa incerteza no modelo de movimento.
+# Um valor pequeno (0.01) assume que o ângulo articular muda de forma lenta e suave.
+# Aumentar Q faz o filtro reagir mais rápido a mudanças súbitas.
 KALMAN_Q: float = 0.01
 
-# KALMAN_R (measurement noise): represents uncertainty in landmark readings.
-# 0.10 indicates moderate trust in the position detected by MediaPipe.
-# Increasing R makes the filter trust the measurement less and rely more
-# on the previous estimate.
+# KALMAN_R (ruído de medição): representa incerteza nas leituras de landmarks.
+# 0.10 indica confiança moderada na posição detectada pelo MediaPipe.
+# Aumentar R faz o filtro confiar menos na medição e se apoiar mais
+# na estimativa anterior.
 KALMAN_R: float = 0.10
 
 # =============================================================================
-# 3. HAND DETECTION (MEDIAPIPE HANDS)
+# 3. DETECÇÃO DE MÃO (MEDIAPIPE HANDS)
 # =============================================================================
 
-# Minimum confidence for DETECTING a hand from scratch.
-# A higher value (0.70) reduces false positives but may miss detections
-# under poor lighting. Adjust between 0.5 and 0.9.
+# Confiança mínima para DETECTAR uma mão do zero.
+# Um valor mais alto (0.70) reduz falsos positivos, mas pode perder detecções
+# com iluminação ruim. Ajustar entre 0.5 e 0.9.
 MP_DETECT_CONF: float = 0.70
 
-# Minimum confidence for TRACKING an already-detected hand between frames.
-# Can be lower than MP_DETECT_CONF because tracking is easier than detecting.
-# 0.50 keeps tracking smooth even with partial finger occlusions.
+# Confiança mínima para RASTREAR uma mão já detectada entre quadros.
+# Pode ser menor que MP_DETECT_CONF porque rastrear é mais fácil que detectar.
+# 0.50 mantém o rastreamento estável mesmo com oclusões parciais dos dedos.
 MP_TRACK_CONF: float = 0.50
 
-# Number of consecutive frames without hand detection before resetting filters.
-# At 30 FPS, 15 frames ≈ 500ms. This prevents the Kalman filter from
-# "remembering" a previous position when the hand returns after a long occlusion.
+# Número de quadros consecutivos sem detecção de mão antes de resetar os filtros.
+# A 30 FPS, 15 quadros ≈ 500ms. Isso impede que o filtro de Kalman
+# "lembre" uma posição anterior quando a mão retorna após longa oclusão.
 NO_HAND_RESET_FRAMES: int = 15
 
 # =============================================================================
-# 4. GRAPHICAL INTERFACE (PyQt6 / PyQtGraph)
+# 4. INTERFACE GRÁFICA (PyQt6 / PyQtGraph)
 # =============================================================================
 
-# Circular buffer size for real-time charts (PyQtGraph).
-# 500 points at ~30 FPS = approximately 16 seconds of visible history.
-# Using deque(maxlen=BUFFER_SIZE) ensures memory does not grow indefinitely.
+# Tamanho do buffer circular para gráficos em tempo real (PyQtGraph).
+# 500 pontos a ~30 FPS = aproximadamente 16 segundos de histórico visível.
+# Usar deque(maxlen=BUFFER_SIZE) garante que a memória não cresça indefinidamente.
 BUFFER_SIZE: int = 500
 
-# Maximum queue size between CameraWorker and ProcessingWorker.
-# MUST always be 1 in real-time systems. With maxsize=1:
-# - If the queue is full, the old frame is discarded.
-# - The processor ALWAYS receives the most recent frame.
-# - Latency remains minimal, even if processing is temporarily slow.
+# Tamanho máximo da fila entre CameraWorker e ProcessingWorker.
+# DEVE ser sempre 1 em sistemas de tempo real. Com maxsize=1:
+# - Se a fila estiver cheia, o quadro antigo é descartado.
+# - O processador SEMPRE recebe o quadro mais recente.
+# - A latência permanece mínima, mesmo se o processamento estiver temporariamente lento.
 QUEUE_SIZE: int = 1
 
-# Interval in milliseconds for the QTimer that updates PyQtGraph charts.
-# 33ms ≈ 30 FPS visual update rate — smooth to the human eye.
-# Increasing this value reduces CPU usage; decreasing makes the UI more fluid.
+# Intervalo em milissegundos para o QTimer que atualiza os gráficos do PyQtGraph.
+# 33ms ≈ 30 FPS de atualização visual — suave para o olho humano.
+# Aumentar este valor reduz o uso de CPU; diminuir torna a interface mais fluida.
 PANEL_REFRESH_MS: int = 33
 
-# Number of frames between goniometric overlay recalculations.
-# Drawing the skeleton and angles is costly. With OVERLAY_FRAME_INTERVAL = 3,
-# the overlay updates every 3 frames, saving ~67% of drawing cost
-# without a perceptible visual impact (the human eye cannot distinguish
-# such rapid differences).
+# Número de quadros entre recálculos do overlay goniométrico.
+# Desenhar o esqueleto e os ângulos é custoso. Com OVERLAY_FRAME_INTERVAL = 3,
+# o overlay atualiza a cada 3 quadros, economizando ~67% do custo de desenho
+# sem impacto visual perceptível (o olho humano não distingue
+# diferenças tão rápidas).
 OVERLAY_FRAME_INTERVAL: int = 3
 
 # =============================================================================
-# 5. SESSION RECORDING (CSV)
+# 5. GRAVAÇÃO DE SESSÃO (CSV)
 # =============================================================================
 
-# Number of frames between CSV angle recordings.
-# CSV_LOG_INTERVAL = 3 with TARGET_FPS = 30 yields ~10 rows/second,
-# sufficient for clinical analysis without generating excessively large files.
+# Número de quadros entre gravações de ângulos no CSV.
+# CSV_LOG_INTERVAL = 3 com TARGET_FPS = 30 gera ~10 linhas/segundo,
+# suficiente para análise clínica sem gerar arquivos excessivamente grandes.
 CSV_LOG_INTERVAL: int = 3
 
 # =============================================================================
-# 6. CLINICAL FINGER MAPPING
+# 6. MAPEAMENTO CLÍNICO DE DEDOS
 # =============================================================================
 
-# Processing order for fingers — must remain consistent across all modules
-# to avoid indexing bugs.
-# THUMB is listed last due to its different anatomy
-# (only MCP and IP joints, no DIP or ABD).
+# Ordem de processamento dos dedos — deve permanecer consistente em todos os módulos
+# para evitar bugs de indexação.
+# THUMB é listado por último devido à sua anatomia diferente
+# (apenas articulações MCP e IP, sem DIP ou ABD).
 FINGERS: list[str] = ["INDEX", "MIDDLE", "RING", "PINKY", "THUMB"]
 
-# Mapping of technical English names to clinical display labels.
-# Used in the graphical interface to show readable labels to healthcare professionals.
+# Mapeamento dos nomes técnicos em inglês para rótulos de exibição clínica.
+# Usado na interface gráfica para exibir rótulos legíveis aos profissionais de saúde.
 FINGER_NAMES: dict[str, str] = {
-    "INDEX":  "Index",
-    "MIDDLE": "Middle",
-    "RING":   "Ring",
-    "PINKY":  "Little",
-    "THUMB":  "Thumb",
+    "INDEX":  "Indicador",
+    "MIDDLE": "Médio",
+    "RING":   "Anular",
+    "PINKY":  "Mínimo",
+    "THUMB":  "Polegar",
 }
 
-# Hexadecimal colors for each finger in PyQtGraph charts.
-# Colors were chosen for high contrast against the dark background
-# and adequate distinction for users with partial color blindness
-# (avoids pure red/green combinations).
+# Cores hexadecimais para cada dedo nos gráficos do PyQtGraph.
+# As cores foram escolhidas para alto contraste com o fundo escuro
+# e distinção adequada para usuários com daltonismo parcial
+# (evita combinações puro vermelho/verde).
 FINGER_COLORS: dict[str, str] = {
-    "INDEX":  "#38bdf8",   # Sky blue    — Index
-    "MIDDLE": "#4ade80",   # Light green — Middle
-    "RING":   "#facc15",   # Golden yellow — Ring
-    "PINKY":  "#f87171",   # Salmon red  — Little
-    "THUMB":  "#c084fc",   # Light purple — Thumb
+    "INDEX":  "#38bdf8",   # Azul-céu      — Indicador
+    "MIDDLE": "#4ade80",   # Verde-claro   — Médio
+    "RING":   "#facc15",   # Amarelo-ouro  — Anular
+    "PINKY":  "#f87171",   # Vermelho-salmão — Mínimo
+    "THUMB":  "#c084fc",   # Roxo-claro    — Polegar
 }
 
-# Colors for each finger in (R, G, B) format with values 0–255.
-# Used by PyQtGraph to define curve plot colors,
-# as PyQtGraph accepts both hex strings and RGB tuples.
+# Cores para cada dedo no formato (R, G, B) com valores 0–255.
+# Usado pelo PyQtGraph para definir cores das curvas dos gráficos,
+# pois o PyQtGraph aceita tanto strings hex quanto tuplas RGB.
 FINGER_COLORS_RGB: dict[str, tuple[int, int, int]] = {
     "INDEX":  (56, 189, 248),
     "MIDDLE": (74, 222, 128),
@@ -167,10 +168,10 @@ FINGER_COLORS_RGB: dict[str, tuple[int, int, int]] = {
     "THUMB":  (192, 132, 252),
 }
 
-# Biomechanical TAM ceiling per finger (degrees).
-# Values derived from ASSH reference ranges and anatomical literature.
-# Applied as a hard clamp after EMA + Kalman filtering to prevent
-# camera-noise artifacts from producing physically impossible readings.
+# Limite máximo de TAM biomecânico por dedo (graus).
+# Valores derivados das faixas de referência ASSH e literatura anatômica.
+# Aplicado como limitação rígida após filtragem EMA + Kalman para evitar
+# que artefatos de ruído da câmera produzam leituras fisicamente impossíveis.
 TAM_CEILING: dict[str, float] = {
     "INDEX":  270.0,
     "MIDDLE": 270.0,
@@ -180,31 +181,31 @@ TAM_CEILING: dict[str, float] = {
 }
 
 # =============================================================================
-# 7. LOGGING SYSTEM
+# 7. SISTEMA DE LOG
 # =============================================================================
 
-# Directory where the application log file will be saved.
-# Created automatically if it does not exist (see app_pyqt.py).
+# Diretório onde o arquivo de log da aplicação será salvo.
+# Criado automaticamente caso não exista (ver app_pyqt.py).
 LOG_DIR: str = "logs"
 
-# Application log filename.
-# Separate from the session CSV — this file contains system events,
-# errors, and initialization information, not clinical data.
+# Nome do arquivo de log da aplicação.
+# Separado do CSV de sessão — este arquivo contém eventos do sistema,
+# erros e informações de inicialização, não dados clínicos.
 LOG_FILENAME: str = "app.log"
 
-# Log message format.
-# Includes: date/time, level (INFO/WARNING/ERROR), module name, and message.
-# Helps trace which module generated each event during debugging.
+# Formato das mensagens de log.
+# Inclui: data/hora, nível (INFO/WARNING/ERROR), nome do módulo e mensagem.
+# Facilita rastrear qual módulo gerou cada evento durante depuração.
 LOG_FORMAT: str = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 
 # =============================================================================
-# 8. MAIN WINDOW
+# 8. JANELA PRINCIPAL
 # =============================================================================
 
-# Title displayed in the operating system's window title bar.
-APP_TITLE: str = "Digital Hand Goniometry"
+# Título exibido na barra de título da janela no sistema operacional.
+APP_TITLE: str = "Goniometria Digital da Mão"
 
-# Minimum main window size in pixels (width x height).
-# Ensures all widgets remain visible even on smaller monitors.
+# Tamanho mínimo da janela principal em pixels (largura x altura).
+# Garante que todos os widgets permaneçam visíveis mesmo em monitores menores.
 WINDOW_MIN_WIDTH: int = 1280
 WINDOW_MIN_HEIGHT: int = 800
