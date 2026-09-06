@@ -95,11 +95,11 @@ class SeriesFilter:
         Classify the current filter stability based on the Kalman gain.
         """
         if self._k_gain < 0.15:
-            return "stable"
+            return "estavel"
         elif self._k_gain < 0.40:
-            return "converging"
+            return "convergindo"
         else:
-            return "unstable"
+            return "instavel"
 
     @property
     def is_initialized(self) -> bool:
@@ -178,7 +178,7 @@ class GoniometryFilterBank:
         """
         key = f"{finger}_{joint}"
         if key not in self._filters:
-            return "uninitialized"
+            return "nao_inicializado"
         return self._filters[key].stability
 
     def get_all_gains(self) -> Dict[str, float]:

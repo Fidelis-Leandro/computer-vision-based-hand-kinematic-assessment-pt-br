@@ -106,10 +106,10 @@ GONIO_JOINTS = [
 
 def _stability_color(status: str) -> Tuple[int, int, int]:
     return {
-        "stable": STAB_STABLE,
-        "converging": STAB_CONV,
-        "unstable": STAB_UNSTAB,
-        "uninitialized": STAB_UNINIT,
+        "estavel": STAB_STABLE,
+        "convergindo": STAB_CONV,
+        "instavel": STAB_UNSTAB,
+        "nao_inicializado": STAB_UNINIT,
     }.get(status, STAB_UNINIT)
 
 
@@ -369,7 +369,7 @@ def _build_skeleton(
         clinical_status = is_in_normal_range(finger, joint_type, angle_val)
         arc_color = _clinical_color(clinical_status)
 
-        stability_status = (stability_map or {}).get(finger, {}).get(joint_type, "uninitialized")
+        stability_status = (stability_map or {}).get(finger, {}).get(joint_type, "nao_inicializado")
         stability_color = _stability_color(stability_status)
 
         cv2.line(canvas, center, es, COLOR_STAT, ARM_TICK, cv2.LINE_AA)
