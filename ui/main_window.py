@@ -227,6 +227,9 @@ class MainWindow(QMainWindow):
         # antes de o PDF terminar de ser gerado.
         self._pdf_worker: Optional[_PdfGeneratorWorker] = None
 
+        # Controle de visibilidade da gaveta de logs (Fase 4B)
+        self._logs_visible: bool = False
+
         # === CRIAÇÃO DOS COMPONENTES ===
         self._create_widgets()
 
@@ -278,6 +281,27 @@ class MainWindow(QMainWindow):
 
         # Log de eventos do sistema com timestamps.
         self.log_widget = LogWidget()
+
+        # Botão para alternar a gaveta de logs (Fase 4B)
+        self.btn_toggle_logs = QPushButton("📋  Exibir Logs do Sistema")
+        self.btn_toggle_logs.setFixedHeight(28)
+        self.btn_toggle_logs.setToolTip("Exibe ou oculta a gaveta de logs do sistema.")
+        self.btn_toggle_logs.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_SECONDARY};
+                border: 1px solid {COLOR_TEXT_SECONDARY};
+                border-radius: 4px;
+                font-size: 11px;
+                padding: 4px 12px;
+            }}
+            QPushButton:hover {{
+                color: {COLOR_TEXT_PRIMARY};
+                border-color: {COLOR_ACCENT};
+            }}
+            """
+        )
 
         # --- Botões de controle de sessão ---
 
@@ -371,6 +395,7 @@ class MainWindow(QMainWindow):
         )
 
         # --- Botões → ações ---
+        self.btn_toggle_logs.clicked.connect(self._toggle_logs)
         self.btn_new_session.clicked.connect(self._new_session)
         self.btn_start.clicked.connect(self._start_session)
         self.btn_end.clicked.connect(self._confirm_end_session)
@@ -459,10 +484,12 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(cards_scroll)
 
-        # --- 5. Log de eventos ---
+        # --- 5. Log de eventos com gaveta recolhível (Fase 4B) ---
+        main_layout.addWidget(self.btn_toggle_logs)
         self.log_widget.setMinimumHeight(80)
         self.log_widget.setMaximumHeight(100)
         main_layout.addWidget(self.log_widget)
+        self._set_logs_visible(False)
 
         # --- 6. Barra de botões ---
         main_layout.addLayout(self._build_button_row())
@@ -682,6 +709,30 @@ class MainWindow(QMainWindow):
         return btn_row
 
     # =========================================================================
+    # CONTROLE DA GAVETA DE LOGS (FASE 4B)
+    # =========================================================================
+
+    def _toggle_logs(self) -> None:
+        """
+        Alterna a visibilidade da gaveta do LogWidget.
+        """
+        self._set_logs_visible(not self._logs_visible)
+
+    def _set_logs_visible(self, visible: bool) -> None:
+        """
+        Define a visibilidade da gaveta do LogWidget e atualiza o texto do botão.
+
+        Parâmetros:
+            visible: True para exibir a gaveta, False para recolher.
+        """
+        self._logs_visible = visible
+        self.log_widget.setVisible(visible)
+        if visible:
+            self.btn_toggle_logs.setText("📋  Ocultar Logs do Sistema")
+        else:
+            self.btn_toggle_logs.setText("📋  Exibir Logs do Sistema")
+
+    # =========================================================================
     # MÁQUINA DE ESTADOS
     # =========================================================================
 
@@ -798,14 +849,17 @@ class MainWindow(QMainWindow):
         Parâmetros:
             message: Descrição do erro enviada pelo CameraWorker via sinal.
         """
+        was_running = self._state == "RUNNING"
         self.log_widget.log_error(f"Câmera: {message}")
+        if was_running:
+            self._set_logs_visible(True)
         self.video_widget.set_no_signal(message)
         self._status_bar.showMessage(f"ERRO DE CÂMERA: {message}")
         logger.error("Erro de câmera: %s", message)
 
         # Se a sessão estava em andamento, encerra automaticamente.
         # Continuar gravando sem quadros cria um CSV corrompido.
-        if self._state == "RUNNING":
+        if was_running:
             self._end_session()
 
     def _on_patient_name_changed(self, text: str) -> None:
@@ -889,6 +943,7 @@ class MainWindow(QMainWindow):
         # === 5. Limpa o log e exibe confirmação ===
         self.log_widget.clear_log()
         self.log_widget.log_success("Sistema reiniciado. Pronto para nova sessão.")
+        self._set_logs_visible(False)
 
         # === 6. Reinicia referências de sessão ===
         self._csv_path = ""
@@ -970,6 +1025,7 @@ class MainWindow(QMainWindow):
         )
 
         self._set_state("RUNNING")
+        self._set_logs_visible(False)
         logger.info(
             "Sessão iniciada: paciente=%s, mão=%s, sessão=%d, csv=%s",
             patient_name, hand, session_number, self._csv_path,
