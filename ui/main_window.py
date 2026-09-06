@@ -852,6 +852,33 @@ class MainWindow(QMainWindow):
         self._btn_result_history.clicked.connect(self._abrir_historico)
         card_layout.addWidget(self._btn_result_history)
 
+        card_layout.addSpacing(6)
+
+        # Botão: Nova Avaliação (Fase 5B-1)
+        self._btn_result_next = QPushButton("🔄  Nova Avaliação")
+        self._btn_result_next.setMinimumHeight(42)
+        self._btn_result_next.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_next.setToolTip(
+            "Reinicia o sistema e retorna à tela de configuração para uma nova avaliação."
+        )
+        self._btn_result_next.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_PRIMARY};
+                border: 1px solid {COLOR_TEXT_SECONDARY};
+                border-radius: 5px;
+                font-size: 13px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {COLOR_ACCENT};
+            }}
+            """
+        )
+        self._btn_result_next.clicked.connect(self._on_result_new_session)
+        card_layout.addWidget(self._btn_result_next)
+
         center_row.addWidget(card_frame)
         center_row.addStretch(1)
 
@@ -882,6 +909,26 @@ class MainWindow(QMainWindow):
         has_csv = bool(self._csv_path and os.path.exists(self._csv_path))
         self._btn_result_pdf.setEnabled(has_csv)
         self._btn_result_csv.setEnabled(has_csv)
+
+    def _on_result_new_session(self) -> None:
+        """
+        Inicia uma nova avaliação a partir da Tela de Resultado,
+        reutilizando exclusivamente o fluxo oficial de _new_session().
+        """
+        self._new_session()
+
+        if self._state != "STOPPED":
+            patient_name = self.session_header._input_patient.text()
+            hand = self.session_header._combo_hand.currentText()
+            session_number = self.session_header._spin_session.value()
+
+            self._setup_input_patient.setText(patient_name)
+            self._setup_combo_hand.setCurrentText(hand)
+            self._setup_spin_session.setValue(session_number)
+
+            self._setup_btn_start.setEnabled(bool(patient_name.strip()))
+
+            self._stack.setCurrentIndex(1)
 
     def _build_button_row(self) -> QHBoxLayout:
         """
