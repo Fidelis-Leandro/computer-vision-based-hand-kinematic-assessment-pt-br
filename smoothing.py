@@ -1,29 +1,29 @@
 """
-smoothing.py — Mandatory EMA -> Kalman smoothing pipeline
-==========================================================
+smoothing.py — Pipeline obrigatório de suavização EMA -> Kalman
+===============================================================
 
-This module implements the smoothing layer of the system.
+Este módulo implementa a camada de suavização do sistema.
 
-Pipeline per time series:
+Pipeline por série temporal:
     raw_angle -> EMA -> Kalman -> smoothed_angle
 
-The classes here are independent of OpenCV and MediaPipe.
-They operate solely on numeric values, which simplifies testing and reuse.
+As classes aqui presentes são independentes de OpenCV e MediaPipe.
+Operam exclusivamente sobre valores numéricos, o que simplifica testes e reutilização.
 """
 
 from typing import Dict, Optional
 
 # =============================================================================
-# SCALAR SERIES FILTER
+# FILTRO DE SÉRIE ESCALAR
 # =============================================================================
 
 
 class SeriesFilter:
     """
-    Scalar filter for a single angular time series.
+    Filtro escalar para uma única série temporal angular.
 
-    Each joint of each finger receives an independent instance
-    to maintain its own history and Kalman state.
+    Cada articulação de cada dedo recebe uma instância independente
+    para manter seu próprio histórico e estado de Kalman.
     """
 
     def __init__(
@@ -32,14 +32,14 @@ class SeriesFilter:
         kalman_q: float = 0.01,
         kalman_r: float = 0.10,
     ):
-        # EMA parameters.
+        # Parâmetros do EMA.
         self.ema_alpha = ema_alpha
 
-        # Scalar Kalman parameters.
+        # Parâmetros do filtro escalar de Kalman.
         self.q = kalman_q
         self.r = kalman_r
 
-        # Internal state.
+        # Estado interno.
         self._ema_value: Optional[float] = None
         self._x: Optional[float] = None
         self._p: float = 1.0
@@ -48,14 +48,14 @@ class SeriesFilter:
 
     def update(self, raw: float) -> float:
         """
-        Process a new raw value and return the smoothed value.
+        Processa um novo valor bruto e retorna o valor suavizado.
 
-        Step 1 — EMA:
-            Reduces high-frequency jitter between frames.
+        Etapa 1 — EMA:
+            Reduz oscilações rápidas (jitter) entre quadros.
 
-        Step 2 — Kalman:
-            Models the recursive estimate of the true value
-            and its residual uncertainty.
+        Etapa 2 — Kalman:
+            Modela a estimativa recursiva do valor real
+            e sua incerteza residual.
         """
         self._n_updates += 1
 
@@ -85,14 +85,14 @@ class SeriesFilter:
     @property
     def kalman_gain(self) -> float:
         """
-        Return the last computed Kalman gain.
+        Retorna o último ganho de Kalman calculado.
         """
         return self._k_gain
 
     @property
     def stability(self) -> str:
         """
-        Classify the current filter stability based on the Kalman gain.
+        Classifica a estabilidade atual do filtro com base no ganho de Kalman.
         """
         if self._k_gain < 0.15:
             return "estavel"
@@ -104,13 +104,13 @@ class SeriesFilter:
     @property
     def is_initialized(self) -> bool:
         """
-        Return whether the series has been initialized with at least one sample.
+        Retorna se a série já foi inicializada com pelo menos uma amostra.
         """
         return self._x is not None
 
     def reset(self, seed_value: Optional[float] = None) -> None:
         """
-        Reset the internal filter state.
+        Reinicializa o estado interno do filtro.
         """
         self._ema_value = seed_value
         self._x = seed_value
@@ -120,15 +120,15 @@ class SeriesFilter:
 
 
 # =============================================================================
-# FILTER BANK
+# BANCO DE FILTROS
 # =============================================================================
 
 class GoniometryFilterBank:
     """
-    Filter bank indexed by (finger, joint) pairs.
+    Banco de filtros indexado por pares (dedo, articulação).
 
-    This class coordinates all time series in the system
-    and provides a unified API to smooth the complete angle dictionary.
+    Esta classe coordena todas as séries temporais do sistema
+    e fornece uma API unificada para suavizar o dicionário completo de ângulos.
     """
 
     def __init__(
@@ -144,7 +144,7 @@ class GoniometryFilterBank:
 
     def update(self, finger: str, joint: str, raw_angle: float) -> float:
         """
-        Update a specific series in the bank.
+        Atualiza uma série específica no banco.
         """
         key = f"{finger}_{joint}"
 
@@ -159,9 +159,9 @@ class GoniometryFilterBank:
 
     def smooth_all(self, angles: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, float]]:
         """
-        Smooth the entire angle dictionary at once.
+        Suaviza todo o dicionário de ângulos de uma só vez.
 
-        The input and output format is preserved for easy integration.
+        O formato de entrada e saída é preservado para facilitar a integração.
         """
         filtered: Dict[str, Dict[str, float]] = {}
 
@@ -174,7 +174,7 @@ class GoniometryFilterBank:
 
     def get_stability(self, finger: str, joint: str) -> str:
         """
-        Return the qualitative filter state for a given series.
+        Retorna o estado qualitativo do filtro para uma dada série.
         """
         key = f"{finger}_{joint}"
         if key not in self._filters:
@@ -183,13 +183,13 @@ class GoniometryFilterBank:
 
     def get_all_gains(self) -> Dict[str, float]:
         """
-        Return the Kalman gain of all active series.
+        Retorna o ganho de Kalman de todas as séries ativas.
         """
         return {k: f.kalman_gain for k, f in self._filters.items()}
 
     def reset_finger(self, finger: str) -> None:
         """
-        Reset all series associated with a given finger.
+        Reinicializa todas as séries associadas a um determinado dedo.
         """
         for key, filt in self._filters.items():
             if key.startswith(finger):
@@ -197,7 +197,7 @@ class GoniometryFilterBank:
 
     def reset_all(self, seed_angles: Optional[Dict] = None) -> None:
         """
-        Reset all series in the bank.
+        Reinicializa todas as séries no banco.
         """
         if seed_angles is None:
             for filt in self._filters.values():
@@ -216,10 +216,10 @@ class GoniometryFilterBank:
         kalman_r: float = None,
     ) -> None:
         """
-        Reconfigure the global bank parameters.
+        Reconfigura os parâmetros globais do banco.
 
-        Changing parameters clears all existing filters so that new
-        series are created with the updated configuration.
+        A alteração de parâmetros limpa todos os filtros existentes para que novas
+        séries sejam criadas com a configuração atualizada.
         """
         if ema_alpha is not None:
             self._ema_alpha = ema_alpha
@@ -233,7 +233,7 @@ class GoniometryFilterBank:
     @property
     def active_series_count(self) -> int:
         """
-        Number of currently active series.
+        Número de séries atualmente ativas.
         """
         return len(self._filters)
 
