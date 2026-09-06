@@ -308,7 +308,7 @@ class SessionHeaderWidget(QWidget):
         layout.addWidget(separator)
 
     # =========================================================================
-    # PUBLIC INTERFACE — used by MainWindow
+    # INTERFACE PÚBLICA — usada pelo MainWindow
     # =========================================================================
 
     def is_ready(self) -> bool:
