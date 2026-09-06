@@ -1,34 +1,34 @@
 """
-ui/video_widget.py — Real-time video display widget
-=====================================================
+ui/video_widget.py — Widget de exibição de vídeo em tempo real
+==============================================================
 
-This module implements the VideoWidget: a specialized QLabel that receives
-NumPy BGR frames from the ProcessingWorker and displays them on screen with
-minimal latency.
+Este módulo implementa o VideoWidget: um QLabel especializado que recebe
+quadros NumPy BGR do ProcessingWorker e os exibe na tela com
+latência mínima.
 
-Single responsibility (SRP principle):
-    This widget DOES ONE THING ONLY: transform a NumPy array (camera/OpenCV format)
-    into a visible Qt image. It does not process pixels, does not analyze the image,
-    does not compute angles — it only displays.
+Responsabilidade única (princípio SRP):
+    Este widget FAZ UMA ÚNICA COISA: transforma um array NumPy (formato câmera/OpenCV)
+    em uma imagem Qt visível. Ele não processa pixels, não analisa a imagem,
+    não calcula ângulos — apenas exibe.
 
-    All analysis has already happened in the ProcessingWorker. The VideoWidget
-    receives the ready result (frame with drawn overlay) and displays it.
+    Toda a análise já ocorreu no ProcessingWorker. O VideoWidget
+    recebe o resultado pronto (quadro com overlay desenhado) e o exibe.
 
-Why QLabel instead of a custom QWidget?
-    QLabel already has native support for displaying QPixmap (images) in an
-    optimized way. Inheriting from QLabel gives us setPixmap(), setAlignment(),
-    and automatic scaling for free, without needing to implement paintEvent()
-    from scratch to draw the base image.
-    We override paintEvent() ONLY to add the FPS overlay on top of the image
-    already rendered by the parent QLabel.
+Por que QLabel em vez de um QWidget personalizado?
+    QLabel já possui suporte nativo para exibir QPixmap (imagens) de forma
+    otimizada. Herdar de QLabel nos dá setPixmap(), setAlignment(),
+    e escalonamento automático gratuitamente, sem precisar implementar paintEvent()
+    do zero para desenhar a imagem base.
+    Sobrescrevemos paintEvent() SOMENTE para adicionar o overlay de FPS sobre a imagem
+    já renderizada pelo QLabel pai.
 
-Data flow:
+Fluxo de dados:
     ProcessingWorker
         → pyqtSignal result_ready(ProcessingResult)
         → MainWindow._on_result()
-        → video_widget.update_frame(result.frame_overlay)   ← this widget's input
+        → video_widget.update_frame(result.frame_overlay)   ← entrada deste widget
         → cv2.cvtColor(BGR→RGB)
-        → QImage → QPixmap → self.setPixmap()               ← output: pixels on screen
+        → QImage → QPixmap → self.setPixmap()               ← saída: pixels na tela
 """
 
 from typing import Optional
@@ -44,15 +44,15 @@ import config
 
 class VideoWidget(QLabel):
     """
-    Real-time video display widget for the goniometry interface.
+    Widget de exibição de vídeo em tempo real para a interface de goniometria.
 
-    Inherits from QLabel to leverage native QPixmap support, adding:
-    - Automatic format conversion from BGR (OpenCV) to RGB (Qt).
-    - FPS overlay drawn via QPainter, without affecting the main image.
-    - "No signal" state with visual message when the camera fails.
-    - Proportional image scaling when the window is resized.
+    Herda de QLabel para aproveitar o suporte nativo a QPixmap, adicionando:
+    - Conversão automática de formato BGR (OpenCV) para RGB (Qt).
+    - Overlay de FPS desenhado via QPainter, sem afetar a imagem principal.
+    - Estado "sem sinal" com mensagem visual quando a câmera falha.
+    - Escalonamento proporcional da imagem ao redimensionar a janela.
 
-    Typical usage in MainWindow:
+    Uso típico em MainWindow:
         self.video_widget = VideoWidget()
         layout.addWidget(self.video_widget)
         processing_worker.result_ready.connect(
@@ -63,113 +63,113 @@ class VideoWidget(QLabel):
 
     def __init__(self, parent=None) -> None:
         """
-        Initializes the VideoWidget with default visual settings.
+        Inicializa o VideoWidget com as configurações visuais padrão.
 
-        Configures minimum size, alignment, resize policy, and initial state
-        ("no signal"). Does not open the camera or process any data.
+        Configura o tamanho mínimo, alinhamento, política de redimensionamento e estado inicial
+        ("sem sinal"). Não abre a câmera nem processa nenhum dado.
 
-        Parameters:
-            parent: Qt parent widget (optional). Usually the layout container.
+        Parâmetros:
+            parent: Widget pai do Qt (opcional). Geralmente o contêiner do layout.
         """
         super().__init__(parent)
 
-        # Minimum guaranteed size for the widget — below this the layout
-        # will not allow the window to shrink further.
-        # 480×360 is the smallest size that still allows the goniometric overlay
-        # with angle labels to be legible.
+        # Tamanho mínimo garantido para o widget — abaixo disso o layout
+        # não permitirá que a janela encolha mais.
+        # 480×360 é o menor tamanho que ainda permite que o overlay goniométrico
+        # com rótulos de ângulos permaneça legível.
         self.setMinimumSize(480, 360)
 
-        # Center the content (pixmap) within the QLabel space.
-        # Without this, the image would be stuck in the top-left corner
-        # when the widget is larger than the frame.
+        # Centraliza o conteúdo (pixmap) dentro do espaço do QLabel.
+        # Sem isso, a imagem ficaria presa no canto superior esquerdo
+        # quando o widget for maior que o quadro.
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Allows the widget to grow and shrink freely in the layout,
-        # while respecting the minimum size defined above.
-        # Expanding in both directions allows the widget to fill the available
-        # space in the left column of the main layout.
+        # Permite que o widget cresça e encolha livremente no layout,
+        # respeitando o tamanho mínimo definido acima.
+        # A expansão em ambas as direções permite que o widget ocupe o espaço disponível
+        # na coluna esquerda do layout principal.
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
 
-        # Dark black background while no frame is available.
-        # Matches the application's dark theme and avoids flickering when
-        # the first real frame is displayed.
+        # Fundo preto escuro enquanto nenhum quadro está disponível.
+        # Corresponde ao tema escuro da aplicação e evita flickering quando
+        # o primeiro quadro real for exibido.
         self.setStyleSheet("QLabel { background-color: #0d1117; }")
 
-        # Stores the current FPS value to be drawn in paintEvent.
-        # Initialized as None to indicate no FPS reading is available yet.
+        # Armazena o valor atual de FPS para ser desenhado em paintEvent.
+        # Inicializado como None para indicar que ainda não há leitura de FPS disponível.
         self._fps: Optional[float] = None
 
-        # Flag indicating whether the widget is in the "no signal" state.
-        # Controls which text is displayed when no frame is available.
+        # Flag indicando se o widget está no estado "sem sinal".
+        # Controla qual texto é exibido quando nenhum quadro está disponível.
         self._no_signal: bool = True
 
-        # Display the initial "no signal" state immediately.
+        # Exibe o estado inicial "sem sinal" imediatamente.
         self.set_no_signal()
 
     # =========================================================================
-    # VIDEO FRAME UPDATE
+    # ATUALIZAÇÃO DO QUADRO DE VÍDEO
     # =========================================================================
 
     def update_frame(self, frame_bgr: np.ndarray) -> None:
         """
-        Receives a BGR frame from ProcessingWorker and displays it.
+        Recebe um quadro BGR do ProcessingWorker e o exibe na tela.
 
-        This is the widget's performance-critical method. It is called on
-        every processed frame (~30 times/second) and must be fast.
+        Este é o método de desempenho crítico do widget. É chamado em
+        cada quadro processado (~30 vezes/segundo) e deve ser rápido.
 
-        Required conversion sequence:
-            BGR (OpenCV/camera) → RGB (Qt) → QImage → QPixmap → screen
+        Sequência de conversão obrigatória:
+            BGR (OpenCV/câmera) → RGB (Qt) → QImage → QPixmap → tela
 
-        Why is BGR → RGB mandatory?
-            OpenCV uses the Blue-Green-Red order by historical convention from
-            the Windows DirectShow standard. Qt uses Red-Green-Blue (modern standard).
-            Without this conversion, all colors are inverted: human skin appears
-            bluish, red text appears blue, etc.
+        Por que BGR → RGB é obrigatório?
+            OpenCV usa a ordem Azul-Verde-Vermelho por convenção histórica do
+            padrão Windows DirectShow. Qt usa Vermelho-Verde-Azul (padrão moderno).
+            Sem essa conversão, todas as cores ficam invertidas: a pele humana aparece
+            azulada, texto vermelho aparece azul, etc.
 
-        Why is bytes_per_line critical?
-            QImage needs to know how many bytes exist per pixel row.
-            For an image of width W with 3 channels (RGB), each row has exactly
-            W*3 bytes. If we omit this parameter, Qt may assume a different value
-            (based on memory alignment), making the image appear diagonally
-            distorted — a subtle and hard-to-diagnose bug.
+        Por que bytes_per_line é crítico?
+            QImage precisa saber quantos bytes existem por linha de pixel.
+            Para uma imagem de largura W com 3 canais (RGB), cada linha tem exatamente
+            W*3 bytes. Se omitirmos esse parâmetro, o Qt pode assumir um valor diferente
+            (baseado em alinhamento de memória), fazendo a imagem aparecer
+            distorcida diagonalmente — um bug sutil e difícil de diagnosticar.
 
-        Why use ascontiguousarray() before creating QImage?
-            NumPy arrays are not always contiguous in memory (e.g., after
-            slice or reshape operations). QImage expects contiguous data.
-            We enforce this explicitly.
+        Por que usar ascontiguousarray() antes de criar QImage?
+            Arrays NumPy nem sempre são contíguos em memória (por exemplo, após
+            operações de slice ou reshape). QImage espera dados contíguos.
+            Aplicamos isso explicitamente.
 
-        Parameters:
-            frame_bgr: NumPy array of shape (height, width, 3), dtype uint8,
-                       in BGR format. Usually frame_overlay from ProcessingResult.
+        Parâmetros:
+            frame_bgr: Array NumPy de shape (height, width, 3), dtype uint8,
+                       no formato BGR. Geralmente frame_overlay de ProcessingResult.
         """
-        # Exit the "no signal" state when a valid frame is received.
+        # Sai do estado "sem sinal" quando um quadro válido é recebido.
         self._no_signal = False
 
-        # Convert BGR → RGB because Qt expects channels in R-G-B order.
-        # cv2.cvtColor is internally optimized with SIMD — much faster than
-        # manually reversing channels with numpy slicing.
+        # Converte BGR → RGB porque Qt espera os canais na ordem R-G-B.
+        # cv2.cvtColor é otimizado internamente com SIMD — muito mais rápido que
+        # inverter os canais manualmente com numpy slicing.
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-        # Ensure the array is contiguous in memory before creating QImage.
-        # Non-contiguous arrays cause incorrect pixel reads by Qt.
+        # Garante que o array seja contíguo em memória antes de criar o QImage.
+        # Arrays não contíguos causam leituras incorretas de pixels pelo Qt.
         frame_rgb = np.ascontiguousarray(frame_rgb)
 
-        # Extract dimensions to compute bytes_per_line.
+        # Extrai as dimensões para calcular bytes_per_line.
         height, width, channels = frame_rgb.shape
 
-        # bytes_per_line: number of bytes in a single horizontal row of the image.
-        # For RGB without padding, it is always width × 3 channels.
-        # This value MUST be passed explicitly to QImage — do not rely on the
-        # default value, which may differ on systems with memory alignment.
+        # bytes_per_line: número de bytes em uma única linha horizontal da imagem.
+        # Para RGB sem padding, é sempre largura × 3 canais.
+        # Este valor DEVE ser passado explicitamente ao QImage — não confie no
+        # valor padrão, que pode diferir em sistemas com alinhamento de memória.
         bytes_per_line: int = channels * width
 
-        # Create QImage referencing the NumPy array memory directly.
-        # Format_RGB888 = 3 bytes per pixel, R-G-B order, no alpha channel.
-        # CAUTION: frame_rgb must remain in memory while QImage exists.
-        # Since we convert to QPixmap immediately below, this is safe.
+        # Cria QImage referenciando diretamente a memória do array NumPy.
+        # Format_RGB888 = 3 bytes por pixel, ordem R-G-B, sem canal alfa.
+        # ATENÇÃO: frame_rgb deve permanecer em memória enquanto QImage existir.
+        # Como convertemos para QPixmap imediatamente abaixo, isso é seguro.
         q_image = QImage(
             frame_rgb.data,
             width,
@@ -178,170 +178,172 @@ class VideoWidget(QLabel):
             QImage.Format.Format_RGB888,
         )
 
-        # Convert QImage → QPixmap (format optimized for on-screen display).
-        # QPixmap is kept in video memory (GPU when available),
-        # while QImage lives in main memory (CPU). The conversion is done
-        # once here and the resulting QPixmap is displayed at no additional cost.
+        # Converte QImage → QPixmap (formato otimizado para exibição em tela).
+        # QPixmap é mantido na memória de vídeo (GPU quando disponível),
+        # enquanto QImage vive na memória principal (CPU). A conversão é feita
+        # uma vez aqui e o QPixmap resultante é exibido sem custo adicional.
         pixmap = QPixmap.fromImage(q_image)
 
-        # Scale the pixmap to fit the current widget size, preserving aspect ratio.
-        # KeepAspectRatio: never distorts the image; adds black bars if necessary.
-        # SmoothTransformation: uses bilinear interpolation — slower than Fast,
-        # but produces aliasing-free images, especially when downscaling.
+        # Escala o pixmap para caber no tamanho atual do widget, preservando a proporção.
+        # KeepAspectRatio: nunca distorce a imagem; adiciona barras pretas se necessário.
+        # SmoothTransformation: usa interpolação bilinear — mais lento que Fast,
+        # mas produz imagens sem aliasing, especialmente ao reduzir.
         scaled_pixmap = pixmap.scaled(
             self.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
 
-        # Update the QLabel content with the new frame.
-        # setPixmap() automatically schedules a repaint — no need to call
-        # update() or repaint() manually.
+        # Atualiza o conteúdo do QLabel com o novo quadro.
+        # setPixmap() agenda automaticamente um repaint — não é necessário chamar
+        # update() ou repaint() manualmente.
         self.setPixmap(scaled_pixmap)
 
     # =========================================================================
-    # FPS OVERLAY
+    # SOBREPOSIÇÃO DE FPS
     # =========================================================================
+
 
     def set_fps(self, fps: float) -> None:
         """
-        Stores the FPS value to be drawn on the next paintEvent.
+        Armazena o valor de FPS para ser desenhado no próximo paintEvent.
 
-        Why store instead of drawing immediately?
-            Drawing directly on the pixmap (modifying the QPixmap) would be
-            irreversible — the text would be "burned" into the image and accumulate
-            on each update. Storing the value and redrawing via QPainter in
-            paintEvent() ensures the text always appears clean, on top of the
-            current image, without modifying the original pixmap.
+        Por que armazenar em vez de desenhar imediatamente?
+            Desenhar diretamente no pixmap (modificando o QPixmap) seria
+            irreversível — o texto ficaria "gravado" na imagem e acumularia
+            a cada atualização. Armazenar o valor e redesenhar via QPainter em
+            paintEvent() garante que o texto sempre apareça limpo, sobre a
+            imagem atual, sem modificar o pixmap original.
 
-            Also avoids double-draw: calling update() here would repaint the widget
-            TWICE per frame (once from setPixmap in update_frame, once here).
-            Storing the value and using paintEvent consolidates both operations
-            into a single rendering cycle.
+            Também evita o desenho duplo: chamar update() aqui repintaria o widget
+            DUAS VEZES por quadro (uma de setPixmap em update_frame, outra aqui).
+            Armazenar o valor e usar paintEvent consolida ambas as operações
+            em um único ciclo de renderização.
 
-        Parameters:
-            fps: Current FPS value of the processing pipeline (float).
-                 Received from CameraWorker via the fps_updated signal.
+        Parâmetros:
+            fps: Valor atual de FPS do pipeline de processamento (float).
+                 Recebido do CameraWorker via sinal fps_updated.
         """
         self._fps = fps
-        # Request repaint only if a pixmap is displayed.
-        # Avoids unnecessary redraws in the "no signal" state.
+        # Solicita repaint somente se um pixmap estiver exibido.
+        # Evita redesenhos desnecessários no estado "sem sinal".
         if self.pixmap() and not self.pixmap().isNull():
             self.update()
 
     def paintEvent(self, event) -> None:
         """
-        Qt paint event — called whenever the widget needs to be redrawn.
+        Evento de pintura do Qt — chamado sempre que o widget precisa ser redesenhado.
 
-        We override paintEvent() to add the FPS overlay on top of the
-        standard QLabel content (the pixmap). The sequence is:
-            1. Call super().paintEvent() to draw the pixmap normally.
-            2. Draw the FPS text on top using QPainter.
+        Sobrescrevemos paintEvent() para adicionar o overlay de FPS sobre o
+        conteúdo padrão do QLabel (o pixmap). A sequência é:
+            1. Chamar super().paintEvent() para desenhar o pixmap normalmente.
+            2. Desenhar o texto de FPS por cima usando QPainter.
 
-        Why black shadow + white text?
-            Pure white text (#FFFFFF) may disappear over light areas of the image
-            (bright camera background, intense lighting). The black shadow offset
-            by 1px creates a dark outline that makes the text readable on ANY
-            background — a standard technique in game HUDs and video applications.
+        Por que sombra preta + texto branco?
+            Texto branco puro (#FFFFFF) pode desaparecer sobre áreas claras da imagem
+            (fundo claro da câmera, iluminação intensa). A sombra preta deslocada
+            em 1px cria um contorno escuro que torna o texto legível em QUALQUER
+            fundo — técnica padrão em HUDs de jogos e aplicações de vídeo.
 
-        Parameters:
-            event: QPaintEvent provided automatically by Qt.
-                   Contains the region that needs to be redrawn (rect()).
+        Parâmetros:
+            event: QPaintEvent fornecido automaticamente pelo Qt.
+                   Contém a região que precisa ser redesenhada (rect()).
         """
-        # First, let QLabel draw normally (the pixmap, alignment, background).
-        # Without this call, the video frame disappears.
+        # Primeiro, deixa o QLabel desenhar normalmente (pixmap, alinhamento, fundo).
+        # Sem essa chamada, o quadro de vídeo desaparece.
         super().paintEvent(event)
 
-        # Only overlay the FPS if we have a valid value to display.
+        # Sobrepõe o FPS somente se houver um valor válido para exibir.
         if self._fps is None:
             return
 
-        # Start the QPainter on this widget (not on the pixmap —
-        # painting on the pixmap would be permanent; painting on the widget
-        # is temporary and redrawn on each paintEvent).
+        # Inicia o QPainter neste widget (não no pixmap —
+        # pintar no pixmap seria permanente; pintar no widget
+        # é temporário e redesenhado em cada paintEvent).
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        # Format the text with one decimal place — "FPS: 28.7"
+        # Formata o texto com uma casa decimal — "FPS: 28.7"
         fps_text: str = f"FPS: {self._fps:.1f}"
 
-        # Bold font, size 13 — readable without taking up too much space.
+        # Fonte em negrito, tamanho 13 — legível sem ocupar muito espaço.
         font = QFont("Segoe UI", 13, QFont.Weight.Bold)
         painter.setFont(font)
 
-        # Text area: top-right corner with 10px margin.
-        # QRect(x, y, width, height) — width 120 is enough for "FPS: XX.X"
+        # Área do texto: canto superior direito com margem de 10px.
+        # QRect(x, y, width, height) — largura 120 é suficiente para "FPS: XX.X"
         text_rect = QRect(self.width() - 130, 10, 120, 28)
 
-        # --- Black shadow offset by 1 pixel ---
-        # Shifting the text by (+1, +1) creates the illusion of a drop shadow.
+        # --- Sombra preta deslocada em 1 pixel ---
+        # Deslocar o texto em (+1, +1) cria a ilusão de sombra projetada.
         shadow_rect = QRect(text_rect.x() + 1, text_rect.y() + 1,
                             text_rect.width(), text_rect.height())
         painter.setPen(QPen(QColor("#000000")))
         painter.drawText(shadow_rect, Qt.AlignmentFlag.AlignRight, fps_text)
 
-        # --- Main white text ---
+        # --- Texto branco principal ---
         painter.setPen(QPen(QColor("#FFFFFF")))
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignRight, fps_text)
 
-        # Finalize the QPainter — MANDATORY to release the paint context.
-        # Without end(), Qt may leave the paint device locked, causing
-        # visual artifacts or crashes on older Qt versions.
+        # Finaliza o QPainter — OBRIGATÓRIO para liberar o contexto de pintura.
+        # Sem end(), o Qt pode deixar o dispositivo de pintura bloqueado, causando
+        # artefatos visuais ou falhas em versões mais antigas do Qt.
         painter.end()
 
     # =========================================================================
-    # NO SIGNAL STATE
+    # ESTADO SEM SINAL
     # =========================================================================
+
 
     def set_no_signal(self, message: str = "") -> None:
         """
-        Places the widget in the "no camera signal" visual state.
+        Coloca o widget no estado visual "sem sinal de câmera".
 
-        Called when:
-        - The widget is initialized (before the camera is opened).
-        - CameraWorker emits camera_error (camera disconnected, driver failed).
-        - The session ends and the camera is released.
+        Chamado quando:
+        - O widget é inicializado (antes de a câmera ser aberta).
+        - CameraWorker emite camera_error (câmera desconectada, falha de driver).
+        - A sessão termina e a câmera é liberada.
 
-        Creates a black QPixmap with centered text explaining the situation,
-        preventing the widget from appearing empty or showing stale content.
+        Cria um QPixmap preto com texto centralizado explicando a situação,
+        evitando que o widget apareça vazio ou exiba conteúdo desatualizado.
 
-        Parameters:
-            message: Optional error message from CameraWorker to display below
-                     the default "No camera signal" text.
-                     If empty, only the default message is displayed.
+        Parâmetros:
+            message: Mensagem de erro opcional do CameraWorker para exibir abaixo
+                     do texto padrão "Sem sinal de câmera".
+                     Se vazia, apenas a mensagem padrão é exibida.
         """
         self._no_signal = True
         self._fps = None
 
-        # Create a black pixmap of the current widget size.
-        # If the widget does not yet have a defined size (e.g., before show()),
-        # use the minimum size configured in __init__.
+        # Cria um pixmap preto com o tamanho atual do widget.
+        # Se o widget ainda não tiver um tamanho definido (por exemplo, antes de show()),
+        # usa o tamanho mínimo configurado em __init__.
         w = max(self.width(), 480)
         h = max(self.height(), 360)
 
-        # Create an empty (uninitialized) pixmap and fill it with black.
+        # Cria um pixmap vazio (não inicializado) e preenche com preto.
         no_signal_pixmap = QPixmap(w, h)
         no_signal_pixmap.fill(QColor("#0d1117"))
 
-        # Start a QPainter on the pixmap to draw the text.
+        # Inicia um QPainter no pixmap para desenhar o texto.
         painter = QPainter(no_signal_pixmap)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        # Main line: "📷 No camera signal"
-        # Large font to be visible even with the window minimized.
+        # Linha principal: "📷 Sem sinal de câmera"
+        # Fonte grande para ser visível mesmo com a janela minimizada.
         font_main = QFont("Segoe UI", 18, QFont.Weight.Bold)
         painter.setFont(font_main)
         painter.setPen(QPen(QColor("#64748b")))
 
-        # Central area of the pixmap for the main text.
+        # Área central do pixmap para o texto principal.
         main_rect = QRect(0, h // 2 - 40, w, 40)
         painter.drawText(
             main_rect,
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            "No camera signal",
+            "📷 Sem sinal de câmera",
         )
 
-        # Secondary instruction for the user.
+        # Instrução secundária para o usuário.
         font_sub = QFont("Segoe UI", 12)
         painter.setFont(font_sub)
         painter.setPen(QPen(QColor("#334155")))
@@ -350,10 +352,10 @@ class VideoWidget(QLabel):
         painter.drawText(
             sub_rect,
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-            "Click Start Session to activate the camera",
+            "Clique no botão de iniciar sessão para ativar a câmera",
         )
 
-        # If there is a specific error message from CameraWorker, display it in red.
+        # Se houver uma mensagem de erro específica do CameraWorker, exibe em vermelho.
         if message:
             font_err = QFont("Consolas", 10)
             painter.setFont(font_err)
@@ -364,41 +366,41 @@ class VideoWidget(QLabel):
                 err_rect,
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
                 | Qt.TextFlag.TextWordWrap,
-                f"Error: {message}",
+                f"Erro: {message}",
             )
 
-        # Finalize the painter before using the pixmap.
+        # Finaliza o painter antes de usar o pixmap.
         painter.end()
 
-        # Display the "no signal" pixmap in the QLabel.
+        # Exibe o pixmap "sem sinal" no QLabel.
         self.setPixmap(no_signal_pixmap)
 
     # =========================================================================
-    # RESPONSIVE RESIZING
+    # REDIMENSIONAMENTO RESPONSIVO
     # =========================================================================
 
     def resizeEvent(self, event) -> None:
         """
-        Called by Qt whenever the widget is resized by the user.
+        Chamado pelo Qt sempre que o widget é redimensionado pelo usuário.
 
-        We rescale the last displayed pixmap to fill the new widget size,
-        maintaining the aspect ratio. Without this, the image would remain
-        at the fixed size of the first received frame — when the window is
-        resized, unnecessary black bars would appear or the image would be clipped.
+        Reescalonamos o último pixmap exibido para preencher o novo tamanho do widget,
+        mantendo a proporção. Sem isso, a imagem permaneceria
+        no tamanho fixo do primeiro quadro recebido — ao redimensionar a janela,
+        barras pretas desnecessárias apareceriam ou a imagem seria cortada.
 
-        Parameters:
-            event: QResizeEvent provided by Qt with the new size (newSize)
-                   and the previous size (oldSize).
+        Parâmetros:
+            event: QResizeEvent fornecido pelo Qt com o novo tamanho (newSize)
+                   e o tamanho anterior (oldSize).
         """
         super().resizeEvent(event)
 
-        # If in "no signal" state, recreate the error pixmap with the new size
-        # to correctly fill the widget.
+        # Se estiver no estado "sem sinal", recria o pixmap de erro com o novo tamanho
+        # para preencher corretamente o widget.
         if self._no_signal:
             self.set_no_signal()
             return
 
-        # If a valid pixmap is displayed, rescale it to the new size.
+        # Se um pixmap válido estiver exibido, reescala para o novo tamanho.
         current_pixmap = self.pixmap()
         if current_pixmap and not current_pixmap.isNull():
             scaled = current_pixmap.scaled(
