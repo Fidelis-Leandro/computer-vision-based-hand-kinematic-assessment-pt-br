@@ -491,11 +491,27 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.log_widget)
         self._set_logs_visible(False)
 
-        # --- 6. Barra de botões ---
-        main_layout.addLayout(self._build_button_row())
+        # =========================================================
+        # Barra Fixa Superior de Avaliação (Fase 6)
+        # =========================================================
+        self._assessment_bar = QWidget()
+        self._assessment_bar.setStyleSheet(
+            f"QWidget {{ background-color: {COLOR_BG_MEDIUM}; border-bottom: 1px solid {COLOR_TEXT_SECONDARY}; }}"
+        )
+        bar_layout = QHBoxLayout(self._assessment_bar)
+        bar_layout.setContentsMargins(16, 8, 16, 8)
+        bar_layout.setSpacing(12)
+
+        self._assessment_bar_label = QLabel("Avaliação em andamento")
+        self._assessment_bar_label.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_PRIMARY}; font-size: 14px; font-weight: bold; border: none; }}"
+        )
+        bar_layout.addWidget(self._assessment_bar_label)
+        bar_layout.addStretch()
+        bar_layout.addWidget(self.btn_end)
 
         # =========================================================
-        # 7. Contêiner de Navegação (QStackedWidget)
+        # Contêiner de Navegação (QStackedWidget)
         # =========================================================
         self._stack = QStackedWidget()
 
@@ -512,7 +528,23 @@ class MainWindow(QMainWindow):
 
         # Define Página 1 como inicial (Tela de Configuração)
         self._stack.setCurrentIndex(1)
-        self.setCentralWidget(self._stack)
+
+        # =========================================================
+        # Contêiner Raiz (Barra Fixa Superior + QStackedWidget)
+        # =========================================================
+        root_widget = QWidget()
+        root_layout = QVBoxLayout(root_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        root_layout.addWidget(self._assessment_bar)
+        root_layout.addWidget(self._stack, stretch=1)
+        self.setCentralWidget(root_widget)
+
+        # Conecta a navegação de páginas à atualização da barra de navegação
+        self._stack.currentChanged.connect(
+            lambda _: self._update_navigation_chrome()
+        )
+        self._update_navigation_chrome()
 
     def _build_setup_page(self) -> QWidget:
         """
@@ -956,6 +988,7 @@ class MainWindow(QMainWindow):
         self._setup_btn_start.setEnabled(bool(patient_name.strip()))
 
         self._stack.setCurrentIndex(1)
+        self._update_navigation_chrome()
 
     def _on_result_clear_patient(self) -> None:
         """
@@ -993,6 +1026,17 @@ class MainWindow(QMainWindow):
 
         self._set_state("IDLE")
         self._stack.setCurrentIndex(1)
+        self._update_navigation_chrome()
+
+    def _update_navigation_chrome(self) -> None:
+        """
+        Atualiza a visibilidade da barra fixa de avaliação.
+        """
+        is_eval_active = (
+            self._stack.currentIndex() == 0
+            and self._state == "RUNNING"
+        )
+        self._assessment_bar.setVisible(is_eval_active)
 
     def _build_button_row(self) -> QHBoxLayout:
         """
@@ -1360,6 +1404,7 @@ class MainWindow(QMainWindow):
 
         # Transição autorizada para a Página 0 (avaliação em tempo real)
         self._stack.setCurrentIndex(0)
+        self._update_navigation_chrome()
 
     def _confirm_end_session(self) -> None:
         """
@@ -1423,6 +1468,7 @@ class MainWindow(QMainWindow):
         self._set_state("STOPPED")
         self._update_result_page_data()
         self._stack.setCurrentIndex(2)
+        self._update_navigation_chrome()
         logger.info("Sessão encerrada. CSV: %s", self._csv_path)
 
     def _gerar_relatorio(self) -> None:
