@@ -1,28 +1,28 @@
 """
-ui/metrics_widget.py — System metrics and hand state panel
-===========================================================
+ui/metrics_widget.py — Painel de métricas do sistema e estado da mão
+===================================================================
 
-This module implements the MetricsWidget: a side panel that displays in
-real time the system performance metrics (FPS, CPU, RAM) and the
-clinical hand state (open/closed, finger count, identification).
+Este módulo implementa o MetricsWidget: um painel lateral que exibe em
+tempo real as métricas de desempenho do sistema (FPS, CPU, RAM) e o
+estado clínico da mão (aberta/fechada, contagem de dedos, identificação).
 
-Responsibility:
-    Receive a ready ProcessingResult (computed by ProcessingWorker) and
-    update the corresponding visual cards. Performs no calculations — it
-    only formats and displays the incoming data.
+Responsabilidade:
+    Receber um ProcessingResult pronto (calculado pelo ProcessingWorker) e
+    atualizar os cards visuais correspondentes. Não executa cálculos — apenas
+    formata e exibe os dados recebidos.
 
-Card layout (2-row × 3-column grid):
+Layout dos cards (grade de 2 linhas × 3 colunas):
     ┌──────────┬──────────┬──────────┐
     │   FPS    │   CPU    │   RAM    │
     ├──────────┼──────────┼──────────┤
-    │  Frame#  │  State   │  State   │
-    │          │  (hand)  │  (wide)  │
+    │ Quadro # │  Estado  │  Estado  │
+    │          │  (mão)   │ (amplo)  │
     └──────────┴──────────┴──────────┘
 
-    The Hand State card occupies 2 columns in the second row to have
-    enough space for text like "🟢 HAND OPEN (X/5)" and "🔴 HAND CLOSED".
+    O card de Estado da Mão ocupa 2 colunas na segunda linha para ter
+    espaço suficiente para textos como "🟢 MÃO ABERTA (X/5)" e "🔴 MÃO FECHADA".
 
-Integration in MainWindow:
+Integração na MainWindow:
     self.metrics_widget = MetricsWidget()
     processing_worker.result_ready.connect(
         lambda result: self.metrics_widget.update_from_result(result)
@@ -42,7 +42,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-# Import centralized styles from the dark theme module.
+# Importa estilos centralizados a partir do módulo de tema escuro.
 from themes import (
     CARD_STYLE,
     CARD_HAND_CLOSED_STYLE,
@@ -52,13 +52,13 @@ from themes import (
     LABEL_VALUE_STYLE,
 )
 
-# Import the worker result dataclass for correct typing.
-# Conditional import avoids circular imports if modules are reorganized.
+# Importa a dataclass de resultado do worker para tipagem correta.
+# A importação condicional evita importações circulares caso os módulos sejam reorganizados.
 from workers.processing_worker import ProcessingResult
 
-# Try to import psutil for OS metrics collection.
-# psutil is an OPTIONAL dependency: if not installed, the CPU and RAM cards
-# display "—" instead of raising a fatal exception.
+# Tenta importar psutil para coleta de métricas do sistema operacional.
+# psutil é uma dependência OPCIONAL: se não estiver instalado, os cards de CPU e RAM
+# exibem "—" em vez de lançar uma exceção fatal.
 try:
     import psutil
     _PSUTIL_AVAILABLE = True
@@ -68,16 +68,16 @@ except ImportError:
 
 class _MetricCard(QWidget):
     """
-    Reusable visual card for displaying a single metric.
+    Card visual reutilizável para exibição de uma única métrica.
 
-    Each card has:
-    - A QFrame container with rounded border (visual "card" appearance).
-    - A title QLabel (e.g., "FPS") in small secondary text.
-    - A value QLabel (e.g., "58.3") in large bold text.
+    Cada card possui:
+    - Um contêiner QFrame com borda arredondada (aparência visual de "card").
+    - Um QLabel de título (ex.: "FPS") em texto secundário pequeno.
+    - Um QLabel de valor (ex.: "58.3") em texto grande em negrito.
 
-    This internal component (_MetricCard, underscore = module-private)
-    is instantiated by MetricsWidget for each metric. Centralizing
-    construction logic here avoids code repetition for the 5 cards.
+    Este componente interno (_MetricCard, sublinhado = privado do módulo)
+    é instanciado pelo MetricsWidget para cada métrica. Centralizar a
+    lógica de construção aqui evita repetição de código para os 5 cards.
     """
 
     def __init__(
@@ -87,23 +87,23 @@ class _MetricCard(QWidget):
         parent: Optional[QWidget] = None,
     ) -> None:
         """
-        Builds a metric card with a title and initial value.
+        Constrói um card de métrica com título e valor inicial.
 
-        Parameters:
-            title: Static label shown at the top of the card. E.g.: "FPS", "CPU".
-            initial_value: Value shown before any real data arrives.
-                           Default "—" indicates "no data available".
-            parent: Qt parent widget (optional).
+        Parâmetros:
+            title: Rótulo estático exibido no topo do card. Ex.: "FPS", "CPU".
+            initial_value: Valor exibido antes da chegada de dados reais.
+                           O padrão "—" indica "nenhum dado disponível".
+            parent: Widget pai do Qt (opcional).
         """
         super().__init__(parent)
 
-        # Vertical internal layout: title on top, value below.
+        # Layout interno vertical: título em cima, valor abaixo.
         layout = QVBoxLayout(self)
-        # Small inner margins to avoid wasting space on the side panel.
+        # Margens internas pequenas para não desperdiçar espaço no painel lateral.
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(2)
 
-        # Container with rounded border (style comes from themes.py).
+        # Contêiner com borda arredondada (o estilo provém de themes.py).
         self._frame = QFrame()
         self._frame.setStyleSheet(CARD_STYLE)
 
@@ -112,12 +112,12 @@ class _MetricCard(QWidget):
         frame_layout.setSpacing(2)
         frame_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Title label — small text in secondary gray.
+        # Rótulo de título — texto pequeno em cinza secundário.
         self._label_title = QLabel(title)
         self._label_title.setStyleSheet(LABEL_TITLE_STYLE)
         self._label_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Value label — large bold text, visual emphasis.
+        # Rótulo de valor — texto grande em negrito, ênfase visual.
         self._label_value = QLabel(initial_value)
         self._label_value.setStyleSheet(LABEL_VALUE_STYLE)
         self._label_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -127,7 +127,7 @@ class _MetricCard(QWidget):
 
         layout.addWidget(self._frame)
 
-        # Allows the card to shrink vertically without distorting the layout.
+        # Permite que o card encolha verticalmente sem distorcer o layout.
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -135,50 +135,50 @@ class _MetricCard(QWidget):
 
     def set_value(self, value: str) -> None:
         """
-        Updates the text of the card's value label.
+        Atualiza o texto do rótulo de valor do card.
 
-        Called by MetricsWidget update methods on each new result.
+        Chamado pelos métodos de atualização do MetricsWidget a cada novo resultado.
 
-        Parameters:
-            value: Formatted string to display. E.g.: "58.3", "23%", "4.1 GB".
+        Parâmetros:
+            value: String formatada para exibição. Ex.: "58.3", "23%", "4.1 GB".
         """
         self._label_value.setText(value)
 
     def set_frame_style(self, style: str) -> None:
         """
-        Replaces the visual style of the inner QFrame (background color, border).
+        Substitui o estilo visual do QFrame interno (cor de fundo, borda).
 
-        Used by the Hand State card to alternate between green background
-        (open hand) and red background (closed hand).
+        Utilizado pelo card de Estado da Mão para alternar entre fundo verde
+        (mão aberta) e fundo vermelho (mão fechada).
 
-        Parameters:
-            style: Qt StyleSheet string for the QFrame.
-                   Usually CARD_HAND_OPEN_STYLE or CARD_HAND_CLOSED_STYLE.
+        Parâmetros:
+            style: String de folha de estilos Qt para o QFrame.
+                   Geralmente CARD_HAND_OPEN_STYLE ou CARD_HAND_CLOSED_STYLE.
         """
         self._frame.setStyleSheet(style)
 
 
 class HandStateCard(QWidget):
     """
-    Specialized card for displaying the clinical hand state.
+    Card especializado para exibição do estado clínico da mão.
 
-    Unlike other cards (_MetricCard), this one shows:
-    - Colored icon (🟢 or 🔴).
-    - Large text indicating OPEN or CLOSED.
-    - Count of closed fingers in parentheses: "(X/5)".
-    - Background that changes color (green / red) according to the state.
+    Diferente dos outros cards (_MetricCard), este exibe:
+    - Ícone colorido (🟢 ou 🔴).
+    - Texto grande indicando ABERTA ou FECHADA.
+    - Contagem de dedos fechados entre parênteses: "(X/5)".
+    - Fundo que altera de cor (verde / vermelho) de acordo com o estado.
 
-    The background color change is the most important element: it allows
-    the physiotherapist to assess the hand state with a quick side glance,
-    without needing to read the text.
+    A alteração da cor de fundo é o elemento mais importante: permite
+    ao fisioterapeuta avaliar o estado da mão com uma rápida olhada lateral,
+    sem precisar ler o texto.
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """
-        Initializes the state card with default visual (no data).
+        Inicializa o card de estado com o visual padrão (sem dados).
 
-        Parameters:
-            parent: Qt parent widget (optional).
+        Parâmetros:
+            parent: Widget pai do Qt (opcional).
         """
         super().__init__(parent)
 
@@ -186,7 +186,7 @@ class HandStateCard(QWidget):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(2)
 
-        # Main card container.
+        # Contêiner principal do card.
         self._frame = QFrame()
         self._frame.setStyleSheet(CARD_STYLE)
 
@@ -195,13 +195,13 @@ class HandStateCard(QWidget):
         frame_layout.setSpacing(4)
         frame_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Static title label.
-        self._label_title = QLabel("HAND STATE")
+        # Rótulo de título estático.
+        self._label_title = QLabel("ESTADO DA MÃO")
         self._label_title.setStyleSheet(LABEL_TITLE_STYLE)
         self._label_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Main state label — large text, changes based on detection.
-        self._label_state = QLabel("⬜ WAITING")
+        # Rótulo principal de estado — texto grande, altera com base na detecção.
+        self._label_state = QLabel("⬜ AGUARDANDO")
         self._label_state.setStyleSheet(LABEL_HAND_STATE_STYLE)
         self._label_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -217,166 +217,166 @@ class HandStateCard(QWidget):
 
     def update_state(self, hand_open: bool, closed_count: int, hand_detected: bool) -> None:
         """
-        Updates the full visual state of the hand card.
+        Atualiza o estado visual completo do card da mão.
 
-        Simultaneously changes:
-        1. The text and icon (🟢/🔴).
-        2. The frame background color (green/red).
+        Altera simultaneamente:
+        1. O texto e o ícone (🟢/🔴).
+        2. A cor de fundo do quadro (verde/vermelho).
 
-        When no hand is detected, displays a neutral state without alert color
-        to avoid confusing the clinician during camera positioning.
+        Quando nenhuma mão é detectada, exibe um estado neutro sem cor de alerta
+        para não confundir o clínico durante o posicionamento da câmera.
 
-        Parameters:
-            hand_open: True if the hand is considered open (majority of fingers
-                       with TAM above the threshold), False if closed.
-            closed_count: Number of fingers considered closed (0–5).
-            hand_detected: True if MediaPipe found a hand in this frame.
+        Parâmetros:
+            hand_open: True se a mão for considerada aberta (maioria dos dedos
+                       com TAM acima do limiar), False se fechada.
+            closed_count: Número de dedos considerados fechados (0–5).
+            hand_detected: True se o MediaPipe encontrou uma mão neste quadro.
         """
         if not hand_detected:
-            # No hand detected: neutral state without error indication.
+            # Nenhuma mão detectada: estado neutro sem indicação de erro.
             self._frame.setStyleSheet(CARD_STYLE)
-            self._label_state.setText("⬜ NO DETECTION")
+            self._label_state.setText("⬜ SEM DETECÇÃO")
             return
 
-        # Calculate how many fingers are open (complement of closed).
-        # We display OPEN fingers because it is more clinically intuitive:
-        # "2/5 fingers open" communicates the degree of opening, not closure.
+        # Calcula quantos dedos estão abertos (complemento dos fechados).
+        # Exibimos dedos ABERTOS porque é mais intuitivo clinicamente:
+        # "2/5 dedos abertos" comunica o grau de abertura, não de fechamento.
         open_count: int = 5 - closed_count
 
         if hand_open:
-            # Dark green background: hand considered open — positive functional state.
+            # Fundo verde escuro: mão considerada aberta — estado funcional positivo.
             self._frame.setStyleSheet(CARD_HAND_OPEN_STYLE)
-            self._label_state.setText(f"🟢 HAND OPEN ({open_count}/5)")
+            self._label_state.setText(f"🟢 MÃO ABERTA ({open_count}/5)")
         else:
-            # Dark red background: hand considered closed — clinical alert.
+            # Fundo vermelho escuro: mão considerada fechada — alerta clínico.
             self._frame.setStyleSheet(CARD_HAND_CLOSED_STYLE)
-            self._label_state.setText(f"🔴 HAND CLOSED ({open_count}/5)")
+            self._label_state.setText(f"🔴 MÃO FECHADA ({open_count}/5)")
 
 
 # =============================================================================
-# MAIN WIDGET
+# WIDGET PRINCIPAL
 # =============================================================================
 
 class MetricsWidget(QGroupBox):
     """
-    Side panel for system metrics and clinical hand state.
+    Painel lateral para métricas do sistema e estado clínico da mão.
 
-    Organizes individual cards in a 2×3 grid and connects data sources
-    (ProcessingResult and psutil) to each corresponding card.
+    Organiza cards individuais em uma grade 2×3 e conecta as fontes de dados
+    (ProcessingResult e psutil) a cada card correspondente.
 
-    Widget hierarchy:
+    Hierarquia do widget:
         MetricsWidget (QGroupBox)
         └── QGridLayout
-            ├── _MetricCard("FPS")          [row 0, column 0]
-            ├── _MetricCard("CPU")          [row 0, column 1]
-            ├── _MetricCard("RAM")          [row 0, column 2]
-            ├── _MetricCard("Frame #")      [row 1, column 0]
-            └── HandStateCard               [row 1, columns 1–2, colspan=2]
+            ├── _MetricCard("FPS")          [linha 0, coluna 0]
+            ├── _MetricCard("CPU")          [linha 0, coluna 1]
+            ├── _MetricCard("RAM")          [linha 0, coluna 2]
+            ├── _MetricCard("Quadro #")     [linha 1, coluna 0]
+            └── HandStateCard               [linha 1, colunas 1–2, colspan=2]
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """
-        Initializes the MetricsWidget with all cards and the system timer.
+        Inicializa o MetricsWidget com todos os cards e o timer do sistema.
 
-        The system QTimer (_stats_timer) is started here and fires every
-        1000ms to update CPU and RAM independently of processed frames.
-        This ensures system metrics remain updated even when the camera
-        is not active (e.g., IDLE state).
+        O QTimer do sistema (_stats_timer) é iniciado aqui e dispara a cada
+        1000ms para atualizar CPU e RAM independentemente dos quadros processados.
+        Isso garante que as métricas do sistema permaneçam atualizadas mesmo quando a câmera
+        não estiver ativa (ex.: estado IDLE).
 
-        Parameters:
-            parent: Qt parent widget (optional).
+        Parâmetros:
+            parent: Widget pai do Qt (opcional).
         """
-        super().__init__("System Metrics", parent)
+        super().__init__("Métricas do Sistema", parent)
 
-        # 2-row × 3-column grid for metric cards.
+        # Grade de 2 linhas × 3 colunas para os cards de métricas.
         self._grid = QGridLayout(self)
         self._grid.setSpacing(8)
         self._grid.setContentsMargins(10, 16, 10, 10)
 
-        # --- Row 0: performance metrics ---
+        # --- Linha 0: métricas de desempenho ---
 
-        # Processing pipeline FPS (not camera FPS).
-        # Reflects the REAL speed of the ProcessingWorker.
+        # FPS do pipeline de processamento (não o FPS da câmera).
+        # Reflete a velocidade REAL do ProcessingWorker.
         self._card_fps = _MetricCard("FPS", "—")
 
-        # Overall system CPU usage percentage.
-        # psutil.cpu_percent() measures all cores.
+        # Porcentagem de uso geral da CPU do sistema.
+        # psutil.cpu_percent() mede todos os núcleos.
         self._card_cpu = _MetricCard("CPU", "—")
 
-        # RAM usage in Gigabytes.
-        # Important to monitor: MediaPipe + buffers can use significant memory.
+        # Uso de RAM em Gigabytes.
+        # Importante monitorar: MediaPipe + buffers podem consumir memória significativa.
         self._card_ram = _MetricCard("RAM", "—")
 
         self._grid.addWidget(self._card_fps, 0, 0)
         self._grid.addWidget(self._card_cpu, 0, 1)
         self._grid.addWidget(self._card_ram, 0, 2)
 
-        # --- Row 1: frame counter + hand state ---
+        # --- Linha 1: contador de quadros + estado da mão ---
 
-        # Processed frame counter for this session.
-        # Useful for correlating log events with frames in the CSV.
-        self._card_frame = _MetricCard("Frame #", "—")
+        # Contador de quadros processados para esta sessão.
+        # Útil para correlacionar eventos de log com quadros no CSV.
+        self._card_frame = _MetricCard("Quadro #", "—")
 
-        # Specialized card with color change for the hand state.
-        # Occupies 2 columns (colspan=2) to have space for the full text.
+        # Card especializado com mudança de cor para o estado da mão.
+        # Ocupa 2 colunas (colspan=2) para ter espaço para o texto completo.
         self._card_hand = HandStateCard()
 
         self._grid.addWidget(self._card_frame, 1, 0)
 
-        # colspan=2: the state card occupies columns 1 and 2 of row 1.
-        # This gives more horizontal space for text like "HAND OPEN (5/5)".
+        # colspan=2: o card de estado ocupa as colunas 1 e 2 da linha 1.
+        # Isso dá mais espaço horizontal para textos como "MÃO ABERTA (5/5)".
         self._grid.addWidget(self._card_hand, 1, 1, 1, 2)
 
-        # Ensures the 3 grid columns have equal weight.
-        # Without this, columns with smaller content would be narrower.
+        # Garante que as 3 colunas da grade tenham peso igual.
+        # Sem isso, colunas com conteúdo menor ficariam mais estreitas.
         for col in range(3):
             self._grid.setColumnStretch(col, 1)
 
-        # --- System metrics update timer ---
-        # Fires every 1000ms (1 second) — adequate rate for CPU and RAM.
-        # Updating faster would not provide additional useful information, since
-        # psutil.cpu_percent() already applies internal smoothing.
+        # --- Timer de atualização das métricas do sistema ---
+        # Dispara a cada 1000ms (1 segundo) — taxa adequada para CPU e RAM.
+        # Atualizar mais rápido não traria informações úteis adicionais, pois
+        # psutil.cpu_percent() já aplica suavização interna.
         self._stats_timer = QTimer(self)
         self._stats_timer.setInterval(1000)
         self._stats_timer.timeout.connect(self._update_system_stats)
 
-        # Start the timer immediately — displays CPU/RAM values from the
-        # beginning, even before the camera is turned on.
+        # Inicia o timer imediatamente — exibe valores de CPU/RAM desde o
+        # início, mesmo antes de a câmera ser ligada.
         self._stats_timer.start()
 
-        # Force the first CPU/RAM reading immediately on widget creation.
+        # Força a primeira leitura de CPU/RAM imediatamente na criação do widget.
         self._update_system_stats()
 
     # =========================================================================
-    # UPDATE WITH PROCESSING DATA
+    # ATUALIZAÇÃO COM DADOS DE PROCESSAMENTO
     # =========================================================================
 
     def update_from_result(self, result: ProcessingResult) -> None:
         """
-        Updates the FPS, Frame#, and Hand State cards with worker data.
+        Atualiza os cards de FPS, Quadro# e Estado da Mão com dados do worker.
 
-        Called by MainWindow on each emission of the result_ready signal
-        from ProcessingWorker (~30 times/second). Must be fast — only updates
-        text, no calculations or disk access.
+        Chamado pela MainWindow a cada emissão do sinal result_ready
+        do ProcessingWorker (~30 vezes/segundo). Deve ser rápido — apenas atualiza
+        texto, sem cálculos ou acesso a disco.
 
-        Parameters:
-            result: ProcessingResult emitted by the ProcessingWorker.
-                    Contains fps, frame_id, hand_state, and hand_detected.
+        Parâmetros:
+            result: ProcessingResult emitido pelo ProcessingWorker.
+                    Contém fps, frame_id, hand_state e hand_detected.
         """
-        # Format FPS with one decimal for stable readability.
-        # Two decimal places cause "jitter" (58.33 → 58.21 → 58.45),
-        # making reading difficult. One decimal is sufficient for monitoring.
+        # Formata o FPS com uma casa decimal para leitura estável.
+        # Duas casas decimais causam oscilação visual ("jitter", ex.: 58.33 → 58.21 → 58.45),
+        # dificultando a leitura. Uma casa decimal é suficiente para monitoramento.
         self._card_fps.set_value(f"{result.fps:.1f}")
 
-        # Frame# displayed without special formatting — it is a simple sequential integer.
+        # Quadro# exibido sem formatação especial — é um inteiro sequencial simples.
         self._card_frame.set_value(str(result.frame_id))
 
-        # Extract hand state from the dictionary returned by classify_hand_state().
-        # Expected keys: "mao_aberta" (bool) and "dedos_fechados" (int, 0–5).
+        # Extrai o estado da mão do dicionário retornado por classify_hand_state().
+        # Chaves esperadas: "mao_aberta" (bool) e "dedos_fechados" (int, 0–5).
         hand_open: bool = result.hand_state.get("mao_aberta", True)
         closed_count: int = result.hand_state.get("dedos_fechados", 0)
 
-        # Propagate data to the specialized state card.
+        # Propaga os dados para o card de estado especializado.
         self._card_hand.update_state(
             hand_open=hand_open,
             closed_count=closed_count,
@@ -384,85 +384,85 @@ class MetricsWidget(QGroupBox):
         )
 
     # =========================================================================
-    # SYSTEM METRICS UPDATE (CPU and RAM)
+    # ATUALIZAÇÃO DE MÉTRICAS DO SISTEMA (CPU E RAM)
     # =========================================================================
 
     def _update_system_stats(self) -> None:
         """
-        Collects and displays operating system performance metrics.
+        Coleta e exibe métricas de desempenho do sistema operacional.
 
-        Called by QTimer every 1000ms — not tied to frame processing.
-        CPU and RAM are system resources, not camera resources.
+        Chamado pelo QTimer a cada 1000ms — desvinculado do processamento de quadros.
+        CPU e RAM são recursos do sistema, não da câmera.
 
-        Graceful degradation:
-            If psutil is not installed, displays "—" in the cards
-            without raising an exception. This allows the application to work
-            correctly in environments where psutil is unavailable,
-            just without resource monitoring.
+        Degradação suave:
+            Se o psutil não estiver instalado, exibe "—" nos cards
+            sem lançar exceção. Isso permite que a aplicação funcione
+            corretamente em ambientes onde psutil não está disponível,
+            apenas sem o monitoramento de recursos.
 
-        Why interval=None in cpu_percent()?
-            psutil.cpu_percent(interval=N) would BLOCK for N seconds.
-            With interval=None, returns the value computed since the last call,
-            without blocking. Since we call it every 1s via QTimer, the effective
-            interval is always ~1 second — ideal for monitoring.
+        Por que interval=None em cpu_percent()?
+            psutil.cpu_percent(interval=N) BLOQUEARIA por N segundos.
+            Com interval=None, retorna o valor calculado desde a última chamada,
+            sem bloqueio. Como o chamamos a cada 1s via QTimer, o intervalo
+            efetivo é sempre de ~1 segundo — ideal para monitoramento.
         """
         if not _PSUTIL_AVAILABLE:
-            # psutil not installed — display placeholder without error.
+            # psutil não instalado — exibe placeholder sem erro.
             self._card_cpu.set_value("—")
             self._card_ram.set_value("—")
             return
 
         try:
-            # CPU usage percentage (average across all cores).
-            # interval=None: non-blocking, uses the interval since the last call.
+            # Porcentagem de uso da CPU (média de todos os núcleos).
+            # interval=None: não bloqueante, utiliza o intervalo desde a última chamada.
             cpu_percent: float = psutil.cpu_percent(interval=None)
             self._card_cpu.set_value(f"{cpu_percent:.0f}%")
 
-            # RAM in use, converted from bytes to Gigabytes.
-            # 1024**3 = 1 GiB. One decimal place for adequate precision.
+            # RAM em uso, convertida de bytes para Gigabytes.
+            # 1024**3 = 1 GiB. Uma casa decimal para precisão adequada.
             ram_bytes: int = psutil.virtual_memory().used
             ram_gb: float = ram_bytes / (1024 ** 3)
             self._card_ram.set_value(f"{ram_gb:.1f} GB")
 
         except Exception as exc:
-            # Catch unexpected psutil errors (e.g., permission denied
-            # on some Linux systems with /proc access restrictions).
-            # Do not propagate the error to avoid interrupting the QTimer loop.
+            # Captura erros inesperados do psutil (ex.: permissão negada
+            # em alguns sistemas Linux com restrições de acesso ao /proc).
+            # Não propaga o erro para não interromper o loop do QTimer.
             self._card_cpu.set_value("!")
             self._card_ram.set_value("!")
 
     # =========================================================================
-    # TIMER CONTROL
+    # CONTROLE DO TIMER
     # =========================================================================
 
     def start_monitoring(self) -> None:
         """
-        Starts or restarts the CPU and RAM monitoring timer.
+        Inicia ou reinicia o timer de monitoramento de CPU e RAM.
 
-        Called by MainWindow when starting a session, in case the timer
-        was previously stopped by stop_monitoring().
+        Chamado pela MainWindow ao iniciar uma sessão, caso o timer
+        tenha sido parado anteriormente por stop_monitoring().
         """
         if not self._stats_timer.isActive():
             self._stats_timer.start()
 
     def stop_monitoring(self) -> None:
         """
-        Stops the CPU and RAM monitoring timer.
+        Para o timer de monitoramento de CPU e RAM.
 
-        Can be called by MainWindow when ending the session to reduce
-        CPU overhead when the application is in STOPPED or IDLE state.
-        The timer can be restarted with start_monitoring() at any time.
+        Pode ser chamado pela MainWindow ao encerrar a sessão para reduzir
+        a carga de CPU quando a aplicação estiver no estado STOPPED ou IDLE.
+        O timer pode ser reiniciado com start_monitoring() a qualquer momento.
         """
         if self._stats_timer.isActive():
             self._stats_timer.stop()
 
     def reset_display(self) -> None:
         """
-        Resets all cards to the initial "no data" state (—).
+        Redefine todos os cards para o estado inicial "sem dados" (—).
 
-        Called by MainWindow when starting a new session to clear
-        the previous session's values, preventing old data from being
-        confused with new session data during the initial warmup.
+        Chamado pela MainWindow ao iniciar uma nova sessão para limpar
+        os valores da sessão anterior, evitando que dados antigos sejam
+        confundidos com os da nova sessão durante o aquecimento inicial.
         """
         self._card_fps.set_value("—")
         self._card_frame.set_value("—")
