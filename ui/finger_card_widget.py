@@ -1,36 +1,36 @@
 """
-ui/finger_card_widget.py — Individual finger cards with mini-chart
-===================================================================
+ui/finger_card_widget.py — Cards individuais por dedo com minigráfico
+=====================================================================
 
-This module implements two visual components:
+Este módulo implementa dois componentes visuais:
 
 1. FingerCardWidget(QGroupBox):
-   Displays ALL clinical metrics for ONE single finger in a compact card.
-   Each instance is dedicated to a specific finger (Thumb, Index, etc.).
+   Exibe TODAS as métricas clínicas para UM único dedo em um card compacto.
+   Cada instância é dedicada a um dedo específico (Polegar, Indicador, etc.).
 
 2. FingerCardsPanel(QWidget):
-   Container that organizes the 5 FingerCardWidgets side by side in a row.
-   It is the only component that MainWindow needs to instantiate — it
-   manages the 5 cards internally.
+   Contêiner que organiza os 5 FingerCardWidgets lado a lado em uma linha.
+   É o único componente que a MainWindow precisa instanciar — ele
+   gerencia os 5 cards internamente.
 
-Metrics displayed per card (from the scientific pipeline):
-    TAM (°)       : Total Active Motion — total active range of motion.
-    ASSH          : Functional classification (Excellent / Good / Fair / Poor).
-    ROM (°) : Difference between maximum and minimum TAM in the time window.
-    Avg. Vel.     : Mean angular velocity (°/s) — overall movement speed.
-    Peak Vel.     : Maximum angular velocity (°/s) — peak effort.
-    Frequency     : Rate of complete cycles per second (Hz).
-    Regularity    : Qualitative assessment of movement consistency.
-    Mini-chart    : TAM history over the last BUFFER_SIZE points (PyQtGraph).
+Métricas exibidas por card (provenientes do pipeline científico):
+    TAM (°)       : Total Active Motion — amplitude ativa de movimento total.
+    ASSH          : Classificação funcional (Excelente / Bom / Razoável / Ruim).
+    ROM (°)       : Diferença entre o TAM máximo e mínimo na janela de tempo.
+    Vel. Média    : Velocidade angular média (°/s) — velocidade geral do movimento.
+    Vel. Pico     : Velocidade angular máxima (°/s) — esforço de pico.
+    Frequência    : Taxa de ciclos completos por segundo (Hz).
+    Regularidade  : Avaliação qualitativa da consistência do movimento.
+    Minigráfico   : Histórico de TAM nos últimos BUFFER_SIZE pontos (PyQtGraph).
 
-Data sources:
+Fontes de dados:
     state   ← classify_hand_state()["estados_dedos"][finger]
     metrics ← compute_realtime_metrics(angle_buffer, time_buffer)
 
-Why one card per finger?
-    The physiotherapist often needs to quickly compare the performance of
-    adjacent fingers (e.g., Index vs Middle after an injury). Displaying all
-    in a row allows instant visual comparison without navigating through menus.
+Por que um card por dedo?
+    O fisioterapeuta frequentemente precisa comparar rapidamente o desempenho de
+    dedos adjacentes (ex.: Indicador vs Médio após uma lesão). Exibir todos
+    em uma linha permite comparação visual instantânea sem navegar por menus.
 """
 
 from typing import Dict, List, Optional
@@ -48,7 +48,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-# Import centralized styles from the theme module.
+# Importa estilos centralizados a partir do módulo de tema.
 from themes import (
     FINGER_CARD_STYLE,
     LABEL_CLINICAL_SECONDARY_STYLE,
@@ -57,8 +57,8 @@ from themes import (
 )
 import config
 
-# Try to import PyQtGraph for mini-charts.
-# If not installed, mini-charts are replaced by a label.
+# Tenta importar o PyQtGraph para os minigráficos.
+# Se não estiver instalado, os minigráficos são substituídos por um rótulo.
 try:
     import pyqtgraph as pg
     _PG_AVAILABLE = True
@@ -68,23 +68,23 @@ except ImportError:
 
 class FingerCardWidget(QGroupBox):
     """
-    Complete clinical card for a single hand finger.
+    Card clínico completo para um único dedo da mão.
 
-    Displays goniometry metrics, kinetic metrics, and a live TAM mini-chart
-    in a compact space designed to sit side by side with 4 other cards.
+    Exibe métricas de goniometria, métricas cinemáticas e um minigráfico
+    de TAM em tempo real em um espaço compacto projetado para ficar lado a lado com outros 4 cards.
 
-    Internal layout (QVBoxLayout):
+    Layout interno (QVBoxLayout):
         ┌──────────────────────────────┐
-        │ [finger name]                │  ← QGroupBox title
-        │ TAM: 127.3°  [Fair] 🟡      │  ← TAM + ASSH in one row
+        │ [nome do dedo]               │  ← Título do QGroupBox
+        │ TAM: 127.3°  [Razoável] 🟡  │  ← TAM + ASSH em uma linha
         │ ─────────────────────────── │
-        │ ROM  : 45.2°          │
-        │ Avg. Vel.  : 38.1 °/s       │
-        │ Peak Vel.  : 112.4 °/s      │
-        │ Frequency  : 0.33 Hz        │
-        │ Regularity : ✅ Regular     │
+        │ ROM          : 45.2°        │
+        │ Vel. Média   : 38.1 °/s     │
+        │ Vel. Pico    : 112.4 °/s    │
+        │ Frequência   : 0.33 Hz      │
+        │ Regularidade : ✅ Regular   │
         │ ─────────────────────────── │
-        │ [TAM mini-chart, 80px]      │
+        │ [minigráfico TAM, 80px]     │
         └──────────────────────────────┘
     """
 
@@ -96,83 +96,83 @@ class FingerCardWidget(QGroupBox):
         parent: Optional[QWidget] = None,
     ) -> None:
         """
-        Initializes the card for a specific finger.
+        Inicializa o card para um dedo específico.
 
-        Parameters:
-            finger_key: Internal finger identifier in the scientific pipeline.
-                        Values: "INDEX", "MIDDLE", "RING", "PINKY", "THUMB".
-            name_en: Finger display name for the group title.
-                     E.g.: "Index", "Middle", "Thumb".
-            color_hex: Finger hex color (from config.FINGER_COLORS).
-                       Used in the mini-chart and highlighted elements.
-            parent: Qt parent widget (optional).
+        Parâmetros:
+            finger_key: Identificador interno do dedo no pipeline científico.
+                        Valores: "INDEX", "MIDDLE", "RING", "PINKY", "THUMB".
+            name_en: Nome de exibição do dedo para o título do grupo.
+                     Ex.: "Index", "Middle", "Thumb".
+            color_hex: Cor hexadecimal do dedo (de config.FINGER_COLORS).
+                       Utilizada no minigráfico e elementos destacados.
+            parent: Widget pai do Qt (opcional).
         """
         super().__init__(name_en, parent)
 
-        # Store the finger key for future use (e.g., debugging, logging).
+        # Armazena a chave do dedo para uso futuro (ex.: depuração, registro de log).
         self._finger_key: str = finger_key
         self._color_hex: str = color_hex
 
-        # Apply the card's visual style (border, background, title).
+        # Aplica o estilo visual do card (borda, fundo, título).
         self.setStyleSheet(FINGER_CARD_STYLE)
 
-        # Minimum width so the 5 cards don't get squashed.
-        # With 5 cards in a row in a 1280px window: 1280/5 = 256px per card.
+        # Largura mínima para que os 5 cards não fiquem espremidos.
+        # Com 5 cards em linha em uma janela de 1280px: 1280/5 = 256px por card.
         self.setMinimumWidth(200)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
 
-        # Main vertical layout of the card.
+        # Layout vertical principal do card.
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 16, 8, 8)
         layout.setSpacing(4)
 
-        # --- TAM + ASSH Classification row ---
+        # --- Linha de TAM + Classificação ASSH ---
         self._build_tam_row(layout)
 
-        # --- Visual separator ---
+        # --- Separador visual ---
         self._add_separator(layout)
 
-        # --- Kinetic metrics grid ---
+        # --- Grade de métricas cinemáticas ---
         self._build_metrics_grid(layout)
 
-        # --- Visual separator ---
+        # --- Separador visual ---
         self._add_separator(layout)
 
-        # --- Live TAM mini-chart ---
+        # --- Minigráfico de TAM em tempo real ---
         self._build_mini_chart(layout, color_hex)
 
     # =========================================================================
-    # INTERNAL SECTION BUILDERS
+    # CONSTRUTORES DE SEÇÕES INTERNAS
     # =========================================================================
 
     def _build_tam_row(self, parent_layout: QVBoxLayout) -> None:
         """
-        Builds the main row with TAM value and ASSH classification.
+        Constrói a linha principal com o valor de TAM e classificação ASSH.
 
-        Places TAM and ASSH on the same horizontal row to save vertical space
-        without sacrificing readability — TAM is the most important value
-        and must have immediate visual emphasis.
+        Posiciona TAM e ASSH na mesma linha horizontal para economizar espaço vertical
+        sem sacrificar a legibilidade — o TAM é o valor mais importante
+        e deve ter ênfase visual imediata.
 
-        Parameters:
-            parent_layout: Parent layout where the row will be added.
+        Parâmetros:
+            parent_layout: Layout pai onde a linha será adicionada.
         """
         row = QHBoxLayout()
         row.setSpacing(6)
 
-        # "TAM" label — indicates the displayed quantity.
+        # Rótulo "TAM:" — indica a grandeza exibida.
         lbl_tam_title = QLabel("TAM:")
         lbl_tam_title.setStyleSheet(LABEL_SECTION_TITLE_STYLE)
         lbl_tam_title.setFixedWidth(36)
 
-        # Numeric TAM value — highest visual emphasis.
+        # Valor numérico de TAM — maior ênfase visual.
         self._lbl_tam_value = QLabel("—")
         self._lbl_tam_value.setStyleSheet(LABEL_CLINICAL_VALUE_STYLE)
 
-        # ASSH classification with dynamic color (green/yellow/orange/red).
-        # Color is applied via setStyleSheet in update(), not here.
+        # Classificação ASSH com cor dinâmica (verde/amarelo/laranja/vermelho).
+        # A cor é aplicada via setStyleSheet em update(), não aqui.
         self._lbl_assh = QLabel("—")
         self._lbl_assh.setStyleSheet(LABEL_CLINICAL_SECONDARY_STYLE)
         self._lbl_assh.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -186,39 +186,39 @@ class FingerCardWidget(QGroupBox):
 
     def _build_metrics_grid(self, parent_layout: QVBoxLayout) -> None:
         """
-        Builds the grid with kinetic metrics (rom, velocity, frequency).
+        Constrói a grade com métricas cinemáticas (ROM, velocidade, frequência).
 
-        Uses a 2-column grid (label | value) to correctly align data without
-        wasting space. Each row represents a different metric.
+        Utiliza uma grade de 2 colunas (rótulo | valor) para alinhar corretamente os dados sem
+        desperdiçar espaço. Cada linha representa uma métrica diferente.
 
-        Parameters:
-            parent_layout: Parent layout where the grid will be added.
+        Parâmetros:
+            parent_layout: Layout pai onde a grade será adicionada.
         """
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(2)
 
-        # Metric names (static labels) and references to value labels.
-        # Order follows clinical relevance: rom first, then velocity,
-        # frequency and regularity (from most objective to most interpreted).
+        # Nomes das métricas (rótulos estáticos) e referências aos rótulos de valores.
+        # A ordem segue a relevância clínica: ROM primeiro, depois velocidade,
+        # frequência e regularidade (do mais objetivo ao mais interpretado).
         metrics_rows = [
-            ("ROM",   "—"),
-            ("Avg. Vel.",   "—"),
-            ("Peak Vel.",   "—"),
-            ("Frequency",   "—"),
-            ("Regularity",  "—"),
+            ("ROM",          "—"),
+            ("Vel. Média",   "—"),
+            ("Vel. Pico",    "—"),
+            ("Frequência",   "—"),
+            ("Regularidade", "—"),
         ]
 
-        # Dictionary for quick access in update() — mapping internal name → QLabel.
+        # Dicionário para acesso rápido em update() — mapeamento nome interno → QLabel.
         self._metric_labels: Dict[str, QLabel] = {}
 
         for row_idx, (label_text, init_value) in enumerate(metrics_rows):
-            # Static label on the left.
+            # Rótulo estático à esquerda.
             lbl_title = QLabel(f"{label_text}:")
             lbl_title.setStyleSheet(LABEL_CLINICAL_SECONDARY_STYLE)
             lbl_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-            # Dynamic value on the right — updated each frame with real data.
+            # Valor dinâmico à direita — atualizado a cada quadro com dados reais.
             lbl_value = QLabel(init_value)
             lbl_value.setStyleSheet(LABEL_CLINICAL_SECONDARY_STYLE)
             lbl_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -226,10 +226,10 @@ class FingerCardWidget(QGroupBox):
             grid.addWidget(lbl_title, row_idx, 0)
             grid.addWidget(lbl_value, row_idx, 1)
 
-            # Store reference using the name without ":" as key.
+            # Armazena referência utilizando o nome sem ":" como chave.
             self._metric_labels[label_text] = lbl_value
 
-        # Column 0 (labels): fixed width. Column 1 (values): stretches.
+        # Coluna 0 (rótulos): largura fixa. Coluna 1 (valores): expande.
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
@@ -237,57 +237,57 @@ class FingerCardWidget(QGroupBox):
 
     def _build_mini_chart(self, parent_layout: QVBoxLayout, color_hex: str) -> None:
         """
-        Builds the live PyQtGraph TAM mini-chart inside the card.
+        Constrói o minigráfico de TAM em tempo real via PyQtGraph dentro do card.
 
-        The mini-chart has height=80px, no visible axes, only the curve.
-        Its purpose is to provide temporal context for the numeric TAM value —
-        the clinician can see whether the value is rising, falling, or oscillating.
+        O minigráfico possui altura=80px, sem eixos visíveis, apenas a curva.
+        Seu propósito é fornecer contexto temporal para o valor numérico de TAM —
+        o clínico pode observar se o valor está subindo, descendo ou oscilando.
 
-        Why no axes?
-            With 5 cards in a row, each only ~200px wide, axes with labels would
-            take ~30% of the chart space. The curve itself communicates the trend
-            without needing numeric scales.
+        Por que sem eixos?
+            Com 5 cards em linha, cada um com apenas ~200px de largura, eixos com rótulos
+            ocupariam ~30% do espaço do gráfico. A própria curva comunica a tendência
+            sem a necessidade de escalas numéricas.
 
-        Parameters:
-            parent_layout: Parent layout where the mini-chart will be added.
-            color_hex: Curve color, corresponding to the finger (config.FINGER_COLORS).
+        Parâmetros:
+            parent_layout: Layout pai onde o minigráfico será adicionado.
+            color_hex: Cor da curva, correspondente ao dedo (config.FINGER_COLORS).
         """
         self._mini_curve = None
         self._mini_plot = None
 
         if not _PG_AVAILABLE:
-            # Fallback without PyQtGraph: display message in place of chart.
-            lbl_no_pg = QLabel("(PyQtGraph not installed)")
+            # Fallback sem PyQtGraph: exibe mensagem no lugar do gráfico.
+            lbl_no_pg = QLabel("(PyQtGraph não instalado)")
             lbl_no_pg.setStyleSheet(LABEL_CLINICAL_SECONDARY_STYLE)
             lbl_no_pg.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl_no_pg.setFixedHeight(80)
             parent_layout.addWidget(lbl_no_pg)
             return
 
-        # Configure mini-chart background with the same dark tone as the card.
+        # Configura o fundo do minigráfico com o mesmo tom escuro do card.
         self._mini_plot = pg.PlotWidget()
         self._mini_plot.setBackground("#1e293b")
 
-        # Remove the widget border — the QGroupBox already has one.
+        # Remove a borda do widget — o QGroupBox já possui uma.
         self._mini_plot.setStyleSheet("border: none;")
 
-        # Fixed height of 80px — compact but sufficient to show the trend.
+        # Altura fixa de 80px — compacta porém suficiente para exibir a tendência.
         self._mini_plot.setFixedHeight(80)
 
-        # Remove ALL axes for maximum visual compactness.
-        # Axes would consume ~40% of the height in such a small chart.
+        # Remove TODOS os eixos para máxima compacidade visual.
+        # Eixos consumiriam ~40% da altura em um gráfico tão pequeno.
         plot_item = self._mini_plot.getPlotItem()
         plot_item.hideAxis("left")
         plot_item.hideAxis("bottom")
 
-        # Remove the right-click context menu — unnecessary in a mini-chart.
+        # Remove o menu de contexto do botão direito — desnecessário em um minigráfico.
         plot_item.setMenuEnabled(False)
 
-        # Disable mouse interaction — the mini-chart is view-only.
+        # Desativa a interação com o mouse — o minigráfico é somente para visualização.
         self._mini_plot.setMouseEnabled(x=False, y=False)
 
-        # Create the single curve of the mini-chart: TAM over time.
-        # Width 1.5px: visible in 80px height without being too thick.
+        # Cria a curva única do minigráfico: TAM ao longo do tempo.
+        # Largura 1.5px: visível em 80px de altura sem ficar espessa demais.
         self._mini_curve = plot_item.plot(
             pen=pg.mkPen(color=color_hex, width=1.5),
         )
@@ -296,23 +296,23 @@ class FingerCardWidget(QGroupBox):
 
     def _add_separator(self, parent_layout: QVBoxLayout) -> None:
         """
-        Adds a subtle horizontal separator between card sections.
+        Adiciona um separador horizontal sutil entre as seções do card.
 
-        QFrame with frameShape=HLine creates a thin horizontal line, used
-        as a visual divider between TAM, metrics, and the mini-chart.
+        QFrame com frameShape=HLine cria uma linha horizontal fina, utilizada
+        como divisor visual entre o TAM, as métricas e o minigráfico.
 
-        Parameters:
-            parent_layout: Parent layout where the separator will be added.
+        Parâmetros:
+            parent_layout: Layout pai onde o separador será adicionado.
         """
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
-        # Sunken shadow: creates the effect of a slightly recessed line.
+        # Sombra rebaixada: cria o efeito de uma linha sutilmente em baixo-relevo.
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         separator.setStyleSheet("color: #334155; max-height: 1px;")
         parent_layout.addWidget(separator)
 
     # =========================================================================
-    # DATA UPDATE
+    # ATUALIZAÇÃO DE DADOS
     # =========================================================================
 
     def update(
@@ -322,110 +322,110 @@ class FingerCardWidget(QGroupBox):
         tam_buffer: List[float],
     ) -> None:
         """
-        Updates all card fields with data from the current frame.
+        Atualiza todos os campos do card com dados do quadro atual.
 
-        This method is called by FingerCardsPanel on each result_ready emission
-        (~30x/s). Must be fast: only updates text and chart data, no calculations.
+        Este método é chamado pelo FingerCardsPanel a cada emissão de result_ready
+        (~30x/s). Deve ser rápido: apenas atualiza textos e dados do gráfico, sem cálculos.
 
-        Expected structure of 'state' (from classify_hand_state()):
-            Long fingers: {"MCP": float, "PIP": float, "DIP": float,
-                          "ABD": float, "TAM": float,
-                          "fechado": bool, "rotulo_assh": str, "cor_assh": str}
-            Thumb:        {"MCP": float, "IP": float, "TAM": float,
-                          "fechado": bool, "rotulo_assh": str, "cor_assh": str}
+        Estrutura esperada de 'state' (de classify_hand_state()):
+            Dedos longos: {"MCP": float, "PIP": float, "DIP": float,
+                           "ABD": float, "TAM": float,
+                           "fechado": bool, "rotulo_assh": str, "cor_assh": str}
+            Polegar:      {"MCP": float, "IP": float, "TAM": float,
+                           "fechado": bool, "rotulo_assh": str, "cor_assh": str}
 
-        Expected structure of 'metrics' (from compute_realtime_metrics()):
+        Estrutura esperada de 'metrics' (de compute_realtime_metrics()):
             {"rom": float, "vel_media": float, "vel_pico": float,
              "freq_hz": float, "cv": float, "regularidade": str, "n_picos": int}
 
-        Parameters:
-            state: Dictionary with current angles and ASSH classification for the finger.
-            metrics: Dictionary with kinetic metrics computed over the buffer.
-            tam_buffer: List of the last N TAM values for the mini-chart.
+        Parâmetros:
+            state: Dicionário com ângulos atuais e classificação ASSH para o dedo.
+            metrics: Dicionário com métricas cinemáticas calculadas sobre o buffer.
+            tam_buffer: Lista dos últimos N valores de TAM para o minigráfico.
         """
-        # --- Primary TAM ---
+        # --- TAM primário ---
         tam: float = float(state.get("TAM", 0.0))
         self._lbl_tam_value.setText(f"{tam:.1f}°")
 
-        # --- ASSH classification with dynamic color ---
+        # --- Classificação ASSH com cor dinâmica ---
         assh_label: str = state.get("rotulo_assh", "—")
         assh_color: str = state.get("cor_assh", "#94a3b8")
 
         self._lbl_assh.setText(assh_label)
 
-        # Apply the classification color via setStyleSheet.
-        # Each ASSH level has a predefined color (green/yellow/orange/red)
-        # that the clinician recognizes instantly without reading the text.
+        # Aplica a cor da classificação via setStyleSheet.
+        # Cada nível ASSH possui uma cor predefinida (verde/amarelo/laranja/vermelho)
+        # que o clínico reconhece instantaneamente sem ler o texto.
         self._lbl_assh.setStyleSheet(
             f"QLabel {{ color: {assh_color}; font-size: 12px; font-weight: bold; }}"
         )
 
-        # --- Kinetic metrics ---
+        # --- Métricas cinemáticas ---
         rom: float = float(metrics.get("rom", 0.0))
         vel_media: float = float(metrics.get("vel_media", 0.0))
         vel_pico: float  = float(metrics.get("vel_pico",  0.0))
         freq_hz: float   = float(metrics.get("freq_hz",   0.0))
         regularity: str = str(metrics.get("regularidade", "—"))
 
-        # Format rom in degrees with one decimal place.
+        # Formata ROM em graus com uma casa decimal.
         self._metric_labels["ROM"].setText(f"{rom:.1f}°")
 
-        # Format velocities in degrees per second with one decimal place.
-        self._metric_labels["Avg. Vel."].setText(f"{vel_media:.1f} °/s")
-        self._metric_labels["Peak Vel."].setText(f"{vel_pico:.1f} °/s")
+        # Formata velocidades em graus por segundo com uma casa decimal.
+        self._metric_labels["Vel. Média"].setText(f"{vel_media:.1f} °/s")
+        self._metric_labels["Vel. Pico"].setText(f"{vel_pico:.1f} °/s")
 
-        # Format frequency in Hz with two decimal places.
-        # Two decimals are needed because slow movements (0.25Hz) and
-        # fast ones (2.00Hz) must be distinguishable with precision.
-        self._metric_labels["Frequency"].setText(f"{freq_hz:.2f} Hz")
+        # Formata frequência em Hz com duas casas decimais.
+        # Duas casas decimais são necessárias porque movimentos lentos (0.25Hz) e
+        # rápidos (2.00Hz) devem ser distinguíveis com precisão.
+        self._metric_labels["Frequência"].setText(f"{freq_hz:.2f} Hz")
 
-        # Add a visual icon to regularity for instant recognition.
-        # The clinician can assess at a glance without reading the word.
+        # Adiciona um ícone visual à regularidade para reconhecimento instantâneo.
+        # O clínico pode avaliar em uma olhada rápida sem ler a palavra.
         if regularity == "Regular":
             reg_text = "✅ Regular"
         elif regularity in ("Irregular", "Moderado"):
             reg_text = f"{'❌' if regularity == 'Irregular' else '🟡'} {regularity}"
         else:
             reg_text = regularity
-        self._metric_labels["Regularity"].setText(reg_text)
+        self._metric_labels["Regularidade"].setText(reg_text)
 
-        # --- Mini-chart ---
+        # --- Minigráfico ---
         self._update_mini_chart(tam_buffer)
 
     def _update_mini_chart(self, tam_buffer: List[float]) -> None:
         """
-        Updates the mini-chart curve with the current TAM buffer.
+        Atualiza a curva do minigráfico com o buffer de TAM atual.
 
-        Called internally by update() on each frame. If PyQtGraph is not
-        available, this method returns silently.
+        Chamado internamente por update() a cada quadro. Se o PyQtGraph não estiver
+        disponível, este método retorna silenciosamente.
 
-        The mini-chart's Y axis is auto-scaled by PyQtGraph to fit the
-        current data range — without explicit limit configuration.
-        This causes the curve to always fill the full 80px height, regardless
-        of the real movement rom.
+        O eixo Y do minigráfico é auto-escalonado pelo PyQtGraph para se ajustar ao
+        intervalo de dados atual — sem configuração explícita de limites.
+        Isso faz com que a curva sempre preencha toda a altura de 80px, independentemente
+        do ROM real do movimento.
 
-        Parameters:
-            tam_buffer: List of floats with historical TAM values.
-                        Empty if there is not yet sufficient data.
+        Parâmetros:
+            tam_buffer: Lista de floats com valores históricos de TAM.
+                        Vazia se ainda não houver dados suficientes.
         """
         if self._mini_curve is None or not _PG_AVAILABLE:
             return
 
         if tam_buffer:
-            # setData() with only y: X axis = 0, 1, 2, ... (sample index).
-            # Real timestamps are not needed in the mini-chart — the visual
-            # trend is sufficient to communicate movement evolution.
+            # setData() apenas com y: eixo X = 0, 1, 2, ... (índice da amostra).
+            # Timestamps reais não são necessários no minigráfico — a tendência visual
+            # é suficiente para comunicar a evolução do movimento.
             self._mini_curve.setData(y=tam_buffer)
         else:
-            # Empty buffer: clear the chart to avoid displaying stale data.
+            # Buffer vazio: limpa o gráfico para evitar exibição de dados desatualizados.
             self._mini_curve.setData(y=[])
 
     def clear(self) -> None:
         """
-        Resets all card fields to the initial state without data.
+        Redefine todos os campos do card para o estado inicial sem dados.
 
-        Called by FingerCardsPanel when starting a new session, so that the
-        previous session's data is not confused with the new session's data.
+        Chamado pelo FingerCardsPanel ao iniciar uma nova sessão, para que os
+        dados da sessão anterior não sejam confundidos com os da nova sessão.
         """
         self._lbl_tam_value.setText("—")
         self._lbl_assh.setText("—")
@@ -439,26 +439,26 @@ class FingerCardWidget(QGroupBox):
 
 
 # =============================================================================
-# PANEL WITH THE 5 CARDS
+# PAINEL COM OS 5 CARDS
 # =============================================================================
 
 class FingerCardsPanel(QWidget):
     """
-    Container that organizes the 5 FingerCardWidgets side by side in a row.
+    Contêiner que organiza os 5 FingerCardWidgets lado a lado em uma linha.
 
-    This is the only component from this module that MainWindow instantiates directly.
-    Internally, it creates and manages the 5 individual cards.
+    Este é o único componente deste módulo que a MainWindow instancia diretamente.
+    Internamente, ele cria e gerencia os 5 cards individuais.
 
-    Card display order (left to right):
-        Thumb | Index | Middle | Ring | Pinky
+    Ordem de exibição dos cards (esquerda para a direita):
+        Polegar | Indicador | Médio | Anelar | Mínimo
 
-    The order follows the anatomy of the hand viewed from the front, making it
-    easy to visually correlate each card on screen with the patient's actual finger.
+    A ordem segue a anatomia da mão vista de frente, facilitando a
+    correlação visual entre cada card na tela e o dedo real do paciente.
 
-    Usage in MainWindow:
+    Uso na MainWindow:
         self.finger_cards = FingerCardsPanel()
         layout.addWidget(self.finger_cards)
-        # In _on_result():
+        # Em _on_result():
         self.finger_cards.update_all(
             result.hand_state["estados_dedos"],
             result.metrics_per_finger,
@@ -466,29 +466,29 @@ class FingerCardsPanel(QWidget):
         )
     """
 
-    # Display order of the cards (left to right).
-    # THUMB first because it is anatomically the first finger in the front-facing hand.
+    # Ordem de exibição dos cards (da esquerda para a direita).
+    # THUMB primeiro porque é anatomicamente o primeiro dedo na mão vista de frente.
     DISPLAY_ORDER: List[str] = ["THUMB", "INDEX", "MIDDLE", "RING", "PINKY"]
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """
-        Initializes the panel by creating the 5 cards in a row.
+        Inicializa o painel criando os 5 cards em uma linha.
 
-        Each card receives its finger key, display name, and identifying color
-        from the config.py dictionaries.
+        Cada card recebe sua chave de dedo, nome de exibição e cor identificadora
+        a partir dos dicionários de config.py.
 
-        Parameters:
-            parent: Qt parent widget (optional).
+        Parâmetros:
+            parent: Widget pai do Qt (opcional).
         """
         super().__init__(parent)
 
-        # Horizontal layout: the 5 cards sit side by side.
+        # Layout horizontal: os 5 cards ficam lado a lado.
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        # 6px spacing between cards — visually separated but compact.
+        # Espaçamento de 6px entre cards — visualmente separados porém compactos.
         layout.setSpacing(6)
 
-        # Dictionary for quick access in update_all() — key = finger name.
+        # Dicionário para acesso rápido em update_all() — chave = nome do dedo.
         self._cards: Dict[str, FingerCardWidget] = {}
 
         for finger_key in self.DISPLAY_ORDER:
@@ -516,33 +516,33 @@ class FingerCardsPanel(QWidget):
         tam_buffers_per_finger: Dict[str, List[float]],
     ) -> None:
         """
-        Updates all 5 cards with current frame data.
+        Atualiza todos os 5 cards com os dados do quadro atual.
 
-        Called by MainWindow on each result_ready emission from ProcessingWorker.
-        Iterates over the 5 fingers and delegates each card's update to the
-        corresponding FingerCardWidget.
+        Chamado pela MainWindow a cada emissão de result_ready do ProcessingWorker.
+        Itera sobre os 5 dedos e delega a atualização de cada card ao
+        FingerCardWidget correspondente.
 
-        Tolerance for missing data:
-            If a finger is not present in finger_states or metrics_per_finger
-            (e.g., MediaPipe lost tracking of a specific finger), we use empty
-            dictionaries as fallback so the card displays "—" instead of raising KeyError.
+        Tolerância para dados faltantes:
+            Se um dedo não estiver presente em finger_states ou metrics_per_finger
+            (ex.: MediaPipe perdeu o rastreamento de um dedo específico), utilizamos dicionários
+            vazios como fallback para que o card exiba "—" em vez de lançar KeyError.
 
-        Parameters:
-            finger_states: Dictionary {finger: state_dict} returned by
+        Parâmetros:
+            finger_states: Dicionário {finger: state_dict} retornado por
                            classify_hand_state()["estados_dedos"].
-                           Contains current angles and ASSH classification per finger.
+                           Contém ângulos atuais e classificação ASSH por dedo.
 
-            metrics_per_finger: Dictionary {finger: metrics_dict} where each dict is
-                                the output of compute_realtime_metrics() for that finger.
-                                Contains rom, vel_media, vel_pico, freq_hz, etc.
+            metrics_per_finger: Dicionário {finger: metrics_dict} onde cada dict é
+                                a saída de compute_realtime_metrics() para aquele dedo.
+                                Contém rom, vel_media, vel_pico, freq_hz, etc.
 
-            tam_buffers_per_finger: Dictionary {finger: [float]} with the TAM history
-                                    for each card's mini-chart.
-                                    Usually comes from ProcessingResult.tam_buffers_snapshot.
+            tam_buffers_per_finger: Dicionário {finger: [float]} com o histórico de TAM
+                                    para o minigráfico de cada card.
+                                    Geralmente provém de ProcessingResult.tam_buffers_snapshot.
         """
         for finger_key, card in self._cards.items():
-            # Safe access with fallback: if the finger was not detected this frame,
-            # we pass empty dictionaries and the card will display "—".
+            # Acesso seguro com fallback: se o dedo não foi detectado neste quadro,
+            # passamos dicionários vazios e o card exibirá "—".
             state = finger_states.get(finger_key, {})
             metrics = metrics_per_finger.get(finger_key, {})
             tam_buf = tam_buffers_per_finger.get(finger_key, [])
@@ -551,25 +551,25 @@ class FingerCardsPanel(QWidget):
 
     def clear_all(self) -> None:
         """
-        Resets all 5 cards to the initial state without data.
+        Redefine todos os 5 cards para o estado inicial sem dados.
 
-        Called by MainWindow when starting a new session, to clear all previous
-        session data before the camera is activated.
+        Chamado pela MainWindow ao iniciar uma nova sessão, para limpar todos os dados
+        da sessão anterior antes da câmera ser ativada.
         """
         for card in self._cards.values():
             card.clear()
 
     def get_card(self, finger_key: str) -> Optional[FingerCardWidget]:
         """
-        Returns the FingerCardWidget for a specific finger.
+        Retorna o FingerCardWidget para um dedo específico.
 
-        Useful for targeted operations (e.g., highlighting a specific finger's card
-        during an individual analysis, or temporarily hiding an unevaluated finger).
+        Útil para operações direcionadas (ex.: destacar o card de um dedo específico
+        durante uma análise individual, ou ocultar temporariamente um dedo não avaliado).
 
-        Parameters:
-            finger_key: Finger key. E.g.: "INDEX", "THUMB", "PINKY".
+        Parâmetros:
+            finger_key: Chave do dedo. Ex.: "INDEX", "THUMB", "PINKY".
 
-        Returns:
-            Corresponding FingerCardWidget, or None if the key does not exist.
+        Retorno:
+            FingerCardWidget correspondente, ou None se a chave não existir.
         """
         return self._cards.get(finger_key)
