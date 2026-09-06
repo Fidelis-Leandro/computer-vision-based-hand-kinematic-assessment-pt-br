@@ -36,15 +36,19 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
+    QComboBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QStatusBar,
     QVBoxLayout,
@@ -59,6 +63,8 @@ from themes import (
     COLOR_ACCENT,
     COLOR_BG_DARK,
     COLOR_BG_MEDIUM,
+    COLOR_TEXT_PRIMARY,
+    COLOR_TEXT_SECONDARY,
 )
 
 # Importa os workers.
@@ -465,11 +471,9 @@ class MainWindow(QMainWindow):
         # Página 0: Layout atual em produção (intacto)
         self._stack.addWidget(self._page_current_layout)
 
-        # Página 1: Placeholder de Configuração
-        self._page_placeholder_setup = self._create_placeholder_page(
-            "⚙️ Configuração da Sessão — Em desenvolvimento (Fase 2)"
-        )
-        self._stack.addWidget(self._page_placeholder_setup)
+        # Página 1: Tela de Configuração da Sessão (Fase 2)
+        self._page_setup = self._build_setup_page()
+        self._stack.addWidget(self._page_setup)
 
         # Página 2: Placeholder de Resultado
         self._page_placeholder_result = self._create_placeholder_page(
@@ -477,9 +481,155 @@ class MainWindow(QMainWindow):
         )
         self._stack.addWidget(self._page_placeholder_result)
 
-        # Define Página 0 como inicial e configura como widget central
-        self._stack.setCurrentIndex(0)
+        # Define Página 1 como inicial (Tela de Configuração)
+        self._stack.setCurrentIndex(1)
         self.setCentralWidget(self._stack)
+
+    def _build_setup_page(self) -> QWidget:
+        """
+        Constrói a Tela de Configuração da Sessão (Página 1 do QStackedWidget).
+
+        Fornece formulário centralizado para inserção do nome do paciente,
+        seleção da mão avaliada e número da sessão antes de iniciar a captura.
+        """
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(24, 24, 24, 24)
+
+        page_layout.addStretch(1)
+
+        center_row = QHBoxLayout()
+        center_row.addStretch(1)
+
+        # Cartão centralizado baseado em QFrame
+        card_frame = QFrame()
+        card_frame.setFixedWidth(520)
+        card_frame.setStyleSheet(
+            f"QFrame {{ background-color: {COLOR_BG_MEDIUM}; "
+            f"border: 1px solid #334155; border-radius: 8px; }}"
+        )
+
+        card_layout = QVBoxLayout(card_frame)
+        card_layout.setContentsMargins(32, 28, 32, 28)
+        card_layout.setSpacing(12)
+
+        # Título
+        lbl_title = QLabel("Goniometria Digital da Mão")
+        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_title.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_PRIMARY}; font-size: 20px; font-weight: bold; border: none; }}"
+        )
+        card_layout.addWidget(lbl_title)
+
+        # Subtítulo
+        lbl_subtitle = QLabel("Nova Avaliação Clínica")
+        lbl_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_subtitle.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 13px; margin-bottom: 8px; border: none; }}"
+        )
+        card_layout.addWidget(lbl_subtitle)
+
+        # Campo: Paciente
+        lbl_paciente = QLabel("Paciente")
+        lbl_paciente.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 11px; font-weight: bold; text-transform: uppercase; border: none; }}"
+        )
+        card_layout.addWidget(lbl_paciente)
+
+        self._setup_input_patient = QLineEdit()
+        self._setup_input_patient.setPlaceholderText("Nome completo do paciente...")
+        self._setup_input_patient.setMaxLength(100)
+        self._setup_input_patient.setStyleSheet(
+            f"QLineEdit {{ color: {COLOR_TEXT_PRIMARY}; padding: 8px 12px; "
+            f"border: 1px solid #334155; border-radius: 5px; "
+            f"background: #0f172a; font-size: 14px; }}"
+            f"QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}"
+        )
+        self._setup_input_patient.textChanged.connect(self._on_setup_patient_changed)
+        card_layout.addWidget(self._setup_input_patient)
+
+        # Campo: Mão Avaliada
+        lbl_mao = QLabel("Mão Avaliada")
+        lbl_mao.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 11px; font-weight: bold; text-transform: uppercase; border: none; }}"
+        )
+        card_layout.addWidget(lbl_mao)
+
+        self._setup_combo_hand = QComboBox()
+        self._setup_combo_hand.addItems(["Direita", "Esquerda"])
+        self._setup_combo_hand.setStyleSheet(
+            f"QComboBox {{ color: {COLOR_TEXT_PRIMARY}; padding: 8px 12px; "
+            f"border: 1px solid #334155; border-radius: 5px; "
+            f"background: #0f172a; font-size: 14px; }}"
+            f"QComboBox:focus {{ border-color: {COLOR_ACCENT}; }}"
+            f"QComboBox QAbstractItemView {{ background: #0f172a; color: {COLOR_TEXT_PRIMARY}; selection-background-color: {COLOR_ACCENT}; }}"
+        )
+        card_layout.addWidget(self._setup_combo_hand)
+
+        # Campo: Sessão Nº
+        lbl_sessao = QLabel("Sessão Nº")
+        lbl_sessao.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 11px; font-weight: bold; text-transform: uppercase; border: none; }}"
+        )
+        card_layout.addWidget(lbl_sessao)
+
+        self._setup_spin_session = QSpinBox()
+        self._setup_spin_session.setMinimum(1)
+        self._setup_spin_session.setMaximum(999)
+        self._setup_spin_session.setValue(1)
+        self._setup_spin_session.setStyleSheet(
+            f"QSpinBox {{ color: {COLOR_TEXT_PRIMARY}; padding: 8px 12px; "
+            f"border: 1px solid #334155; border-radius: 5px; "
+            f"background: #0f172a; font-size: 14px; }}"
+            f"QSpinBox:focus {{ border-color: {COLOR_ACCENT}; }}"
+        )
+        card_layout.addWidget(self._setup_spin_session)
+
+        card_layout.addSpacing(8)
+
+        # Botão: Iniciar Avaliação
+        self._setup_btn_start = QPushButton("▶  Iniciar Avaliação")
+        self._setup_btn_start.setStyleSheet(BUTTON_PRIMARY_STYLE)
+        self._setup_btn_start.setMinimumHeight(44)
+        self._setup_btn_start.setEnabled(False)
+        self._setup_btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._setup_btn_start.clicked.connect(self._on_setup_start_clicked)
+        card_layout.addWidget(self._setup_btn_start)
+
+        center_row.addWidget(card_frame)
+        center_row.addStretch(1)
+
+        page_layout.addLayout(center_row)
+        page_layout.addStretch(1)
+
+        return page
+
+    def _on_setup_patient_changed(self, text: str) -> None:
+        """
+        Habilita o botão Iniciar na Tela de Configuração se o nome não for vazio.
+        """
+        self._setup_btn_start.setEnabled(bool(text.strip()))
+
+    def _on_setup_start_clicked(self) -> None:
+        """
+        Processa o clique em 'Iniciar Avaliação' na Tela de Configuração.
+
+        Desabilita o botão para evitar duplo clique, sincroniza os dados
+        com o SessionHeaderWidget e invoca o fluxo central de _start_session().
+        """
+        self._setup_btn_start.setEnabled(False)
+
+        # Copia somente uma vez os dados para SessionHeaderWidget
+        self.session_header._input_patient.setText(self._setup_input_patient.text().strip())
+        self.session_header._combo_hand.setCurrentText(self._setup_combo_hand.currentText())
+        self.session_header._spin_session.setValue(self._setup_spin_session.value())
+
+        # Dispara o método oficial de início de sessão
+        self._start_session()
+
+        # Se por qualquer motivo a sessão não atingiu RUNNING, reabilita o botão
+        if self._state != "RUNNING":
+            self._setup_btn_start.setEnabled(bool(self._setup_input_patient.text().strip()))
 
     def _create_placeholder_page(self, title: str) -> QWidget:
         """
@@ -820,6 +970,9 @@ class MainWindow(QMainWindow):
             "Sessão iniciada: paciente=%s, mão=%s, sessão=%d, csv=%s",
             patient_name, hand, session_number, self._csv_path,
         )
+
+        # Transição autorizada para a Página 0 (avaliação em tempo real)
+        self._stack.setCurrentIndex(0)
 
     def _end_session(self) -> None:
         """
