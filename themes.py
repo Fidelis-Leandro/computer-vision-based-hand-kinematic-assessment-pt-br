@@ -1,26 +1,27 @@
 """
-themes.py — Professional dark visual theme for the PyQt6 interface
+themes.py — Tema visual escuro profissional para a interface PyQt6
 ====================================================================
 
-This module is responsible for the visual identity of the ENTIRE application.
-By centralizing colors, fonts, and styles here, we ensure that any future
-visual change is made in a single place and propagates automatically to all widgets.
+Este módulo é responsável pela identidade visual de TODA a aplicação.
+Ao centralizar cores, fontes e estilos aqui, garantimos que qualquer
+alteração visual futura seja feita em um único ponto e propagada
+automaticamente para todos os widgets.
 
-Usage:
-    In app_pyqt.py, after creating the QApplication, call:
+Uso:
+    No app_pyqt.py, após criar a QApplication, chame:
         from themes import apply_dark_theme
         apply_dark_theme(app)
 
-    In individual widgets, import the style constants:
+    Em widgets individuais, importe as constantes de estilo:
         from themes import CARD_STYLE, LABEL_TITLE_STYLE
 
-Design philosophy:
-    The dark theme was chosen because:
-    1. It reduces eye strain during long clinical sessions.
-    2. It increases the contrast of colored charts (PyQtGraph).
-    3. It is the de facto standard in modern scientific and medical applications.
-    4. The video overlay with a dark background (produced by goniometry_overlay.py)
-       integrates naturally and seamlessly with the dark theme.
+Filosofia de design:
+    O tema escuro foi escolhido porque:
+    1. Reduz o cansaço visual durante longas sessões clínicas.
+    2. Aumenta o contraste dos gráficos coloridos (PyQtGraph).
+    3. É o padrão de fato em aplicações médicas e científicas modernas.
+    4. O overlay de vídeo com fundo escuro (produzido por goniometry_overlay.py)
+       integra-se de forma natural e uniforme ao restante da janela.
 """
 
 from PyQt6.QtGui import QColor, QPalette, QFont
@@ -28,116 +29,116 @@ from PyQt6.QtWidgets import QApplication
 
 
 # =============================================================================
-# BASE COLOR PALETTE
+# PALETA DE CORES BASE
 # =============================================================================
-# These constants define the fundamental tones of the theme.
-# All styles below derive from these definitions.
-# Changing these affects the whole application — use with care.
+# Estas constantes definem os tons fundamentais do tema.
+# Todos os estilos abaixo derivam dessas definições.
+# Alterar estes valores afeta toda a aplicação — utilize com cuidado.
 
-# Primary window and panel background color.
-# #1a1a2e: very dark navy blue. Chosen for being less flat than pure black (#000000)
-# and creating visual depth without eye strain.
+# Cor de fundo principal da janela e dos painéis.
+# #1a1a2e: azul marinho muito escuro. Escolhido por ser menos plano que o preto puro (#000000)
+# e criar profundidade visual sem causar cansaço aos olhos.
 COLOR_BG_DARK = "#1a1a2e"
 
-# Secondary widget background (cards, groups, inner panels).
-# Slightly lighter than BG_DARK to create visual hierarchy without harsh contrast.
+# Cor de fundo secundária dos widgets (cartões, grupos, painéis internos).
+# Levemente mais clara que BG_DARK para criar hierarquia visual sem contraste excessivo.
 COLOR_BG_MEDIUM = "#16213e"
 
-# Background for interactive elements at rest (buttons, text fields).
+# Cor de fundo para elementos interativos em repouso (botões, campos de texto).
 COLOR_BG_LIGHT = "#0f3460"
 
-# Primary text color — soft white.
-# We avoid pure white (#ffffff) because on dark backgrounds it causes visual
-# vibration (known as "simultaneous irradiation"). #e2e8f0 is more comfortable.
+# Cor do texto principal — branco suave.
+# Evitamos o branco puro (#ffffff) porque em fundos escuros ele provoca vibração
+# visual (conhecida como "irradiação simultânea"). #e2e8f0 é mais confortável para leitura.
 COLOR_TEXT_PRIMARY = "#e2e8f0"
 
-# Secondary text color — for captions, less important values, placeholders.
+# Cor do texto secundário — para legendas, valores auxiliares, marcadores de posição.
 COLOR_TEXT_SECONDARY = "#94a3b8"
 
-# Accent color — vibrant cyan blue.
-# Used in focus borders, active indicators, and primary action elements.
+# Cor de destaque — azul ciano vibrante.
+# Usada em bordas de foco, indicadores ativos e elementos de ação primária.
 COLOR_ACCENT = "#38bdf8"
 
-# Success color — green for positive states (hand detected, active session, Regular).
+# Cor de sucesso — verde para estados positivos (mão detectada, sessão ativa, "Regular").
 COLOR_SUCCESS = "#22c55e"
 
-# Warning color — yellow for alert states (Good classification, moderate regularity).
+# Cor de aviso — amarelo para estados de alerta, como resultado clínico "Bom" e regularidade "Moderado".
 COLOR_WARNING = "#eab308"
 
-# Danger color — red for critical states (closed hand, errors, Poor).
+# Cor de perigo — vermelho para estados críticos (mão fechada, erros, "Ruim").
 COLOR_DANGER = "#ef4444"
 
-# Default border color — dark gray to separate sections without visual aggression.
+# Cor padrão de borda — cinza escuro para separar seções sem agressividade visual.
 COLOR_BORDER = "#334155"
 
-# Metric card background color — slightly different from the medium background
-# to create visual "elevation" without using shadows (which are costly in PyQt6).
+# Cor de fundo dos cartões de métrica — sutilmente diferente do fundo médio
+# para criar "elevação" visual sem recorrer a sombras (que têm custo elevado no PyQt6).
 COLOR_CARD_BG = "#1e293b"
 
 
 # =============================================================================
-# MAIN THEME APPLICATION FUNCTION
+# FUNÇÃO PRINCIPAL DE APLICAÇÃO DO TEMA
 # =============================================================================
 
 def apply_dark_theme(app: QApplication) -> None:
     """
-    Applies the professional dark theme to the QApplication instance.
+    Aplica o tema escuro profissional à instância da QApplication.
 
-    This function must be called ONCE, immediately after creating the
-    QApplication and BEFORE creating any window or widget. This ensures
-    all subsequently created elements inherit the correct theme.
+    Esta função deve ser chamada UMA VEZ, imediatamente após criar a
+    QApplication e ANTES de criar qualquer janela ou widget. Isso garante
+    que todos os elementos criados posteriormente herdem o tema correto.
 
-    Qt propagates the QPalette automatically to all child widgets.
-    Therefore, configuring only the QApplication palette is sufficient —
-    there is no need to set colors per widget individually.
+    O Qt propaga o QPalette automaticamente para todos os widgets filhos.
+    Portanto, configurar apenas a paleta da QApplication é suficiente —
+    não há necessidade de definir cores individualmente por widget.
 
-    Parameters:
-        app: The QApplication instance created in app_pyqt.py.
-             Must be the object returned by QApplication(sys.argv).
+    Parâmetros:
+        app: Instância da QApplication criada no app_pyqt.py.
+             Deve ser o objeto retornado por QApplication(sys.argv).
 
-    Returns:
-        None. The modification is applied directly to the app object.
+    Retorna:
+        None. A modificação é aplicada diretamente ao objeto app.
     """
-    # Create a new color palette from scratch to avoid inheriting unexpected
-    # values from the operating system's default theme.
+    # Cria uma nova paleta de cores do zero para evitar herdar valores
+    # inesperados do tema padrão do sistema operacional.
     palette = QPalette()
 
-    # --- Color palette definition ---
-    # Qt organizes colors by "group" (Normal, Disabled, Inactive) and by "role".
-    # We configure only the Normal group — Disabled and Inactive groups inherit
-    # automatically with softened tones applied by Qt.
+    # --- Definição da paleta de cores ---
+    # O Qt organiza cores por "grupo" (Normal, Disabled, Inactive) e por "função" (role).
+    # Configuramos apenas o grupo Normal — os grupos Disabled e Inactive herdam
+    # automaticamente com tons suavizados aplicados pelo Qt.
 
-    # Background for main windows (QMainWindow, QDialog).
+    # Fundo das janelas principais (QMainWindow, QDialog).
     palette.setColor(QPalette.ColorRole.Window, QColor(COLOR_BG_DARK))
 
-    # Text on window backgrounds — must have sufficient contrast with Window.
+    # Texto sobre fundos de janela — deve ter contraste suficiente com Window.
     palette.setColor(QPalette.ColorRole.WindowText, QColor(COLOR_TEXT_PRIMARY))
 
-    # Background for input widgets (QLineEdit, QTextEdit, QComboBox).
-    # Using BG_MEDIUM to distinguish text fields from the window background.
+    # Fundo dos widgets de entrada (QLineEdit, QTextEdit, QComboBox).
+    # Usando BG_MEDIUM para distinguir campos de texto do fundo da janela.
     palette.setColor(QPalette.ColorRole.Base, QColor(COLOR_BG_MEDIUM))
 
-    # Alternating background in lists and tables (even vs odd rows).
+    # Fundo alternado em listas e tabelas (linhas pares vs ímpares).
     palette.setColor(QPalette.ColorRole.AlternateBase, QColor(COLOR_BG_LIGHT))
 
-    # Text color inside input fields (QLineEdit, QTextEdit).
+    # Cor do texto dentro dos campos de entrada (QLineEdit, QTextEdit).
     palette.setColor(QPalette.ColorRole.Text, QColor(COLOR_TEXT_PRIMARY))
 
-    # Button background (QPushButton).
+    # Fundo dos botões (QPushButton).
     palette.setColor(QPalette.ColorRole.Button, QColor(COLOR_BG_LIGHT))
 
-    # Text on buttons — light for contrast with BG_LIGHT.
+    # Texto sobre os botões — claro para contraste com BG_LIGHT.
     palette.setColor(QPalette.ColorRole.ButtonText, QColor(COLOR_TEXT_PRIMARY))
 
-    # Accent color: background of selected items, progress bars, etc.
+    # Cor de destaque: fundo de itens selecionados, barras de progresso, etc.
     palette.setColor(QPalette.ColorRole.Highlight, QColor(COLOR_ACCENT))
 
-    # Text on accent background — dark to ensure readability
-    # when the item is selected (contrast with the cyan blue of Highlight).
+    # Texto sobre fundo de destaque — escuro para garantir legibilidade
+    # quando o item estiver selecionado (contraste com o azul ciano de Highlight).
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#0f172a"))
 
-    # Text color in disabled fields — darker gray to visually indicate
-    # the field is unavailable.
+    # Cor do texto em campos desabilitados — cinza mais escuro para indicar visualmente
+    # que o campo está indisponível.
     palette.setColor(
         QPalette.ColorGroup.Disabled,
         QPalette.ColorRole.WindowText,
@@ -149,38 +150,38 @@ def apply_dark_theme(app: QApplication) -> None:
         QColor("#475569"),
     )
 
-    # Color used for tooltips.
+    # Cor utilizada para dicas de ferramenta (tooltips).
     palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(COLOR_BG_LIGHT))
     palette.setColor(QPalette.ColorRole.ToolTipText, QColor(COLOR_TEXT_PRIMARY))
 
-    # Apply the configured palette to the entire application.
-    # This is the only point where the palette needs to be defined —
-    # all subsequently created widgets will inherit it automatically.
+    # Aplica a paleta configurada a toda a aplicação.
+    # Este é o único ponto onde a paleta precisa ser definida —
+    # todos os widgets criados posteriormente a herdarão automaticamente.
     app.setPalette(palette)
 
-    # Apply a global stylesheet to refine elements that QPalette does not control
-    # directly. Stylesheet takes precedence over QPalette for the same widgets.
+    # Aplica uma folha de estilo Qt (QSS) global para refinar elementos que o QPalette
+    # não controla diretamente. A folha de estilo tem precedência sobre o QPalette.
     app.setStyleSheet(_build_global_stylesheet())
 
 
 def _build_global_stylesheet() -> str:
     """
-    Builds and returns the global CSS stylesheet for the application.
+    Constrói e retorna a folha de estilo Qt (QSS) global da aplicação.
 
-    Qt uses a syntax similar to standard CSS to style widgets.
-    This function centralizes all styles that require more control
-    than QPalette offers (borders, border-radius, padding, hover, etc.).
+    O Qt utiliza uma sintaxe similar ao CSS padrão para estilizar widgets.
+    Esta função centraliza todos os estilos que exigem mais controle
+    do que o QPalette oferece (bordas, arredondamento, espaçamento, foco, etc.).
 
-    Returns:
-        str: String containing the full stylesheet in Qt StyleSheet format.
+    Retorna:
+        str: String contendo a Qt StyleSheet (QSS) completa.
     """
     return f"""
-        /* ── Main window ── */
+        /* ── Janela principal ── */
         QMainWindow {{
             background-color: {COLOR_BG_DARK};
         }}
 
-        /* ── Generic widgets ── */
+        /* ── Widgets genéricos ── */
         QWidget {{
             background-color: {COLOR_BG_DARK};
             color: {COLOR_TEXT_PRIMARY};
@@ -188,9 +189,9 @@ def _build_global_stylesheet() -> str:
             font-size: 13px;
         }}
 
-        /* ── Widget groups (QGroupBox) ──
-           Used as visual containers for each layout section.
-           border-radius gives a modern look without being excessive. */
+        /* ── Grupos de widgets (QGroupBox) ──
+           Usados como contêineres visuais para cada seção do layout.
+           O border-radius confere aspecto moderno sem excesso. */
         QGroupBox {{
             background-color: {COLOR_BG_MEDIUM};
             border: 1px solid {COLOR_BORDER};
@@ -208,9 +209,9 @@ def _build_global_stylesheet() -> str:
             color: {COLOR_ACCENT};
         }}
 
-        /* ── Main buttons ──
-           Base style with rounded corners. Hover and pressed states
-           provide immediate visual feedback on click. */
+        /* ── Botões principais ──
+           Estilo base com cantos arredondados. Os estados hover e pressionado
+           fornecem feedback visual imediato ao clique. */
         QPushButton {{
             background-color: {COLOR_BG_LIGHT};
             color: {COLOR_TEXT_PRIMARY};
@@ -235,7 +236,7 @@ def _build_global_stylesheet() -> str:
             border-color: #1e293b;
         }}
 
-        /* ── Text input fields (QLineEdit) ── */
+        /* ── Campos de entrada de texto (QLineEdit) ── */
         QLineEdit {{
             background-color: {COLOR_BG_MEDIUM};
             color: {COLOR_TEXT_PRIMARY};
@@ -252,7 +253,7 @@ def _build_global_stylesheet() -> str:
             background-color: #0f172a;
         }}
 
-        /* ── ComboBox (drop-down lists) ── */
+        /* ── ComboBox (listas suspensas) ── */
         QComboBox {{
             background-color: {COLOR_BG_MEDIUM};
             color: {COLOR_TEXT_PRIMARY};
@@ -272,7 +273,7 @@ def _build_global_stylesheet() -> str:
             border: 1px solid {COLOR_BORDER};
         }}
 
-        /* ── SpinBox (incremental numeric fields) ── */
+        /* ── SpinBox (campos numéricos incrementais) ── */
         QSpinBox {{
             background-color: {COLOR_BG_MEDIUM};
             color: {COLOR_TEXT_PRIMARY};
@@ -285,7 +286,7 @@ def _build_global_stylesheet() -> str:
             border-color: {COLOR_ACCENT};
         }}
 
-        /* ── Text area (QTextEdit) — used by LogWidget ── */
+        /* ── Área de texto (QTextEdit) — usada pelo LogWidget ── */
         QTextEdit {{
             background-color: #0d1117;
             color: {COLOR_TEXT_SECONDARY};
@@ -296,8 +297,8 @@ def _build_global_stylesheet() -> str:
             font-size: 11px;
         }}
 
-        /* ── Scroll bars ──
-           Thin and discreet to avoid competing with the main content. */
+        /* ── Barras de rolagem ──
+           Finas e discretas para evitar competição visual com o conteúdo principal. */
         QScrollBar:vertical {{
             background: {COLOR_BG_DARK};
             width: 8px;
@@ -315,19 +316,19 @@ def _build_global_stylesheet() -> str:
             height: 0px;
         }}
 
-        /* ── Horizontal separators (QFrame::HLine) ── */
+        /* ── Separadores horizontais (QFrame::HLine) ── */
         QFrame[frameShape="4"] {{
             color: {COLOR_BORDER};
             max-height: 1px;
         }}
 
-        /* ── Generic labels ── */
+        /* ── Rótulos genéricos (QLabel) ── */
         QLabel {{
             color: {COLOR_TEXT_PRIMARY};
             background: transparent;
         }}
 
-        /* ── Tooltips ── */
+        /* ── Dicas de ferramenta (Tooltips / QToolTip) ── */
         QToolTip {{
             background-color: {COLOR_BG_LIGHT};
             color: {COLOR_TEXT_PRIMARY};
@@ -340,15 +341,15 @@ def _build_global_stylesheet() -> str:
 
 
 # =============================================================================
-# REUSABLE STYLE CONSTANTS
+# CONSTANTES DE ESTILO REUTILIZÁVEIS
 # =============================================================================
-# These StyleSheet strings are imported by individual widgets
-# and applied via widget.setStyleSheet(CONSTANT). Centralizing them here avoids
-# code duplication and ensures visual consistency across all widgets.
+# Estas strings de StyleSheet são importadas por widgets individuais
+# e aplicadas via widget.setStyleSheet(CONSTANTE). Centralizá-las aqui evita
+# duplicação de código e assegura consistência visual em todos os widgets.
 
-# Base style for metric cards (FPS, CPU, RAM, hand state).
-# Used by: ui/metrics_widget.py -> MetricsWidget
-# QFrame with slightly lighter background than the panel and subtle border for "elevation".
+# Estilo base para cartões de métrica (FPS, CPU, RAM, estado da mão).
+# Usado por: ui/metrics_widget.py -> MetricsWidget
+# QFrame com fundo levemente mais claro que o painel e borda sutil para "elevação".
 CARD_STYLE: str = f"""
     .QFrame {{
         background-color: {COLOR_CARD_BG};
@@ -358,9 +359,9 @@ CARD_STYLE: str = f"""
     }}
 """
 
-# Style for the title inside metric cards (e.g., "FPS", "CPU").
-# Small text, secondary color — must not compete with the main value.
-# Used by: ui/metrics_widget.py -> card labels
+# Estilo para o título dentro dos cartões de métrica (ex: "FPS", "CPU").
+# Texto pequeno em cor secundária — não deve competir com o valor principal.
+# Usado por: ui/metrics_widget.py -> rótulos dos cartões
 LABEL_TITLE_STYLE: str = f"""
     QLabel {{
         color: {COLOR_TEXT_SECONDARY};
@@ -371,9 +372,9 @@ LABEL_TITLE_STYLE: str = f"""
     }}
 """
 
-# Style for the primary numeric value inside cards (e.g., "58.3", "24%").
-# Large bold text — must be the most readable element in the card.
-# Used by: ui/metrics_widget.py -> card values
+# Estilo para o valor numérico principal dentro dos cartões (ex: "58.3", "24%").
+# Texto grande em negrito — deve ser o elemento mais legível do cartão.
+# Usado por: ui/metrics_widget.py -> valores dos cartões
 LABEL_VALUE_STYLE: str = f"""
     QLabel {{
         color: {COLOR_TEXT_PRIMARY};
@@ -384,9 +385,9 @@ LABEL_VALUE_STYLE: str = f"""
     }}
 """
 
-# Style for the hand state card when HAND OPEN.
-# Soft green background — positive indicator, not aggressive.
-# Used by: ui/metrics_widget.py -> state card
+# Estilo para o cartão de estado da mão quando MÃO ABERTA.
+# Fundo verde suave — indicador positivo e não agressivo.
+# Usado por: ui/metrics_widget.py -> cartão de estado
 CARD_HAND_OPEN_STYLE: str = f"""
     .QFrame {{
         background-color: #14532d;
@@ -396,9 +397,9 @@ CARD_HAND_OPEN_STYLE: str = f"""
     }}
 """
 
-# Style for the hand state card when HAND CLOSED.
-# Dark red background — clinical alert indicator.
-# Used by: ui/metrics_widget.py -> state card
+# Estilo para o cartão de estado da mão quando MÃO FECHADA.
+# Fundo vermelho escuro — indicador de alerta clínico.
+# Usado por: ui/metrics_widget.py -> cartão de estado
 CARD_HAND_CLOSED_STYLE: str = f"""
     .QFrame {{
         background-color: #7f1d1d;
@@ -408,8 +409,8 @@ CARD_HAND_CLOSED_STYLE: str = f"""
     }}
 """
 
-# Style for the hand state text (large, centered, bold).
-# Used by: ui/metrics_widget.py -> label inside the state card
+# Estilo para o texto de estado da mão (grande, centralizado, negrito).
+# Usado por: ui/metrics_widget.py -> rótulo dentro do cartão de estado
 LABEL_HAND_STATE_STYLE: str = f"""
     QLabel {{
         color: {COLOR_TEXT_PRIMARY};
@@ -420,9 +421,9 @@ LABEL_HAND_STATE_STYLE: str = f"""
     }}
 """
 
-# Style for the session header (SessionHeaderWidget).
-# Differentiated background to visually separate it from the rest of the layout.
-# Used by: ui/session_header.py -> main container
+# Estilo para o cabeçalho da sessão (SessionHeaderWidget).
+# Fundo diferenciado para separá-lo visualmente do restante do layout.
+# Usado por: ui/session_header.py -> contêiner principal
 SESSION_HEADER_STYLE: str = f"""
     .QWidget {{
         background-color: {COLOR_BG_MEDIUM};
@@ -430,9 +431,9 @@ SESSION_HEADER_STYLE: str = f"""
     }}
 """
 
-# Style for section title labels inside the header.
-# Highlighted text in accent color — clearly identifies the field's purpose.
-# Used by: ui/session_header.py -> field labels
+# Estilo para os rótulos de título de seção dentro do cabeçalho.
+# Texto destacado na cor de acento — identifica com clareza a finalidade do campo.
+# Usado por: ui/session_header.py -> rótulos dos campos
 LABEL_SECTION_TITLE_STYLE: str = f"""
     QLabel {{
         color: {COLOR_ACCENT};
@@ -442,9 +443,9 @@ LABEL_SECTION_TITLE_STYLE: str = f"""
     }}
 """
 
-# Style for each finger card (FingerCardWidget).
-# More compact than CARD_STYLE — 5 cards fit side by side in the layout.
-# Used by: ui/finger_card_widget.py -> each finger container
+# Estilo para cada cartão de dedo (FingerCardWidget).
+# Mais compacto que CARD_STYLE — 5 cartões organizados lado a lado no layout.
+# Usado por: ui/finger_card_widget.py -> contêiner de cada dedo
 FINGER_CARD_STYLE: str = f"""
     QGroupBox {{
         background-color: {COLOR_CARD_BG};
@@ -463,9 +464,9 @@ FINGER_CARD_STYLE: str = f"""
     }}
 """
 
-# Style for clinical value labels inside finger cards.
-# Medium size — readable but does not dominate the card.
-# Used by: ui/finger_card_widget.py -> TAM, velocity, frequency
+# Estilo para rótulos de valores clínicos dentro dos cartões de dedos.
+# Tamanho intermediário — legível sem dominar visualmente o cartão.
+# Usado por: ui/finger_card_widget.py -> TAM, velocidade, frequência
 LABEL_CLINICAL_VALUE_STYLE: str = f"""
     QLabel {{
         color: {COLOR_TEXT_PRIMARY};
@@ -475,9 +476,9 @@ LABEL_CLINICAL_VALUE_STYLE: str = f"""
     }}
 """
 
-# Style for secondary metric labels inside finger cards.
-# Smaller text — supporting information for the primary value.
-# Used by: ui/finger_card_widget.py -> rom, regularity
+# Estilo para rótulos de métricas secundárias dentro dos cartões de dedos.
+# Texto menor — informação complementar de apoio ao valor principal.
+# Usado por: ui/finger_card_widget.py -> ROM, regularidade
 LABEL_CLINICAL_SECONDARY_STYLE: str = f"""
     QLabel {{
         color: {COLOR_TEXT_SECONDARY};
@@ -486,9 +487,9 @@ LABEL_CLINICAL_SECONDARY_STYLE: str = f"""
     }}
 """
 
-# Style for the primary action button (Start Session).
-# Highlighted with the success color to indicate a positive and safe action.
-# Used by: ui/main_window.py -> Start button
+# Estilo para o botão de ação principal (Iniciar Sessão).
+# Destacado com a cor de sucesso para indicar ação positiva e segura.
+# Usado por: ui/main_window.py -> botão Iniciar
 BUTTON_PRIMARY_STYLE: str = f"""
     QPushButton {{
         background-color: #15803d;
@@ -514,9 +515,9 @@ BUTTON_PRIMARY_STYLE: str = f"""
     }}
 """
 
-# Style for the destructive action button (End Session).
-# Red to signal that this action ends the session and cannot easily be undone.
-# Used by: ui/main_window.py -> End button
+# Estilo para o botão de ação destrutiva (Finalizar Sessão).
+# Vermelho para alertar que esta ação encerra a sessão e não pode ser desfeita facilmente.
+# Usado por: ui/main_window.py -> botão Finalizar
 BUTTON_DANGER_STYLE: str = f"""
     QPushButton {{
         background-color: #991b1b;
