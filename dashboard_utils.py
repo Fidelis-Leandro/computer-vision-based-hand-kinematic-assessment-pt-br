@@ -1,17 +1,17 @@
 """
-dashboard_utils.py — Clinical utilities for the real-time dashboard
+dashboard_utils.py — Utilitários clínicos para o painel em tempo real
 ====================================================================
 
-Pure functions for:
-- classifying the global hand state;
-- computing sliding-window metrics per finger;
-- classifying TAM by functional ranges;
-- formatting frequency and regularity for display.
+Funções puras para:
+- classificar o estado global da mão;
+- calcular métricas em janela deslizante por dedo;
+- classificar o TAM por faixas funcionais;
+- formatar frequência e regularidade para exibição.
 
-Notes:
-- this module has no UI framework dependencies;
-- all metrics are computed over temporal buffers;
-- does not compute frame-by-frame clinical indicators in isolation.
+Observações:
+- este módulo não possui dependências com frameworks de interface;
+- todas as métricas são calculadas sobre buffers temporais;
+- não calcula indicadores clínicos isolados quadro a quadro.
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ import statistics
 FINGERS = ["INDEX", "MIDDLE", "RING", "PINKY", "THUMB"]
 JOINTS = ["MCP", "PIP", "DIP", "ABD", "TAM"]
 
-# Valid joints per finger — centralized source of truth.
-# The thumb has a different anatomy: only MCP and IP.
-# All other fingers: MCP, PIP, DIP, ABD, TAM.
+# Articulações válidas por dedo — fonte centralizada de verdade.
+# O polegar possui anatomia diferenciada: apenas MCP e IP.
+# Demais dedos: MCP, PIP, DIP, ABD, TAM.
 FINGER_JOINTS: Dict[str, Tuple[str, ...]] = {
     "INDEX":  ("MCP", "PIP", "DIP", "ABD", "TAM"),
     "MIDDLE": ("MCP", "PIP", "DIP", "ABD", "TAM"),
@@ -38,17 +38,17 @@ FINGER_JOINTS: Dict[str, Tuple[str, ...]] = {
 
 
 # =============================================================================
-# TAM FUNCTIONAL CLASSIFICATION / ASSH
+# CLASSIFICAÇÃO FUNCIONAL DO TAM / ASSH
 # =============================================================================
 
 def assh_classify(tam: float) -> Tuple[str, str]:
     """
-    Classifies TAM by functional range (long fingers).
+    Classifica o TAM por faixa funcional (dedos longos).
 
-    Returns:
+    Retorna:
         (label, color_hex)
 
-    Ranges:
+    Faixas:
     - >= 260° : Excelente
     - 195–259°: Bom
     - 130–194°: Razoável
@@ -65,15 +65,15 @@ def assh_classify(tam: float) -> Tuple[str, str]:
 
 def assh_classify_thumb(tam: float) -> Tuple[str, str]:
     """
-    Classifies thumb TAM by adapted functional ranges.
+    Classifica o TAM do polegar por faixas funcionais adaptadas.
 
-    The thumb has a maximum anatomical TAM of ~120–130° (MCP + IP),
-    so ASSH ranges are proportionally smaller.
+    O polegar possui TAM anatômico máximo de ~120–130° (MCP + IP),
+    portanto as faixas ASSH são proporcionalmente menores.
 
-    Returns:
+    Retorna:
         (label, color_hex)
 
-    Ranges:
+    Faixas:
     - >= 110° : Excelente
     - 80–109° : Bom
     - 50–79°  : Razoável
@@ -90,7 +90,7 @@ def assh_classify_thumb(tam: float) -> Tuple[str, str]:
 
 def tam_progress(tam: float, max_tam: float = 270.0) -> float:
     """
-    Normalizes TAM to a progress bar value between 0 and 1.
+    Normaliza o TAM para um valor de barra de progresso entre 0 e 1.
     """
     if max_tam <= 0:
         return 0.0
@@ -98,19 +98,19 @@ def tam_progress(tam: float, max_tam: float = 270.0) -> float:
 
 
 # =============================================================================
-# GLOBAL HAND STATE
+# ESTADO GLOBAL DA MÃO
 # =============================================================================
 
 def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
     """
-    Classifies the hand state based on the current TAM of each finger.
+    Classifica o estado da mão com base no TAM atual de cada dedo.
 
-    Clinical rules:
-    - Long fingers (INDEX, MIDDLE, RING, PINKY): closed if TAM >= 130 degrees.
-    - Thumb (THUMB): closed if MCP + IP >= 80 degrees (total rom proxy).
-    - Hand closed if >= 4 of 5 fingers are closed.
+    Regras clínicas:
+    - Dedos longos (`INDEX`, `MIDDLE`, `RING`, `PINKY`): fechados se `TAM >= 130°`.
+    - Polegar (`THUMB`): fechado se `MCP + IP >= 80°` (estimativa do ROM total).
+    - Mão fechada se pelo menos 4 dos 5 dedos estiverem fechados.
 
-    Returns:
+    Retorna:
     {
         "estados_dedos": {
             "INDEX": {
@@ -126,7 +126,7 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
             "THUMB": {
                 "MCP": float,
                 "IP": float,
-                "TAM": float,   # proxy: MCP + IP
+                "TAM": float,  # estimativa: MCP + IP
                 "fechado": bool,
                 "rotulo_assh": str,
                 "cor_assh": str,
@@ -147,7 +147,7 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
             mcp = float(finger_data.get("MCP", 0.0))
             ip  = float(finger_data.get("IP", 0.0))
             tam = float(finger_data.get("TAM", 0.0))
-            # Closed threshold proportional to the maximum thumb TAM (~120°).
+            # Limiar de fechamento proporcional ao TAM máximo do polegar (~120°).
             closed = tam >= 85.0
             if closed:
                 closed_count += 1
@@ -194,7 +194,7 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
 
 
 # =============================================================================
-# PEAK DETECTION
+# DETECÇÃO DE PICOS
 # =============================================================================
 
 def _safe_mean(values: Sequence[float], default: float = 0.0) -> float:
@@ -211,7 +211,7 @@ def _safe_std(values: Sequence[float], default: float = 0.0) -> float:
 
 def _estimate_fps(time_values: Sequence[float]) -> float:
     """
-    Estimates average FPS from the buffer timestamps.
+    Estima o FPS médio a partir dos timestamps do buffer.
     """
     if len(time_values) < 2:
         return 0.0
@@ -239,18 +239,21 @@ def _detect_peaks(
     min_dist_s: float = 1.0,
 ) -> List[int]:
     """
-    Detects local peaks (maxima) in a sliding window.
+    Detecta picos locais (máximos) em uma janela deslizante.
 
-    Criteria:
-    - Local maximum with plateau tolerance: curr >= prev AND curr > next
-      (the previous criterion curr > prev AND curr >= next failed when the
-       smoothed signal produced plateaus, marking the peak at the wrong edge).
-    - Peak value above a threshold relative to the local range:
-        threshold = min(angle) + min_range_pct * (max(angle) - min(angle))
-    - Minimum distance between peaks in seconds, converted to samples.
+    Critérios:
+    - Máximo local com tolerância a platô:
+      `curr_v >= prev_v and curr_v > next_v`.
+      O critério anterior,
+      `curr_v > prev_v and curr_v >= next_v`,
+      falhava quando o sinal suavizado produzia platôs e marcava
+      o pico na borda incorreta.
+    - Valor do pico acima de um limiar relativo à amplitude local:
+      `threshold = min(angle) + min_range_pct * (max(angle) - min(angle))`.
+    - Distância mínima entre picos em segundos, convertida para amostras.
 
-    Returns:
-        List of indices of detected peaks.
+    Retorna:
+        Lista de índices dos picos detectados.
     """
     n = len(angle_values)
     if n < 3 or len(time_values) != n:
@@ -277,8 +280,8 @@ def _detect_peaks(
         curr_v = angle_values[i]
         next_v = angle_values[i + 1]
 
-        # Plateau tolerance: accepts curr == prev, but requires curr > next.
-        # This ensures the first point of a plateau is accepted as a peak.
+        # Tolerância a platô: aceita curr == prev, mas exige curr > next.
+        # Isso garante que o primeiro ponto de um platô seja aceito como pico.
         is_local_peak = (curr_v >= prev_v) and (curr_v > next_v)
         if is_local_peak and curr_v >= threshold:
             candidate_peaks.append(i)
@@ -305,10 +308,10 @@ def _detect_valleys(
     min_dist_s: float = 1.0,
 ) -> List[int]:
     """
-    Detects local valleys (minima) in a sliding window.
+    Detecta vales locais (mínimos) em uma janela deslizante.
 
-    Symmetric to _detect_peaks, but inverts the signal direction.
-    Required to count complete cycles (flexion + extension).
+    Simétrico a `_detect_peaks`, mas inverte o sentido do sinal.
+    Necessário para contar ciclos completos (flexão + extensão).
     """
     n = len(angle_values)
     if n < 3 or len(time_values) != n:
@@ -321,7 +324,7 @@ def _detect_valleys(
     if rom <= 1e-6:
         return []
 
-    # Threshold: valley must be below (max - min_range_pct * rom).
+    # Limiar: o vale deve estar abaixo de `max - min_range_pct * rom`.
     threshold = max_val - min_range_pct * rom
 
     fps_est = _estimate_fps(time_values)
@@ -356,7 +359,7 @@ def _detect_valleys(
 
 
 # =============================================================================
-# REAL-TIME METRICS
+# MÉTRICAS EM TEMPO REAL
 # =============================================================================
 
 def compute_realtime_metrics(
@@ -366,15 +369,15 @@ def compute_realtime_metrics(
     min_dist_s: float = 1.0,
 ) -> Dict[str, float | int | str]:
     """
-    Computes real-time metrics for ONE finger based on recent TAM.
+    Calcula métricas em tempo real para UM dedo com base no TAM recente.
 
-    Parameters:
-        angle_buffer: TAM values of the last N frames.
-        time_buffer:  Corresponding timestamps.
-        min_range_pct: Minimum rom percentage to accept a peak.
-        min_dist_s:    Minimum distance between consecutive peaks (seconds).
+    Parâmetros:
+        angle_buffer: valores de TAM dos últimos N quadros.
+        time_buffer: timestamps correspondentes.
+        min_range_pct: percentual mínimo do ROM para aceitar um pico.
+        min_dist_s: distância mínima entre picos consecutivos, em segundos.
 
-    Returns:
+    Retorna:
     {
         "rom": float,
         "vel_media": float,
@@ -426,12 +429,12 @@ def compute_realtime_metrics(
     n_picos = len(peaks)
     n_extremos = len(peaks) + len(valleys)
 
-    # Frequency computed from complete cycles:
-    # - one cycle = 1 peak + 1 valley (flexion + extension).
-    # - n_extremos / 2 gives complete cycles.
-    # - with 2+ peaks: use the interval between first and last peak
-    #   to avoid underestimation when peaks are concentrated at the
-    #   beginning of the window.
+    # Frequência calculada a partir de ciclos completos:
+    # - um ciclo = 1 pico + 1 vale (flexão + extensão).
+    # - `n_extremos / 2` fornece os ciclos completos.
+    # - com 2+ picos: utiliza o intervalo entre o primeiro e o último pico
+    #   para evitar subestimação quando os picos estão concentrados no
+    #   início da janela.
     peak_times = [times[idx] for idx in peaks]
     duration = times[-1] - times[0]
     if n_picos >= 2:
@@ -460,8 +463,8 @@ def compute_realtime_metrics(
             regularity = "Irregular"
     else:
         cv = 0.0
-        # Return "-" (undefined) instead of "Regular" to avoid a false positive.
-        # "Regular" with n_picos < 2 means only absence of data, not good coordination.
+        # Retorna "-" (indefinido) em vez de "Regular" para evitar falso positivo.
+        # "Regular" com n_picos < 2 significa apenas ausência de dados, não boa coordenação.
         regularity = "-"
 
     return {
@@ -476,12 +479,12 @@ def compute_realtime_metrics(
 
 
 # =============================================================================
-# TEXT FORMATTERS
+# FORMATADORES DE TEXTO
 # =============================================================================
 
 def freq_label(freq_hz: float) -> str:
     """
-    Formats frequency for user-friendly display.
+    Formata a frequência para exibição amigável ao usuário.
     """
     if freq_hz <= 0:
         return "0.00 Hz"
@@ -503,7 +506,7 @@ def freq_label(freq_hz: float) -> str:
 
 def regularity_label(regularity: str, cv: float) -> str:
     """
-    Formats temporal regularity for user-friendly display.
+    Formata a regularidade temporal para exibição amigável ao usuário.
     """
     if regularity == "Regular":
         emoji = "✅"
@@ -516,7 +519,7 @@ def regularity_label(regularity: str, cv: float) -> str:
 
 
 # =============================================================================
-# AGGREGATED SESSION METRICS (from in-memory buffers)
+# MÉTRICAS AGREGADAS DA SESSÃO (a partir de buffers em memória)
 # =============================================================================
 
 def compute_session_metrics_from_buffers(
@@ -526,25 +529,25 @@ def compute_session_metrics_from_buffers(
     min_dist_s: float = 1.0,
 ) -> Dict[str, Dict]:
     """
-    Computes consolidated metrics for all fingers from in-memory buffers.
+    Calcula métricas consolidadas para todos os dedos a partir de buffers em memória.
 
-    Reuses compute_realtime_metrics() for each finger, grouping results
-    into a single dictionary indexed by finger name.
+    Reutiliza `compute_realtime_metrics()` para cada dedo, agrupando os
+    resultados em um único dicionário indexado pelo nome do dedo.
 
-    Parameters:
-        angle_buffers: dictionary {finger: {joint: [values]}}
-        time_buffers:  dictionary {finger: [timestamps]}
-        min_range_pct: rom threshold to accept peaks.
-        min_dist_s:    minimum distance between peaks (in seconds).
+    Parâmetros:
+        angle_buffers: dicionário `{dedo: {articulacao: [valores]}}`.
+        time_buffers: dicionário `{dedo: [timestamps]}`.
+        min_range_pct: limiar de ROM para aceitar picos.
+        min_dist_s: distância mínima entre picos, em segundos.
 
-    Returns:
-        {
-            "INDEX":  {rom, vel_media, vel_pico, freq_hz, cv,
-                       regularidade, n_picos},
-            "MIDDLE": {...},
-            "RING":   {...},
-            "PINKY":  {...},
-        }
+    Retorna:
+    {
+        "INDEX": {"rom", "vel_media", "vel_pico", "freq_hz", "cv",
+                  "regularidade", "n_picos"},
+        "MIDDLE": {...},
+        "RING": {...},
+        "PINKY": {...},
+    }
     """
     results: Dict[str, Dict] = {}
 
@@ -566,20 +569,20 @@ def build_tam_chart_data(
     angle_buffers: Dict[str, Dict[str, List[float]]],
 ) -> Dict[str, List[float]]:
     """
-    Builds the TAM time-series dictionary per finger, ready to feed
-    a line chart.
+    Constrói o dicionário de séries temporais de TAM por dedo, pronto para alimentar
+    um gráfico de linhas.
 
-    For long fingers, uses the "TAM" buffer.
-    For the thumb, uses the "MCP" buffer as an rom proxy.
+    Para dedos longos, utiliza o buffer `"TAM"`.
+    Para o polegar, utiliza o buffer `"MCP"` como estimativa de ROM.
 
-    Returns:
-        {
-            "Index":  [float, ...],
-            "Middle": [float, ...],
-            "Ring":   [float, ...],
-            "Pinky":  [float, ...],
-            "Thumb":  [float, ...],
-        }
+    Retorna:
+    {
+        "Index": [float, ...],
+        "Middle": [float, ...],
+        "Ring": [float, ...],
+        "Pinky": [float, ...],
+        "Thumb": [float, ...],
+    }
     """
     name_map = {
         "INDEX":  "Index",
@@ -589,7 +592,7 @@ def build_tam_chart_data(
         "THUMB":  "Thumb",
     }
 
-    # Buffer key to use per finger.
+    # Chave do buffer a ser utilizada por dedo.
     buffer_key = {
         "INDEX":  "TAM",
         "MIDDLE": "TAM",
@@ -604,9 +607,9 @@ def build_tam_chart_data(
         values = angle_buffers.get(finger, {}).get(key, [])
         series[label] = list(values)
 
-    # Align series to the maximum length, padding shorter ones with None
-    # (treated as NaN by Vega-Lite = visible gap in the chart).
-    # This prevents a finger with 1 fewer frame from truncating all others.
+    # Alinha as séries ao comprimento máximo, preenchendo as menores com `None`
+    # (tratado como `NaN` pelo `Vega-Lite` = lacuna visível no gráfico).
+    # Isso evita que um dedo com 1 quadro a menos trunque todos os demais.
     max_len = max((len(v) for v in series.values()), default=0)
     if max_len > 0:
         for label in series:
