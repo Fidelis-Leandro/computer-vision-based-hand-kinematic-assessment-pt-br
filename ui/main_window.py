@@ -1,31 +1,31 @@
 """
-ui/main_window.py — Main window and system orchestrator
-=========================================================
+ui/main_window.py — Janela principal e orquestrador do sistema
+==============================================================
 
-This module implements the MainWindow: the orchestrator of the PyQt6 goniometry application.
-It instantiates all components, connects signals between threads, and controls
-the complete lifecycle (launch → session → termination → reporting).
+Este módulo implementa o MainWindow: o orquestrador da aplicação de goniometria PyQt6.
+Instancia todos os componentes, conecta sinais entre threads e controla
+o ciclo de vida completo (inicialização → sessão → encerramento → relatório).
 
-MainWindow Responsibilities:
-    1. Instantiate and visually arrange all UI widgets.
-    2. Instantiate the workers (CameraWorker, ProcessingWorker) WITHOUT starting them.
-    3. Connect signals from workers to widgets in a thread-safe manner.
-    4. Manage the state machine (IDLE → READY → RUNNING → STOPPED).
-    5. Control the worker lifecycle (start, stop, wait).
-    6. Generate the PDF report without freezing the UI (separate thread).
-    7. Shut down the application cleanly upon window close.
+Responsabilidades do MainWindow:
+    1. Instanciar e organizar visualmente todos os widgets da interface.
+    2. Instanciar os workers (CameraWorker, ProcessingWorker) SEM iniciá-los.
+    3. Conectar sinais dos workers aos widgets de forma thread-safe.
+    4. Gerenciar a máquina de estados (IDLE → READY → RUNNING → STOPPED).
+    5. Controlar o ciclo de vida dos workers (iniciar, parar, aguardar).
+    6. Gerar o relatório PDF sem congelar a interface (thread separada).
+    7. Encerrar a aplicação de forma limpa ao fechar a janela.
 
-State Machine:
-    IDLE    → Initial state. Camera not started. Form is editable.
-    READY   → Patient name filled. Start button enabled.
-    RUNNING → Camera and processing active. End button enabled.
-    STOPPED → Session ended. PDF, CSV, and History enabled.
+Máquina de estados:
+    IDLE    → Estado inicial. Câmera não iniciada. Formulário editável.
+    READY   → Nome do paciente preenchido. Botão Iniciar habilitado.
+    RUNNING → Câmera e processamento ativos. Botão Encerrar habilitado.
+    STOPPED → Sessão encerrada. PDF, CSV e Histórico habilitados.
 
-Data Flow (thread-safe via pyqtSignal):
-    CameraWorker ──frame_ready──► ProcessingWorker (via put_frame, queue)
+Fluxo de dados (thread-safe via pyqtSignal):
+    CameraWorker ──frame_ready──► ProcessingWorker (via put_frame, fila)
     ProcessingWorker ──result_ready──► MainWindow._on_result()
-    MainWindow._on_result() ──distributes──► VideoWidget, MetricsWidget,
-                                             PlotWidget, FingerCardsPanel
+    MainWindow._on_result() ──distribui──► VideoWidget, MetricsWidget,
+                                           PlotWidget, FingerCardsPanel
 """
 
 import logging
@@ -59,11 +59,11 @@ from themes import (
     COLOR_BG_MEDIUM,
 )
 
-# Import the workers.
+# Importa os workers.
 from workers.camera_worker import CameraWorker
 from workers.processing_worker import ProcessingResult, ProcessingWorker
 
-# Import the UI widgets.
+# Importa os widgets de interface.
 from ui.finger_card_widget import FingerCardsPanel
 from ui.log_widget import LogWidget
 from ui.metrics_widget import MetricsWidget
@@ -71,43 +71,43 @@ from ui.plot_widget import GoniometryPlotWidget
 from ui.session_header import SessionHeaderWidget
 from ui.video_widget import VideoWidget
 
-# Module-specific logger — facilitates tracking window events.
+# Logger específico do módulo — facilita o rastreamento de eventos da janela.
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# AUXILIARY WORKER FOR PDF GENERATION
+# WORKER AUXILIAR PARA GERAÇÃO DE PDF
 # =============================================================================
 
 class _PdfGeneratorWorker(QThread):
     """
-    Auxiliary thread for generating the PDF report without blocking the UI.
+    Thread auxiliar para gerar o relatório PDF sem bloquear a interface.
 
-    Why does generate_pdf_report() need a separate thread?
-        The generate_pdf_report() function in session_report.py is HEAVY:
-        - Reads and parses the entire CSV file (can have thousands of rows).
-        - Generates multiple charts with Matplotlib (100–400ms each).
-        - Assembles the PDF with FPDF (includes rendering images).
-        On slow hardware, this process can take 5–15 seconds.
-        If it ran on the main thread, the window would freeze completely
-        for that duration — the OS would display "Application Not Responding",
-        and the user might force-close it.
+    Por que generate_pdf_report() precisa de uma thread separada?
+        A função generate_pdf_report() em session_report.py é PESADA:
+        - Lê e analisa o arquivo CSV inteiro (pode ter milhares de linhas).
+        - Gera múltiplos gráficos com Matplotlib (100–400ms cada).
+        - Monta o PDF com FPDF (inclui renderização de imagens).
+        Em hardware lento, esse processo pode levar de 5 a 15 segundos.
+        Se rodasse na thread principal, a janela ficaria completamente congelada
+        durante esse período — o SO exibiria "Aplicação Sem Resposta",
+        e o usuário poderia forçar o fechamento.
 
-        Running in a QThread:
-        - The window remains responsive throughout the process.
-        - The user can see the progress bar or log updating.
-        - The finished_signal notifies MainWindow when the PDF
-          is ready, in a thread-safe manner.
+        Executando em QThread:
+        - A janela permanece responsiva durante todo o processo.
+        - O usuário pode ver a barra de progresso ou o log atualizando.
+        - O finished_signal notifica o MainWindow quando o PDF
+          estiver pronto, de forma thread-safe.
 
-    Signals:
-        finished_signal(str): Generated PDF path upon successful completion.
-        error_signal(str): Error message if generation fails.
+    Sinais:
+        finished_signal(str): Caminho do PDF gerado ao concluir com sucesso.
+        error_signal(str): Mensagem de erro se a geração falhar.
     """
 
-    # Carries the generated PDF path upon successful completion.
+    # Carrega o caminho do PDF gerado ao concluir com sucesso.
     finished_signal: pyqtSignal = pyqtSignal(str)
 
-    # Carries the error message if generation fails.
+    # Carrega a mensagem de erro se a geração falhar.
     error_signal: pyqtSignal = pyqtSignal(str)
 
     def __init__(
@@ -119,14 +119,14 @@ class _PdfGeneratorWorker(QThread):
         parent=None,
     ) -> None:
         """
-        Configures the PDF generation parameters.
+        Configura os parâmetros de geração do PDF.
 
-        Parameters:
-            csv_path: Path to the CSV generated by the ended session.
-            patient_name: Patient name for the report.
-            side: Evaluated hand ("Right" or "Left").
-            logo_path: Path to the institutional logo (optional).
-            parent: Qt parent widget (optional).
+        Parâmetros:
+            csv_path: Caminho para o CSV gerado pela sessão encerrada.
+            patient_name: Nome do paciente para o relatório.
+            side: Mão avaliada ("Direita" ou "Esquerda").
+            logo_path: Caminho para o logotipo institucional (opcional).
+            parent: Widget pai Qt (opcional).
         """
         super().__init__(parent)
         self._csv_path = csv_path
@@ -136,12 +136,12 @@ class _PdfGeneratorWorker(QThread):
 
     def run(self) -> None:
         """
-        Executes the PDF generation on the separate thread.
+        Executa a geração do PDF na thread separada.
 
-        Calls generate_pdf_report() with the configured parameters and
-        emits finished_signal with the PDF path or error_signal with
-        the error description. Never raises exceptions outside the QThread —
-        errors are communicated via signal.
+        Chama generate_pdf_report() com os parâmetros configurados e
+        emite finished_signal com o caminho do PDF ou error_signal com
+        a descrição do erro. Nunca lança exceções fora do QThread —
+        os erros são comunicados via sinal.
         """
         try:
             pdf_path: str = generate_pdf_report(
@@ -150,218 +150,218 @@ class _PdfGeneratorWorker(QThread):
                 side=self._side,
                 logo_path=self._logo_path,
             )
-            # Emits the generated PDF path for MainWindow to display in the dialog.
+            # Emite o caminho do PDF gerado para o MainWindow exibir no diálogo.
             self.finished_signal.emit(pdf_path)
 
         except Exception as exc:
-            # Captures any error (empty CSV, Matplotlib failed, disk full etc.)
-            # and notifies MainWindow via thread-safe signal.
-            logger.error("Failed to generate PDF: %s", exc, exc_info=True)
+            # Captura qualquer erro (CSV vazio, Matplotlib falhou, disco cheio etc.)
+            # e notifica o MainWindow via sinal thread-safe.
+            logger.error("Falha ao gerar PDF: %s", exc, exc_info=True)
             self.error_signal.emit(str(exc))
 
 
 # =============================================================================
-# MAIN WINDOW
+# JANELA PRINCIPAL
 # =============================================================================
 
 class MainWindow(QMainWindow):
     """
-    Main window of the Digital Goniometry application.
+    Janela principal da aplicação de Goniometria Digital.
 
-    Implements the "Controller" pattern from MVC: concentrates all coordination
-    logic in one place, while each widget has a single responsibility.
-    MainWindow DOES NOT perform scientific processing — it only connects
-    data producers (workers) with data displayers (widgets).
+    Implementa o padrão "Controlador" do MVC: concentra toda a lógica de
+    coordenação em um único lugar, enquanto cada widget tem responsabilidade única.
+    O MainWindow NÃO realiza processamento científico — apenas conecta
+    produtores de dados (workers) com exibidores de dados (widgets).
 
-    Current application state:
-        self._state: str — one of: "IDLE", "READY", "RUNNING", "STOPPED"
-        self._csv_path: str — path to the active session CSV (empty if none)
-        self._pdf_worker: Auxiliary QThread for PDF generation (or None)
+    Estado atual da aplicação:
+        self._state: str — um de: "IDLE", "READY", "RUNNING", "STOPPED"
+        self._csv_path: str — caminho para o CSV da sessão ativa (vazio se nenhum)
+        self._pdf_worker: QThread auxiliar para geração de PDF (ou None)
     """
 
     def __init__(self, parent=None) -> None:
         """
-        Initializes the main window: widgets, workers, signals, and initial state.
+        Inicializa a janela principal: widgets, workers, sinais e estado inicial.
 
-        Initialization order:
-            1. Window configuration (title, minimum size).
-            2. Creation of all UI widgets.
-            3. Worker instantiation (WITHOUT starting the threads).
-            4. Connection of all signals between workers and widgets.
-            5. Visual layout assembly.
-            6. Initial state set to "IDLE".
+        Ordem de inicialização:
+            1. Configuração da janela (título, tamanho mínimo).
+            2. Criação de todos os widgets da interface.
+            3. Instanciação dos workers (SEM iniciar as threads).
+            4. Conexão de todos os sinais entre workers e widgets.
+            5. Montagem do layout visual.
+            6. Estado inicial definido como "IDLE".
 
-        Why instantiate workers in __init__ but not start them?
-            Workers need to exist so their signals can be connected.
-            But starting the threads (start()) before the user clicks "Start Session"
-            would waste CPU and camera resources even when the app is idle.
+        Por que instanciar workers em __init__ mas não iniciá-los?
+            Os workers precisam existir para que seus sinais possam ser conectados.
+            Mas iniciar as threads (start()) antes de o usuário clicar em "Iniciar Sessão"
+            desperdiçaria recursos de CPU e câmera mesmo quando a aplicação está ociosa.
 
-        Parameters:
-            parent: Qt parent widget (optional). Usually None for main window.
+        Parâmetros:
+            parent: Widget pai Qt (opcional). Geralmente None para a janela principal.
         """
         super().__init__(parent)
 
-        # --- Window title and size ---
+        # --- Título e tamanho da janela ---
         self.setWindowTitle(config.APP_TITLE)
         self.setMinimumSize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
         self.setStyleSheet(f"QMainWindow {{ background-color: {COLOR_BG_DARK}; }}")
 
-        # --- Internal state ---
-        # String controlling which buttons are enabled and method behavior.
-        # Centralizing in one variable avoids scattered logic.
+        # --- Estado interno ---
+        # String que controla quais botões estão habilitados e o comportamento dos métodos.
+        # Centralizar em uma variável evita lógica dispersa.
         self._state: str = "IDLE"
 
-        # Path to the active session CSV. Set in _start_session().
-        # Used by _gerar_relatorio() and _exportar_csv().
+        # Caminho para o CSV da sessão ativa. Definido em _start_session().
+        # Usado por _gerar_relatorio() e _exportar_csv().
         self._csv_path: str = ""
 
-        # PDF generation worker — we keep a reference to prevent garbage collection
-        # before the PDF finishes generating.
+        # Worker de geração de PDF — mantemos referência para evitar coleta de lixo
+        # antes de o PDF terminar de ser gerado.
         self._pdf_worker: Optional[_PdfGeneratorWorker] = None
 
-        # === COMPONENT CREATION ===
+        # === CRIAÇÃO DOS COMPONENTES ===
         self._create_widgets()
 
-        # === WORKER INSTANTIATION ===
+        # === INSTANCIAÇÃO DOS WORKERS ===
         self._create_workers()
 
-        # === SIGNAL CONNECTION ===
+        # === CONEXÃO DOS SINAIS ===
         self._connect_signals()
 
-        # === LAYOUT ASSEMBLY ===
+        # === MONTAGEM DO LAYOUT ===
         self._build_layout()
 
-        # === STATUS BAR ===
+        # === BARRA DE STATUS ===
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
-        self._status_bar.showMessage("Ready. Fill in patient data to start.")
+        self._status_bar.showMessage("Pronto. Preencha os dados do paciente para iniciar.")
 
-        # === INITIAL STATE ===
-        # Starts in IDLE: no buttons enabled except the form.
+        # === ESTADO INICIAL ===
+        # Inicia em IDLE: nenhum botão habilitado exceto o formulário.
         self._set_state("IDLE")
 
-        logger.info("MainWindow successfully initialized.")
+        logger.info("MainWindow inicializado com sucesso.")
 
     # =========================================================================
-    # COMPONENT CREATION
+    # CRIAÇÃO DOS COMPONENTES
     # =========================================================================
 
     def _create_widgets(self) -> None:
         """
-        Instantiates all UI widgets.
+        Instancia todos os widgets da interface.
 
-        Kept separate from __init__ for better organization and easier
-        individual unit testing of widgets.
+        Separado de __init__ para melhor organização e facilitar
+        testes unitários individuais dos widgets.
         """
-        # Header with patient form and timer.
+        # Cabeçalho com formulário do paciente e cronômetro.
         self.session_header = SessionHeaderWidget()
 
-        # Video frame display with goniometric overlay.
+        # Exibição do quadro de vídeo com overlay goniométrico.
         self.video_widget = VideoWidget()
 
-        # Side panel with system metric cards.
+        # Painel lateral com cards de métricas do sistema.
         self.metrics_widget = MetricsWidget()
 
-        # Live TAM chart for all 5 fingers.
+        # Gráfico TAM em tempo real para os 5 dedos.
         self.plot_widget = GoniometryPlotWidget()
 
-        # Panel with 5 individual clinical cards per finger.
+        # Painel com 5 cards clínicos individuais por dedo.
         self.finger_cards = FingerCardsPanel()
 
-        # System event log with timestamps.
+        # Log de eventos do sistema com timestamps.
         self.log_widget = LogWidget()
 
-        # --- Session control buttons ---
+        # --- Botões de controle de sessão ---
 
-        # New Session Button — to reset the system at any time
-        self.btn_new_session = QPushButton("🔄  New Session")
-        self.btn_new_session.setToolTip("Clears all on-screen data to allow registering a new patient or clean test.")
+        # Botão Nova Sessão — para resetar o sistema a qualquer momento
+        self.btn_new_session = QPushButton("🔄  Nova Sessão")
+        self.btn_new_session.setToolTip("Limpa todos os dados em tela para registrar um novo paciente ou teste limpo.")
 
-        # Main Start Button — highlighted green style.
-        self.btn_start = QPushButton("▶  Start Session")
+        # Botão principal Iniciar — estilo verde destacado.
+        self.btn_start = QPushButton("▶  Iniciar Sessão")
         self.btn_start.setStyleSheet(BUTTON_PRIMARY_STYLE)
-        self.btn_start.setToolTip("Starts video capture and goniometric processing.")
+        self.btn_start.setToolTip("Inicia a captura de vídeo e o processamento goniométrico.")
 
-        # End Session Button — red style for destructive/final action.
-        self.btn_end = QPushButton("■  End Session")
+        # Botão Encerrar Sessão — estilo vermelho para ação destrutiva/final.
+        self.btn_end = QPushButton("■  Encerrar Sessão")
         self.btn_end.setStyleSheet(BUTTON_DANGER_STYLE)
-        self.btn_end.setToolTip("Ends capture and finalizes the CSV file.")
+        self.btn_end.setToolTip("Encerra a captura e finaliza o arquivo CSV.")
 
-        # Post-processing buttons — default theme styles.
-        self.btn_pdf = QPushButton("📄  Generate PDF Report")
-        self.btn_pdf.setToolTip("Generates the clinical PDF report from the ended session CSV.")
+        # Botões de pós-processamento — estilos padrão do tema.
+        self.btn_pdf = QPushButton("📄  Gerar Relatório PDF")
+        self.btn_pdf.setToolTip("Gera o relatório clínico em PDF a partir do CSV da sessão encerrada.")
 
-        self.btn_csv = QPushButton("💾  Export CSV")
-        self.btn_csv.setToolTip("Copies the session CSV file to a chosen location.")
+        self.btn_csv = QPushButton("💾  Exportar CSV")
+        self.btn_csv.setToolTip("Copia o arquivo CSV da sessão para um local escolhido.")
 
-        self.btn_historico = QPushButton("📁  Open Sessions Folder")
-        self.btn_historico.setToolTip("Opens the folder where session files are saved.")
+        self.btn_historico = QPushButton("📁  Abrir Pasta de Sessões")
+        self.btn_historico.setToolTip("Abre a pasta onde os arquivos de sessão são salvos.")
 
     def _create_workers(self) -> None:
         """
-        Instantiates the camera and processing workers WITHOUT starting the threads.
+        Instancia os workers de câmera e processamento SEM iniciar as threads.
 
-        Workers are created here so their signals can be connected in
-        _connect_signals(). The threads only start when the user clicks
-        "Start Session" — not before.
+        Os workers são criados aqui para que seus sinais possam ser conectados em
+        _connect_signals(). As threads só iniciam quando o usuário clicar em
+        "Iniciar Sessão" — não antes.
         """
         self.camera_worker = CameraWorker(parent=self)
         self.processing_worker = ProcessingWorker(parent=self)
-        # Initialize the worker with the current UI value
+        # Inicializa o worker com o valor atual da interface
         self.processing_worker.set_evaluated_hand(self.session_header.get_session_info()["hand"])
 
     def _connect_signals(self) -> None:
         """
-        Connects all signals between workers, widgets, and MainWindow methods.
+        Conecta todos os sinais entre workers, widgets e métodos do MainWindow.
 
-        Why centralize here?
-            Keeping all connections in a single method creates a readable
-            "routing table" for the system. When debugging component communication,
-            you just look here to see who talks to whom.
+        Por que centralizar aqui?
+            Manter todas as conexões em um único método cria uma "tabela de roteamento"
+            legível para o sistema. Ao depurar a comunicação entre componentes,
+            basta olhar aqui para ver quem fala com quem.
 
-        Established connections:
+        Conexões estabelecidas:
             camera_worker.frame_ready   → processing_worker.put_frame()
             camera_worker.fps_updated   → video_widget.set_fps()
             camera_worker.camera_error  → _on_camera_error()
             processing_worker.result_ready   → _on_result()
             processing_worker.processing_error → log_widget.log()
             session_header textChanged  → _on_patient_name_changed()
-            btn_* .clicked              → action slots
+            btn_* .clicked              → slots de ação
         """
         # --- Camera Worker → Processing Worker ---
-        # AutoConnection (default): Qt detects they are in different threads
-        # and uses a queued connection (thread-safe).
-        # We DO NOT use DirectConnection here because it would execute directly on
-        # the CameraWorker thread, and put_frame() accesses the Queue — a safe
-        # operation, but DirectConnection is unnecessary when AutoConnection works.
+        # AutoConnection (padrão): Qt detecta que estão em threads diferentes
+        # e usa conexão em fila (thread-safe).
+        # NÃO usamos DirectConnection aqui porque executaria diretamente na
+        # thread do CameraWorker, e put_frame() acessa a Queue — operação segura,
+        # mas DirectConnection é desnecessário quando AutoConnection funciona.
         self.camera_worker.frame_ready.connect(self.processing_worker.put_frame)
 
         # --- Camera Worker → VideoWidget (FPS) ---
         self.camera_worker.fps_updated.connect(self.video_widget.set_fps)
 
-        # --- Camera Worker → Error handling ---
+        # --- Camera Worker → Tratamento de erros ---
         self.camera_worker.camera_error.connect(self._on_camera_error)
 
-        # --- Processing Worker → MainWindow (main result) ---
+        # --- Processing Worker → MainWindow (resultado principal) ---
         self.processing_worker.result_ready.connect(self._on_result)
 
-        # --- Processing Worker → LogWidget (non-fatal errors) ---
+        # --- Processing Worker → LogWidget (erros não fatais) ---
         self.processing_worker.processing_error.connect(self.log_widget.log_error)
         
-        # --- UI Header → Processing Worker (Hand changes) ---
+        # --- Cabeçalho da interface → Processing Worker (mudanças de mão) ---
         self.session_header.hand_changed.connect(self.processing_worker.set_evaluated_hand)
 
-        # --- Processing Worker → PlotWidget (clear charts on hand change) ---
+        # --- Processing Worker → PlotWidget (limpa gráficos na troca de mão) ---
         self.processing_worker.hand_side_reset.connect(self.plot_widget.clear_data)
 
-        # --- Form → readiness check ---
-        # Each time the name field text changes, we check if the Start button
-        # should be enabled. textChanged fires for each character.
+        # --- Formulário → verificação de prontidão ---
+        # Cada vez que o texto do campo de nome muda, verificamos se o botão Iniciar
+        # deve ser habilitado. textChanged dispara para cada caractere.
         self.session_header._input_patient.textChanged.connect(
             self._on_patient_name_changed
         )
 
-        # --- Buttons → actions ---
+        # --- Botões → ações ---
         self.btn_new_session.clicked.connect(self._new_session)
         self.btn_start.clicked.connect(self._start_session)
         self.btn_end.clicked.connect(self._end_session)
@@ -370,73 +370,73 @@ class MainWindow(QMainWindow):
         self.btn_historico.clicked.connect(self._abrir_historico)
 
     # =========================================================================
-    # LAYOUT ASSEMBLY
+    # MONTAGEM DO LAYOUT
     # =========================================================================
 
     def _build_layout(self) -> None:
         """
-        Assembles the widget and layout hierarchy in the main window.
+        Monta a hierarquia de widgets e layouts na janela principal.
 
-        Final layout (Central QVBoxLayout):
-            1. SessionHeaderWidget          — top, fixed height
+        Layout final (QVBoxLayout central):
+            1. SessionHeaderWidget          — topo, altura fixa
             2. QHBoxLayout:
                VideoWidget (stretch=3) │ MetricsWidget (stretch=2)
-            3. GoniometryPlotWidget         — fixed height 220px
-            4. FingerCardsPanel             — fixed height
-            5. LogWidget                    — max height 120px
-            6. Button row QHBoxLayout       — fixed height
+            3. GoniometryPlotWidget         — altura fixa 220px
+            4. FingerCardsPanel             — altura fixa
+            5. LogWidget                    — altura máxima 120px
+            6. Linha de botões QHBoxLayout  — altura fixa
 
-        Why use stretch factors in the video QHBoxLayout?
-            stretch=3 for video and stretch=2 for metrics results in a
-            60%/40% ratio, which on most monitors translates to ~768px/512px.
-            This keeps the video large enough to view the overlay without
-            reducing metrics to an illegible size.
+        Por que usar fatores de esticamento no QHBoxLayout do vídeo?
+            stretch=3 para vídeo e stretch=2 para métricas resulta numa proporção
+            60%/40%, que na maioria dos monitores equivale a ~768px/512px.
+            Isso mantém o vídeo grande o suficiente para visualizar o overlay sem
+            reduzir as métricas a um tamanho ilegível.
         """
         # =========================================================
-        # 1. Central ScrollArea Configuration
+        # 1. Configuração da ScrollArea central
         # =========================================================
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setStyleSheet(f"QScrollArea {{ border: none; background: {COLOR_BG_DARK}; }}")
         self.setCentralWidget(scroll_area)
 
-        # Container widget inside the ScrollArea.
+        # Widget contêiner dentro da ScrollArea.
         container_widget = QWidget()
         scroll_area.setWidget(container_widget)
 
-        # Main vertical layout.
+        # Layout vertical principal.
         main_layout = QVBoxLayout(container_widget)
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(6)
 
-        # Increase the minimum height for the video and metrics
-        # to ensure good viewing. The scroll will handle the rest.
+        # Aumenta a altura mínima do vídeo e das métricas
+        # para garantir boa visualização. A rolagem cuidará do restante.
         self.video_widget.setMinimumHeight(450)
         self.metrics_widget.setMinimumHeight(450)
 
-        # --- 1. Session header ---
+        # --- 1. Cabeçalho de sessão ---
         main_layout.addWidget(self.session_header)
 
-        # --- 2. Middle row: Video + Metrics ---
+        # --- 2. Linha do meio: Vídeo + Métricas ---
         mid_row = QHBoxLayout()
         mid_row.setSpacing(6)
 
-        # Video: occupies ~60% of middle row width.
+        # Vídeo: ocupa ~60% da largura da linha do meio.
         mid_row.addWidget(self.video_widget, stretch=3)
 
-        # Metrics: occupies ~40% of middle row width.
+        # Métricas: ocupa ~40% da largura da linha do meio.
         mid_row.addWidget(self.metrics_widget, stretch=2)
 
         main_layout.addLayout(mid_row)
 
-        # --- 3. Live TAM Chart ---
-        # Increase chart height for better readability
+        # --- 3. Gráfico TAM em tempo real ---
+        # Aumenta a altura do gráfico para melhor legibilidade
         self.plot_widget.setMinimumHeight(280)
         main_layout.addWidget(self.plot_widget)
 
-        # --- 4. Individual finger cards ---
-        # Maintain internal scroll for cards (if screen is very narrow)
-        # or just set fixed height for them.
+        # --- 4. Cards individuais por dedo ---
+        # Mantém rolagem interna para os cards (se a tela for muito estreita)
+        # ou apenas define altura fixa para eles.
         cards_scroll = QScrollArea()
         cards_scroll.setWidget(self.finger_cards)
         cards_scroll.setWidgetResizable(True)
@@ -449,38 +449,38 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(cards_scroll)
 
-        # --- 5. Event log ---
+        # --- 5. Log de eventos ---
         self.log_widget.setMinimumHeight(150)
         main_layout.addWidget(self.log_widget)
 
-        # --- 6. Button bar ---
+        # --- 6. Barra de botões ---
         main_layout.addLayout(self._build_button_row())
 
     def _build_button_row(self) -> QHBoxLayout:
         """
-        Builds the horizontal row with all control buttons.
+        Constrói a linha horizontal com todos os botões de controle.
 
-        Button order:
-            [Start] [End] | [Generate PDF] [Export CSV] [Open Folder]
+        Ordem dos botões:
+            [Iniciar] [Encerrar] | [Gerar PDF] [Exportar CSV] [Abrir Pasta]
 
-        The visual separator (stretch) between the two groups distinguishes
-        session actions (left) from export actions (right).
+        O separador visual (stretch) entre os dois grupos distingue
+        ações de sessão (esquerda) de ações de exportação (direita).
 
-        Returns:
-            QHBoxLayout ready to be added to the main layout.
+        Retorna:
+            QHBoxLayout pronto para ser adicionado ao layout principal.
         """
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        # Left group: session control.
+        # Grupo esquerdo: controle de sessão.
         btn_row.addWidget(self.btn_new_session)
         btn_row.addWidget(self.btn_start)
         btn_row.addWidget(self.btn_end)
 
-        # Elastic separator between button groups.
+        # Separador elástico entre grupos de botões.
         btn_row.addStretch()
 
-        # Right group: export and navigation.
+        # Grupo direito: exportação e navegação.
         btn_row.addWidget(self.btn_pdf)
         btn_row.addWidget(self.btn_csv)
         btn_row.addWidget(self.btn_historico)
@@ -488,105 +488,105 @@ class MainWindow(QMainWindow):
         return btn_row
 
     # =========================================================================
-    # STATE MACHINE
+    # MÁQUINA DE ESTADOS
     # =========================================================================
 
     def _set_state(self, state: str) -> None:
         """
-        Centralizes enabling and disabling buttons based on the state.
+        Centraliza a habilitação e desabilitação de botões com base no estado.
 
-        Why centralize in _set_state() instead of enabling/disabling
-        buttons directly in each action method?
+        Por que centralizar em _set_state() em vez de habilitar/desabilitar
+        botões diretamente em cada método de ação?
 
-            Without centralization, each method (start, end, etc.) would need
-            to know and manipulate ALL buttons. If a new button is added
-            in the future, ALL methods would need updating. With _set_state(),
-            we just add the new button here and it is correctly managed
-            in all states without changing anything else.
+            Sem centralização, cada método (iniciar, encerrar etc.) precisaria
+            conhecer e manipular TODOS os botões. Se um novo botão for adicionado
+            no futuro, TODOS os métodos precisariam ser atualizados. Com _set_state(),
+            basta adicionar o novo botão aqui e ele será gerenciado corretamente
+            em todos os estados sem alterar mais nada.
 
-            This is the "State Machine" pattern applied to UI: state is the source of truth,
-            and buttons react to state — not vice-versa.
+            Este é o padrão "Máquina de Estados" aplicado à interface: o estado é
+            a fonte da verdade, e os botões reagem ao estado — não o contrário.
 
-        Valid transitions:
-            IDLE    → READY  (when name is filled)
-            READY   → RUNNING (on clicking Start)
-            RUNNING → STOPPED (on clicking End)
-            STOPPED → READY  (on filling name for new session)
+        Transições válidas:
+            IDLE    → READY  (quando o nome é preenchido)
+            READY   → RUNNING (ao clicar em Iniciar)
+            RUNNING → STOPPED (ao clicar em Encerrar)
+            STOPPED → READY  (ao preencher nome para nova sessão)
 
-        Parameters:
-            state: String identifying the new state.
-                   Valid values: "IDLE", "READY", "RUNNING", "STOPPED".
+        Parâmetros:
+            state: String identificando o novo estado.
+                   Valores válidos: "IDLE", "READY", "RUNNING", "STOPPED".
         """
         self._state = state
 
-        # --- Session control buttons ---
-        # New Session: available only after ending a session.
+        # --- Botões de controle de sessão ---
+        # Nova Sessão: disponível apenas após encerrar uma sessão.
         self.btn_new_session.setEnabled(state == "STOPPED")
 
-        # Start: enabled only when there is data to start (READY).
+        # Iniciar: habilitado apenas quando há dados para iniciar (READY).
         self.btn_start.setEnabled(state == "READY")
 
-        # End: enabled only during active recording (RUNNING).
+        # Encerrar: habilitado apenas durante gravação ativa (RUNNING).
         self.btn_end.setEnabled(state == "RUNNING")
 
-        # --- Export buttons ---
-        # Enabled only after formal session termination (STOPPED).
-        # In RUNNING, the CSV is still being written — exporting would be inconsistent.
+        # --- Botões de exportação ---
+        # Habilitados apenas após encerramento formal da sessão (STOPPED).
+        # Em RUNNING, o CSV ainda está sendo escrito — exportar seria inconsistente.
         self.btn_pdf.setEnabled(state == "STOPPED")
         self.btn_csv.setEnabled(state == "STOPPED")
         self.btn_historico.setEnabled(state in ("IDLE", "READY", "STOPPED"))
 
-        # --- Form fields ---
-        # Locked during RUNNING to avoid accidental alteration of
-        # identifying data while the session is recording.
+        # --- Campos do formulário ---
+        # Bloqueados durante RUNNING para evitar alteração acidental dos
+        # dados de identificação enquanto a sessão está gravando.
         self.session_header.set_fields_enabled(state != "RUNNING")
 
-        # --- Status bar message ---
+        # --- Mensagem da barra de status ---
         status_messages = {
-            "IDLE":    "Fill in patient data to enable session start.",
-            "READY":   "Ready to start. Click 'Start Session'.",
-            "RUNNING": "Session in progress — capturing and processing data...",
-            "STOPPED": "Session ended. You can generate the PDF report or export the CSV.",
+            "IDLE":    "Preencha os dados do paciente para habilitar o início da sessão.",
+            "READY":   "Pronto para iniciar. Clique em 'Iniciar Sessão'.",
+            "RUNNING": "Sessão em andamento — capturando e processando dados...",
+            "STOPPED": "Sessão encerrada. Você pode gerar o relatório PDF ou exportar o CSV.",
         }
         self._status_bar.showMessage(status_messages.get(state, ""))
 
-        logger.debug("State changed to: %s", state)
+        logger.debug("Estado alterado para: %s", state)
 
     # =========================================================================
-    # RESULT AND ERROR SLOTS
+    # SLOTS DE RESULTADO E ERRO
     # =========================================================================
 
     def _on_result(self, result: object) -> None:
         """
-        Receives and distributes ProcessingResult to all widgets.
+        Recebe e distribui o ProcessingResult para todos os widgets.
 
-        Called ~30 times/second by the result_ready signal from ProcessingWorker.
-        Must be fast: only distributes data, no calculations.
+        Chamado ~30 vezes/segundo pelo sinal result_ready do ProcessingWorker.
+        Deve ser rápido: apenas distribui dados, sem cálculos.
 
-        This method runs on the main thread (Qt thread), guaranteed by
-        Qt's signal system. We never access widgets from inside a
-        QThread — always via this connected slot.
+        Este método é executado na thread principal (thread Qt), garantido pelo
+        sistema de sinais do Qt. Nunca acessamos widgets de dentro de um
+        QThread — sempre via este slot conectado.
 
-        Parameters:
-            result: ProcessingResult object emitted by ProcessingWorker.
-                    Typed as 'object' because pyqtSignal(ProcessingResult)
-                    is not directly supported — we cast here.
+        Parâmetros:
+            result: Objeto ProcessingResult emitido pelo ProcessingWorker.
+                    Tipado como 'object' porque pyqtSignal(ProcessingResult)
+                    não é suportado diretamente — fazemos o cast aqui.
         """
-        # Cast to the correct type — safe because only ProcessingWorker
-        # emits result_ready, always with ProcessingResult.
+        # Cast para o tipo correto — seguro porque apenas o ProcessingWorker
+        # emite result_ready, sempre com ProcessingResult.
         r: ProcessingResult = result  # type: ignore[assignment]
 
-        # Updates the video frame with goniometric overlay.
+        # Atualiza o quadro de vídeo com overlay goniométrico.
         self.video_widget.update_frame(r.frame_overlay)
 
-        # Updates FPS, Frame#, and hand state cards.
+        # Atualiza FPS, Nº de quadro e cards de estado da mão.
         self.metrics_widget.update_from_result(r)
 
-        # Updates the live TAM chart for 5 fingers.
+        # Atualiza o gráfico TAM em tempo real para 5 dedos.
         self.plot_widget.update_data(r.angles_smooth, r.hand_detected)
 
-        # Updates the 5 individual cards with clinical metrics and mini-charts.
-        # get_tam_buffers() returns a thread-safe copy of the worker's deques.
+        # Atualiza os 5 cards individuais com métricas clínicas e mini-gráficos.
+        # get_tam_buffers() retorna uma cópia thread-safe dos deques do worker.
         self.finger_cards.update_all(
             finger_states=r.hand_state.get("estados_dedos", {}),
             metrics_per_finger=r.metrics_per_finger,
@@ -595,38 +595,38 @@ class MainWindow(QMainWindow):
 
     def _on_camera_error(self, message: str) -> None:
         """
-        Handles fatal camera errors emitted by CameraWorker.
+        Trata erros fatais de câmera emitidos pelo CameraWorker.
 
-        When the camera stops working during an active session,
-        automatically ends the session to prevent recording
-        invalid frames to the CSV. Displays the error in log and status bar.
+        Quando a câmera para de funcionar durante uma sessão ativa,
+        encerra automaticamente a sessão para evitar gravar
+        quadros inválidos no CSV. Exibe o erro no log e na barra de status.
 
-        Parameters:
-            message: Error description sent by CameraWorker via signal.
+        Parâmetros:
+            message: Descrição do erro enviada pelo CameraWorker via sinal.
         """
-        self.log_widget.log_error(f"Camera: {message}")
+        self.log_widget.log_error(f"Câmera: {message}")
         self.video_widget.set_no_signal(message)
-        self._status_bar.showMessage(f"CAMERA ERROR: {message}")
-        logger.error("Camera error: %s", message)
+        self._status_bar.showMessage(f"ERRO DE CÂMERA: {message}")
+        logger.error("Erro de câmera: %s", message)
 
-        # If session was running, automatically terminate.
-        # Continuing to record without frames creates a corrupted CSV.
+        # Se a sessão estava em andamento, encerra automaticamente.
+        # Continuar gravando sem quadros cria um CSV corrompido.
         if self._state == "RUNNING":
             self._end_session()
 
     def _on_patient_name_changed(self, text: str) -> None:
         """
-        Reacts to patient name changes in the form.
+        Reage a mudanças no nome do paciente no formulário.
 
-        Called by the name QLineEdit's textChanged signal on every keystroke.
-        Checks if the form is ready (is_ready()) and transitions between
-        IDLE and READY states accordingly.
+        Chamado pelo sinal textChanged do QLineEdit de nome a cada tecla pressionada.
+        Verifica se o formulário está pronto (is_ready()) e transita entre
+        os estados IDLE e READY conforme necessário.
 
-        Parameters:
-            text: Current text in the name field (raw string, including spaces).
+        Parâmetros:
+            text: Texto atual no campo de nome (string bruta, incluindo espaços).
         """
-        # Only alters state if not in RUNNING or STOPPED.
-        # We don't want name typing to change state during a session.
+        # Altera o estado apenas se não estiver em RUNNING ou STOPPED.
+        # Não queremos que a digitação do nome mude o estado durante uma sessão.
         if self._state in ("IDLE", "READY"):
             if self.session_header.is_ready():
                 self._set_state("READY")
@@ -634,42 +634,42 @@ class MainWindow(QMainWindow):
                 self._set_state("IDLE")
 
     # =========================================================================
-    # BUTTON ACTIONS
+    # AÇÕES DOS BOTÕES
     # =========================================================================
 
     def _new_session(self) -> None:
         """
-        Completely resets the system state and prepares UI for a new patient.
+        Reinicia completamente o estado do sistema e prepara a interface para um novo paciente.
 
-        Why recreate workers instead of just resetting?
-            QThread in Qt has a unidirectional lifecycle: once run()
-            returns and the thread ends, the QThread object cannot be restarted
-            with start() again. Furthermore, _cleanup() in ProcessingWorker
-            closes MediaPipe (self._hands.close()), and _release_camera() in
-            CameraWorker releases cv2.VideoCapture. These resources need to be
-            recreated from scratch for a new session to work.
+        Por que recriar os workers em vez de apenas resetá-los?
+            O QThread no Qt tem ciclo de vida unidirecional: uma vez que run()
+            retorna e a thread encerra, o objeto QThread não pode ser reiniciado
+            com start() novamente. Além disso, _cleanup() no ProcessingWorker
+            fecha o MediaPipe (self._hands.close()), e _release_camera() no
+            CameraWorker libera o cv2.VideoCapture. Esses recursos precisam ser
+            recriados do zero para uma nova sessão funcionar.
 
-            The safe solution is: destroy old workers, create new ones, and
-            reconnect all signals.
+            A solução segura é: destruir os workers antigos, criar novos e
+            reconectar todos os sinais.
         """
         if self._state == "RUNNING":
-            QMessageBox.warning(self, "Warning", "Please end the current session before starting a new one.")
+            QMessageBox.warning(self, "Aviso", "Por favor, encerre a sessão atual antes de iniciar uma nova.")
             return
 
-        # User confirmation to prevent accidental data loss on screen
+        # Confirmação do usuário para evitar perda acidental de dados em tela
         resp = QMessageBox.question(
             self,
-            "Attention: New Session",
-            "Starting a new session will clear all current charts and metrics from the screen.\n\n"
-            "Make sure you have exported the CSV or generated the PDF Report if you need this data.\n\n"
-            "Are you sure you want to start from scratch?",
+            "Atenção: Nova Sessão",
+            "Iniciar uma nova sessão limpará todos os gráficos e métricas atuais da tela.\n\n"
+            "Certifique-se de ter exportado o CSV ou gerado o Relatório PDF se precisar desses dados.\n\n"
+            "Tem certeza que deseja começar do zero?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No  # Default to No for safety
+            QMessageBox.StandardButton.No  # Padrão No para segurança
         )
         if resp != QMessageBox.StandardButton.Yes:
             return
 
-        # === 1. Ensure old workers are completely stopped ===
+        # === 1. Garante que os workers antigos estejam completamente parados ===
         if self.camera_worker.isRunning():
             self.camera_worker.stop()
             self.camera_worker.wait(3000)
@@ -678,29 +678,29 @@ class MainWindow(QMainWindow):
             self.processing_worker.stop()
             self.processing_worker.wait(3000)
 
-        # === 2. Recreate workers from scratch (new QThread objects) ===
+        # === 2. Recria os workers do zero (novos objetos QThread) ===
         self._create_workers()
 
-        # === 3. Reconnect all signals to new workers ===
+        # === 3. Reconecta todos os sinais aos novos workers ===
         self._connect_signals()
 
-        # === 4. Clear all UI widgets ===
-        self.video_widget.set_no_signal("Waiting for new session...")
+        # === 4. Limpa todos os widgets da interface ===
+        self.video_widget.set_no_signal("Aguardando nova sessão...")
         self.plot_widget.clear_data()
         self.finger_cards.clear_all()
         self.metrics_widget.reset_display()
         self.metrics_widget.stop_monitoring()
         self.session_header.reset()
 
-        # === 5. Clear the log and display confirmation ===
+        # === 5. Limpa o log e exibe confirmação ===
         self.log_widget.clear_log()
-        self.log_widget.log_success("System restarted. Ready for a new session.")
+        self.log_widget.log_success("Sistema reiniciado. Pronto para nova sessão.")
 
-        # === 6. Reset session references ===
+        # === 6. Reinicia referências de sessão ===
         self._csv_path = ""
         self._pdf_worker = None
 
-        # === 7. Re-evaluate state ===
+        # === 7. Reavalia o estado ===
         if self.session_header.is_ready():
             self._set_state("READY")
         else:
@@ -708,146 +708,146 @@ class MainWindow(QMainWindow):
 
     def _start_session(self) -> None:
         """
-        Starts the goniometric capture and processing session.
+        Inicia a sessão de captura e processamento goniométrico.
 
-        Operation sequence:
-            1. Validates if form is complete (is_ready()).
-            2. Creates the logs directory if it doesn't exist.
-            3. Generates the CSV path with a timestamp for uniqueness.
-            4. Starts the session in ProcessingWorker (opens CSV).
-            5. Starts the worker threads.
-            6. Updates the timer and log.
-            7. Transitions to the RUNNING state.
+        Sequência de operações:
+            1. Valida se o formulário está completo (is_ready()).
+            2. Cria o diretório de logs se não existir.
+            3. Gera o caminho do CSV com timestamp para unicidade.
+            4. Inicia a sessão no ProcessingWorker (abre o CSV).
+            5. Inicia as threads dos workers.
+            6. Atualiza o cronômetro e o log.
+            7. Transita para o estado RUNNING.
 
-        Called by the "Start Session" button (btn_start).
+        Chamado pelo botão "Iniciar Sessão" (btn_start).
         """
-        # Precondition validation — extra defense line beyond the READY state.
+        # Validação de pré-condição — linha extra de defesa além do estado READY.
         if not self.session_header.is_ready():
             QMessageBox.warning(
                 self,
-                "Incomplete Data",
-                "Please fill in the full patient name before starting.",
+                "Dados Incompletos",
+                "Por favor, preencha o nome completo do paciente antes de iniciar.",
             )
             return
 
-        # Collect form data for use in CSV and PDF.
+        # Coleta dados do formulário para uso no CSV e PDF.
         session_info = self.session_header.get_session_info()
         patient_name: str = session_info["patient_name"]
         hand: str = session_info["hand"]
         session_number: int = session_info["session_number"]
 
-        # Create the logs folder if it does not exist.
-        # exist_ok=True: no error if folder already exists.
+        # Cria a pasta de logs se não existir.
+        # exist_ok=True: sem erro se a pasta já existir.
         os.makedirs(config.LOG_DIR, exist_ok=True)
 
-        # Generate the CSV filename with a timestamp to ensure uniqueness.
-        # Format: "logs/session_John_Doe_20260623_143512_s1.csv"
-        # The timestamp prevents overwriting prior sessions of the same patient.
+        # Gera o nome do arquivo CSV com timestamp para garantir unicidade.
+        # Formato: "logs/sessao_Joao_Silva_20260623_143512_s1.csv"
+        # O timestamp evita sobrescrever sessões anteriores do mesmo paciente.
         timestamp_str: str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Remove invalid filename characters (spaces → underscores).
+        # Remove caracteres inválidos no nome do arquivo (espaços → sublinhados).
         safe_name: str = patient_name.replace(" ", "_").replace("/", "_")
         csv_filename: str = f"session_{safe_name}_{timestamp_str}_s{session_number}.csv"
         self._csv_path = os.path.join(config.LOG_DIR, csv_filename)
 
-        # Start the CSV session in the worker BEFORE starting threads.
-        # This ensures the logger is ready when the first frames arrive.
+        # Inicia a sessão CSV no worker ANTES de iniciar as threads.
+        # Isso garante que o logger esteja pronto quando os primeiros quadros chegarem.
         self.processing_worker.start_session(self._csv_path)
 
-        # Clear widget data from previous session.
+        # Limpa dados de widgets da sessão anterior.
         self.plot_widget.clear_data()
         self.finger_cards.clear_all()
         self.metrics_widget.reset_display()
 
-        # Start worker threads.
-        # start() from QThread calls run() in a separate thread.
-        # Workers already exist since __init__ — we just start execution.
+        # Inicia as threads dos workers.
+        # start() do QThread chama run() em uma thread separada.
+        # Os workers já existem desde __init__ — apenas iniciamos a execução.
         if not self.camera_worker.isRunning():
             self.camera_worker.start()
 
         if not self.processing_worker.isRunning():
             self.processing_worker.start()
 
-        # Start the timer in the header.
+        # Inicia o cronômetro no cabeçalho.
         self.session_header.start_timer()
 
-        # Log startup and transition to RUNNING.
+        # Registra início no log e transita para RUNNING.
         self.log_widget.log_success(
-            f"Session {session_number} started — {patient_name} | Hand {hand} | {csv_filename}"
+            f"Sessão {session_number} iniciada — {patient_name} | Mão {hand} | {csv_filename}"
         )
 
         self._set_state("RUNNING")
         logger.info(
-            "Session started: patient=%s, hand=%s, session=%d, csv=%s",
+            "Sessão iniciada: paciente=%s, mão=%s, sessão=%d, csv=%s",
             patient_name, hand, session_number, self._csv_path,
         )
 
     def _end_session(self) -> None:
         """
-        Ends the capture session and finalizes the CSV file.
+        Encerra a sessão de captura e finaliza o arquivo CSV.
 
-        Operation sequence:
-            1. Signals ProcessingWorker to close the CSV session.
-            2. Signals CameraWorker to stop the capture loop.
-            3. Stops the timer.
-            4. Logs the event.
-            5. Transitions to the STOPPED state.
+        Sequência de operações:
+            1. Sinaliza ao ProcessingWorker para fechar a sessão CSV.
+            2. Sinaliza ao CameraWorker para parar o loop de captura.
+            3. Para o cronômetro.
+            4. Registra o evento no log.
+            5. Transita para o estado STOPPED.
 
-        Called by the "End Session" button (btn_end) OR automatically
-        by _on_camera_error() when the camera fails during an active session.
+        Chamado pelo botão "Encerrar Sessão" (btn_end) OU automaticamente
+        por _on_camera_error() quando a câmera falha durante uma sessão ativa.
 
-        Note: wait() is not used here to avoid blocking the main thread.
-        closeEvent() uses wait() with a timeout when the window is closed.
+        Nota: wait() não é usado aqui para evitar bloquear a thread principal.
+        closeEvent() usa wait() com timeout ao fechar a janela.
         """
-        # Close the CSV recording safely (flush + close).
+        # Fecha a gravação CSV com segurança (flush + close).
         self.processing_worker.stop_session()
 
-        # Signal CameraWorker to stop the capture loop.
-        # The loop in run() will check the event on its next iteration.
+        # Sinaliza ao CameraWorker para parar o loop de captura.
+        # O loop em run() verificará o evento na próxima iteração.
         self.camera_worker.stop()
 
-        # Stop the timer — the display freezes at the total session time.
+        # Para o cronômetro — o display congela no tempo total da sessão.
         self.session_header.stop_timer()
 
         self.log_widget.log_success(
-            f"Session ended. CSV saved to: {self._csv_path}"
+            f"Sessão encerrada. CSV salvo em: {self._csv_path}"
         )
         self._set_state("STOPPED")
-        logger.info("Session ended. CSV: %s", self._csv_path)
+        logger.info("Sessão encerrada. CSV: %s", self._csv_path)
 
     def _gerar_relatorio(self) -> None:
         """
-        Generates the PDF report of the ended session in a separate thread.
+        Gera o relatório PDF da sessão encerrada em uma thread separada.
 
-        Why a separate thread? (See _PdfGeneratorWorker for full explanation)
-        In short: generate_pdf_report() can take 5–15 seconds (Matplotlib +
-        FPDF) and would completely freeze the interface if run on the main thread.
+        Por que uma thread separada? (Veja _PdfGeneratorWorker para explicação completa)
+        Em resumo: generate_pdf_report() pode levar de 5 a 15 segundos (Matplotlib +
+        FPDF) e congelaria completamente a interface se executado na thread principal.
 
-        Behavior:
-            - Disables the PDF button during generation (prevents double-clicks).
-            - Displays a status bar message indicating progress.
-            - On finish, _on_pdf_finished() shows a success dialog.
-            - On failure, _on_pdf_error() shows an error dialog.
+        Comportamento:
+            - Desabilita o botão PDF durante a geração (evita duplo clique).
+            - Exibe mensagem na barra de status indicando o progresso.
+            - Ao concluir, _on_pdf_finished() exibe diálogo de sucesso.
+            - Em falha, _on_pdf_error() exibe diálogo de erro.
 
-        Called by the "Generate PDF Report" button (btn_pdf).
+        Chamado pelo botão "Gerar Relatório PDF" (btn_pdf).
         """
         if not self._csv_path or not os.path.exists(self._csv_path):
             QMessageBox.warning(
                 self,
-                "CSV Not Found",
-                f"The session's CSV file was not found:\n{self._csv_path}\n\n"
-                "Verify if the session was properly ended.",
+                "CSV Não Encontrado",
+                f"O arquivo CSV da sessão não foi encontrado:\n{self._csv_path}\n\n"
+                "Verifique se a sessão foi encerrada corretamente.",
             )
             return
 
         session_info = self.session_header.get_session_info()
 
-        # Disable the button during generation to prevent double clicks.
+        # Desabilita o botão durante a geração para evitar duplos cliques.
         self.btn_pdf.setEnabled(False)
-        self.btn_pdf.setText("⏳  Generating PDF...")
-        self._status_bar.showMessage("Generating PDF report... Please wait.")
-        self.log_widget.log("Starting PDF report generation...")
+        self.btn_pdf.setText("⏳  Gerando PDF...")
+        self._status_bar.showMessage("Gerando relatório PDF... Aguarde.")
+        self.log_widget.log("Iniciando geração do relatório PDF...")
 
-        # Create and configure the PDF generation worker.
+        # Cria e configura o worker de geração de PDF.
         self._pdf_worker = _PdfGeneratorWorker(
             csv_path=self._csv_path,
             patient_name=session_info["patient_name"],
@@ -856,185 +856,185 @@ class MainWindow(QMainWindow):
             parent=self,
         )
 
-        # Connect completion and error signals to the worker.
+        # Conecta os sinais de conclusão e erro ao worker.
         self._pdf_worker.finished_signal.connect(self._on_pdf_finished)
         self._pdf_worker.error_signal.connect(self._on_pdf_error)
 
-        # Start the PDF worker on the separate thread.
+        # Inicia o worker de PDF na thread separada.
         self._pdf_worker.start()
 
     def _on_pdf_finished(self, pdf_path: str) -> None:
         """
-        Handles the successful completion of the PDF generation.
+        Trata a conclusão bem-sucedida da geração do PDF.
 
-        Called by the finished_signal from _PdfGeneratorWorker when
-        the PDF was successfully generated. Restores the button and displays the result.
+        Chamado pelo finished_signal do _PdfGeneratorWorker quando
+        o PDF foi gerado com sucesso. Restaura o botão e exibe o resultado.
 
-        Parameters:
-            pdf_path: Absolute path to the generated PDF file.
+        Parâmetros:
+            pdf_path: Caminho absoluto para o arquivo PDF gerado.
         """
-        # Restore button to original state.
+        # Restaura o botão ao estado original.
         self.btn_pdf.setEnabled(True)
-        self.btn_pdf.setText("📄  Generate PDF Report")
-        self._status_bar.showMessage(f"PDF generated: {pdf_path}")
-        self.log_widget.log_success(f"PDF Report generated: {pdf_path}")
+        self.btn_pdf.setText("📄  Gerar Relatório PDF")
+        self._status_bar.showMessage(f"PDF gerado: {pdf_path}")
+        self.log_widget.log_success(f"Relatório PDF gerado: {pdf_path}")
 
-        # Display dialog with the PDF path.
+        # Exibe diálogo com o caminho do PDF.
         msg = QMessageBox(self)
-        msg.setWindowTitle("Report Generated")
+        msg.setWindowTitle("Relatório Gerado")
         msg.setIcon(QMessageBox.Icon.Information)
-        msg.setText("✅ PDF Report successfully generated!")
-        msg.setInformativeText(f"File saved to:\n{pdf_path}")
+        msg.setText("✅ Relatório PDF gerado com sucesso!")
+        msg.setInformativeText(f"Arquivo salvo em:\n{pdf_path}")
         msg.exec()
 
     def _on_pdf_error(self, error_message: str) -> None:
         """
-        Handles a PDF generation failure.
+        Trata uma falha na geração do PDF.
 
-        Called by the error_signal from _PdfGeneratorWorker when
-        generation fails (invalid CSV, disk full, missing Matplotlib etc.).
+        Chamado pelo error_signal do _PdfGeneratorWorker quando
+        a geração falha (CSV inválido, disco cheio, Matplotlib ausente etc.).
 
-        Parameters:
-            error_message: Error description returned by the exception.
+        Parâmetros:
+            error_message: Descrição do erro retornada pela exceção.
         """
-        # Restore button and report the error.
+        # Restaura o botão e reporta o erro.
         self.btn_pdf.setEnabled(True)
-        self.btn_pdf.setText("📄  Generate PDF Report")
-        self._status_bar.showMessage("Failed to generate PDF report.")
-        self.log_widget.log_error(f"Failed to generate PDF: {error_message}")
+        self.btn_pdf.setText("📄  Gerar Relatório PDF")
+        self._status_bar.showMessage("Falha ao gerar relatório PDF.")
+        self.log_widget.log_error(f"Falha ao gerar PDF: {error_message}")
 
         QMessageBox.critical(
             self,
-            "PDF Generation Error",
-            f"Could not generate the PDF report.\n\nDetail:\n{error_message}",
+            "Erro na Geração do PDF",
+            f"Não foi possível gerar o relatório PDF.\n\nDetalhe:\n{error_message}",
         )
 
     def _exportar_csv(self) -> None:
         """
-        Exports the session CSV to a user-selected location.
+        Exporta o CSV da sessão para um local escolhido pelo usuário.
 
-        Opens a file dialog for the user to choose where to save
-        a copy of the CSV. Uses shutil.copy() to preserve original data.
-        The original file in config.LOG_DIR is not moved or deleted.
+        Abre um diálogo de arquivo para o usuário escolher onde salvar
+        uma cópia do CSV. Usa shutil.copy() para preservar os dados originais.
+        O arquivo original em config.LOG_DIR não é movido ou excluído.
 
-        Called by the "Export CSV" button (btn_csv).
+        Chamado pelo botão "Exportar CSV" (btn_csv).
         """
         if not self._csv_path or not os.path.exists(self._csv_path):
             QMessageBox.warning(
                 self,
-                "CSV Not Found",
-                "There is no CSV file available for export.",
+                "CSV Não Encontrado",
+                "Não há arquivo CSV disponível para exportação.",
             )
             return
 
-        # QFileDialog.getSaveFileName: native "Save As" dialog.
-        # Suggests the original filename by default.
+        # QFileDialog.getSaveFileName: diálogo nativo "Salvar Como".
+        # Sugere o nome original do arquivo por padrão.
         default_name = os.path.basename(self._csv_path)
         destination, selected_filter = QFileDialog.getSaveFileName(
             parent=self,
-            caption="Export Session CSV",
+            caption="Exportar CSV da Sessão",
             directory=default_name,
             filter="CSV Files (*.csv);;All Files (*)",
         )
 
-        # If the user canceled the dialog, destination is an empty string.
+        # Se o usuário cancelou o diálogo, destination é uma string vazia.
         if not destination:
             return
 
         try:
-            # Copy the original CSV file to the chosen destination.
-            # shutil.copy() copies content AND permissions, more robust than open().
+            # Copia o arquivo CSV original para o destino escolhido.
+            # shutil.copy() copia conteúdo E permissões, mais robusto que open().
             shutil.copy(self._csv_path, destination)
-            self.log_widget.log_success(f"CSV exported to: {destination}")
-            self._status_bar.showMessage(f"CSV exported: {destination}")
+            self.log_widget.log_success(f"CSV exportado para: {destination}")
+            self._status_bar.showMessage(f"CSV exportado: {destination}")
 
             QMessageBox.information(
                 self,
-                "Export Complete",
-                f"✅ CSV successfully exported to:\n{destination}",
+                "Exportação Concluída",
+                f"✅ CSV exportado com sucesso para:\n{destination}",
             )
 
         except (OSError, shutil.Error) as exc:
-            self.log_widget.log_error(f"Failed to export CSV: {exc}")
+            self.log_widget.log_error(f"Falha ao exportar CSV: {exc}")
             QMessageBox.critical(
                 self,
-                "Export Error",
-                f"Could not export the CSV.\n\nDetail:\n{exc}",
+                "Erro na Exportação",
+                f"Não foi possível exportar o CSV.\n\nDetalhe:\n{exc}",
             )
 
     def _abrir_historico(self) -> None:
         """
-        Opens the folder where session files are saved in the file explorer.
+        Abre a pasta onde os arquivos de sessão são salvos no explorador de arquivos.
 
-        Uses os.startfile() on Windows to open the folder in File Explorer.
-        The folder is created if it does not exist before trying to open.
+        Usa os.startfile() no Windows para abrir a pasta no Explorador de Arquivos.
+        A pasta é criada se não existir antes de tentar abrir.
 
-        Called by the "Open Sessions Folder" button (btn_historico).
+        Chamado pelo botão "Abrir Pasta de Sessões" (btn_historico).
         """
-        # Ensure the folder exists before trying to open.
+        # Garante que a pasta exista antes de tentar abrir.
         os.makedirs(config.LOG_DIR, exist_ok=True)
         abs_log_dir: str = os.path.abspath(config.LOG_DIR)
 
         try:
-            # os.startfile() is Windows-exclusive — opens with default program.
-            # On Windows, opens File Explorer at the specified folder.
+            # os.startfile() é exclusivo do Windows — abre com o programa padrão.
+            # No Windows, abre o Explorador de Arquivos na pasta especificada.
             os.startfile(abs_log_dir)
         except AttributeError:
-            # Fallback for Linux/macOS where os.startfile() does not exist.
+            # Fallback para Linux/macOS onde os.startfile() não existe.
             import subprocess
             subprocess.Popen(["xdg-open", abs_log_dir])
         except Exception as exc:
-            self.log_widget.log_error(f"Could not open the folder: {exc}")
+            self.log_widget.log_error(f"Não foi possível abrir a pasta: {exc}")
 
     # =========================================================================
-    # WINDOW LIFECYCLE
+    # CICLO DE VIDA DA JANELA
     # =========================================================================
 
     def closeEvent(self, event) -> None:
         """
-        Intercepts the window close event to terminate the workers.
+        Intercepta o evento de fechamento da janela para encerrar os workers.
 
-        Called by Qt when the user clicks the window's "X" button or
-        when QApplication.quit() is called.
+        Chamado pelo Qt quando o usuário clica no botão "X" da janela ou
+        quando QApplication.quit() é chamado.
 
-        Why wait() with a timeout here and not in _end_session()?
-            _end_session() is called during the session while the window
-            is still visible — blocking the main thread with wait() there
-            would freeze the interface for a few frames. Here, the window is
-            closing anyway, so the temporary block is acceptable to ensure
-            that workers terminate cleanly.
+        Por que wait() com timeout aqui e não em _end_session()?
+            _end_session() é chamado durante a sessão enquanto a janela
+            ainda está visível — bloquear a thread principal com wait() ali
+            congelaria a interface por alguns quadros. Aqui, a janela está
+            fechando de qualquer forma, então o bloqueio temporário é aceitável
+            para garantir que os workers encerrem de forma limpa.
 
-        Sequence:
-            1. Stops the workers (signals termination).
-            2. Waits up to 3000ms per worker to finish.
-            3. Accepts the close event (window closes).
+        Sequência:
+            1. Para os workers (sinaliza encerramento).
+            2. Aguarda até 3000ms por worker para finalizar.
+            3. Aceita o evento de fechamento (janela fecha).
 
-        Parameters:
-            event: QCloseEvent provided by Qt with the close event.
+        Parâmetros:
+            event: QCloseEvent fornecido pelo Qt com o evento de fechamento.
         """
-        logger.info("closeEvent: stopping workers before closing.")
+        logger.info("closeEvent: encerrando workers antes de fechar.")
 
-        # End active session if there is one.
+        # Encerra sessão ativa se houver uma.
         if self._state == "RUNNING":
             self.processing_worker.stop_session()
 
-        # Stop and wait for CameraWorker.
+        # Para e aguarda o CameraWorker.
         if self.camera_worker.isRunning():
             self.camera_worker.stop()
-            # wait(3000): waits up to 3 seconds. If worker does not finish,
-            # Qt will force-terminate the thread upon app close.
+            # wait(3000): aguarda até 3 segundos. Se o worker não finalizar,
+            # o Qt forçará o encerramento da thread ao fechar o aplicativo.
             self.camera_worker.wait(3000)
 
-        # Stop and wait for ProcessingWorker.
+        # Para e aguarda o ProcessingWorker.
         if self.processing_worker.isRunning():
             self.processing_worker.stop()
             self.processing_worker.wait(3000)
 
-        # Stop the PDF worker if generating.
+        # Para o worker de PDF se estiver gerando.
         if self._pdf_worker is not None and self._pdf_worker.isRunning():
             self._pdf_worker.wait(5000)
 
-        logger.info("closeEvent: workers stopped. Closing window.")
+        logger.info("closeEvent: workers encerrados. Fechando janela.")
 
-        # Accept the event — the window closes normally.
+        # Aceita o evento — a janela fecha normalmente.
         event.accept()
