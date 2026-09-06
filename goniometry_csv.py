@@ -1,11 +1,11 @@
 """
-goniometry_csv.py — Goniometric session data logger (CSV)
-==========================================================
+goniometry_csv.py — Registrador de dados de sessão goniométrica (CSV)
+====================================================================
 
-This module writes one row per frame containing:
+Este módulo grava uma linha por quadro contendo:
 - timestamp;
 - frame_id;
-- smoothed angles per finger and joint.
+- ângulos suavizados por dedo e articulação.
 """
 
 import csv
@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict
 
 # =============================================================================
-# CANONICAL CSV HEADER
+# CABEÇALHO CANÔNICO DO CSV
 # =============================================================================
 
 CSV_FIELDS = [
@@ -48,10 +48,10 @@ CSV_FIELDS = [
 
 class GoniometryCSVLogger:
     """
-    Goniometric session data logger.
+    Registrador de dados de sessão goniométrica em formato CSV.
 
-    The file is opened in append mode to preserve history when desired.
-    The header is written only if the file does not yet exist or is empty.
+    O arquivo é aberto em modo append para preservar o histórico quando desejado.
+    O cabeçalho é gravado apenas se o arquivo ainda não existir ou estiver vazio.
     """
 
     def __init__(self, filepath: str = "session_goniometry.csv"):
@@ -66,9 +66,9 @@ class GoniometryCSVLogger:
 
     def log(self, frame_id: int, angles: Dict[str, Dict[str, float]]) -> None:
         """
-        Writes one row corresponding to a processed frame.
+        Grava uma linha correspondente a um quadro processado.
 
-        Expects the angles dictionary in the same format returned by:
+        Espera o dicionário de ângulos no mesmo formato retornado por:
         DigitalGoniometer.compute_all() / GoniometryFilterBank.smooth_all()
         """
         row: Dict[str, Any] = {
@@ -93,13 +93,13 @@ class GoniometryCSVLogger:
 
     def flush(self) -> None:
         """
-        Forces the file buffer to be written to disk.
+        Força a gravação do buffer do arquivo em disco.
         """
         self._file.flush()
 
     def close(self) -> None:
         """
-        Safely closes the CSV file.
+        Fecha o arquivo CSV com segurança.
         """
         if hasattr(self, "_file") and self._file and not self._file.closed:
             self._file.flush()
