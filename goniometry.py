@@ -1,18 +1,18 @@
 """
-goniometry.py — Digital goniometry based on 3D landmarks
-=========================================================
+goniometry.py — Goniometria digital baseada em landmarks 3D
+===========================================================
 
-This module computes hand joint angles from MediaPipe landmarks.
+Este módulo calcula ângulos articulares da mão a partir dos landmarks do MediaPipe.
 
-Responsibilities:
-    - Convert landmarks to 3D numpy vectors.
-    - Compute the hand reference plane.
-    - Measure signed clinical angles.
-    - Calculate MCP, PIP, DIP, ABD, and TAM for each finger.
-    - Calculate MCP and IP for the thumb.
-    - Classify TAM and validate clinical ranges.
+Responsabilidades:
+    - Converter landmarks anatômicos para vetores numpy 3D.
+    - Calcular o plano de referência da mão.
+    - Medir ângulos clínicos com sinal.
+    - Calcular MCP, PIP, DIP, ABD e TAM para cada dedo.
+    - Calcular MCP e IP para o polegar.
+    - Classificar o TAM e validar faixas clínicas.
 
-This module is independent of OpenCV.
+Este módulo é independente de OpenCV.
 """
 
 from typing import Any, Dict, List
@@ -22,7 +22,7 @@ import numpy as np
 import config
 
 # =============================================================================
-# LANDMARK INDICES
+# ÍNDICES DOS MARCOS ANATÔMICOS (LANDMARKS)
 # =============================================================================
 
 WRIST = 0
@@ -35,11 +35,11 @@ RING_MCP, RING_PIP, RING_DIP, RING_TIP = 13, 14, 15, 16
 PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP = 17, 18, 19, 20
 
 # =============================================================================
-# CLINICAL REFERENCE
+# REFERÊNCIA CLÍNICA
 # =============================================================================
 
 NORMAL_RANGES: Dict[str, tuple] = {
-    "MCP_flex":  (70.0, 90.0),   # ASSH: MCP flexion 70–90° is normal for active motion
+    "MCP_flex":  (70.0, 90.0),   # ASSH: flexão da MCP de 70–90° é normal para movimento ativo
     "MCP_hyper": (0.0, 45.0),
     "PIP_flex":  (100.0, 120.0),
     "DIP_flex":  (60.0, 80.0),
@@ -66,19 +66,19 @@ TAM_CLASSIFICATION_THUMB = [
 
 
 # =============================================================================
-# VECTOR FUNCTIONS
+# FUNÇÕES VETORIAIS
 # =============================================================================
 
 def _lm_to_array(landmark: Any) -> np.ndarray:
     """
-    Convert a MediaPipe landmark to a numpy vector [x, y, z].
+    Converte um landmark do MediaPipe para um vetor numpy [x, y, z].
     """
     return np.array([landmark.x, landmark.y, landmark.z], dtype=np.float64)
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
     """
-    Normalize a vector to unit length.
+    Normaliza um vetor para comprimento unitário.
     """
     norm = np.linalg.norm(v)
     return v / norm if norm > 1e-9 else np.zeros(3, dtype=np.float64)
@@ -86,11 +86,11 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 
 def angle_between_vectors_3d(v1: np.ndarray, v2: np.ndarray, normal: np.ndarray) -> float:
     """
-    Compute the signed angle between two 3D vectors.
+    Calcula o ângulo com sinal entre dois vetores 3D.
 
-    The sign uses the hand plane as a reference to distinguish:
-    - flexion / abduction (positive);
-    - extension / hyperextension / adduction (negative).
+    O sinal utiliza o plano da mão como referência para distinguir:
+    - flexão / abdução (positivo);
+    - extensão / hiperextensão / adução (negativo).
     """
     v1 = _normalize(v1)
     v2 = _normalize(v2)
@@ -106,15 +106,14 @@ def angle_between_vectors_3d(v1: np.ndarray, v2: np.ndarray, normal: np.ndarray)
 
 def _hand_normal(landmarks: List[Any], eh_mao_direita: bool = True) -> np.ndarray:
     """
-    Compute the normal vector of the hand plane.
+    Calcula o vetor normal usado como referência para o plano da mão.
 
-    The normal points outward from the palm of the right hand.
-    For the left hand (eh_mao_direita=False), the vector is negated
-    to maintain the correct sign convention for flexion/extension.
+    Para a mão esquerda (`eh_mao_direita=False`), o vetor é invertido
+    para preservar a convenção de sinais de flexão/extensão.
 
-    Note: cv2.flip() mirrors the frame visually but does not alter the
-    .x/.y/.z coordinates of MediaPipe landmarks — therefore handedness
-    correction must be applied here, in the normal vector.
+    Observação: `cv2.flip()` espelha o quadro visualmente, mas não altera as
+    coordenadas `.x`/`.y`/`.z` dos landmarks do MediaPipe — portanto, a correção
+    de lateralidade deve ser aplicada aqui, no vetor normal.
     """
     wrist = _lm_to_array(landmarks[WRIST])
     mcp_index = _lm_to_array(landmarks[INDEX_MCP])
@@ -131,59 +130,59 @@ def _hand_normal(landmarks: List[Any], eh_mao_direita: bool = True) -> np.ndarra
 
 def _thumb_local_normal(landmarks: List[Any], hand_normal: np.ndarray) -> np.ndarray:
     """
-    Stable normal for the thumb movement plane.
+    Normal estável para o plano de movimento do polegar.
 
-    Derived solely from the thumb metacarpal axis (CMC->MCP) and the
-    dorsal hand normal. By using only CMC and MCP — not IP or TIP — it
-    is completely independent of the thumb's current joint position.
-    This eliminates the circular dependency that caused sign inversion
-    during flexion.
+    Derivada exclusivamente do eixo do metacarpo do polegar (`THUMB_CMC -> THUMB_MCP`)
+    e da normal dorsal da mão. Ao utilizar apenas `CMC` e `MCP` — sem `IP` ou `TIP` —,
+    é completamente independente da posição articular atual do polegar.
+    Isso elimina a dependência circular que causava inversão de sinal
+    durante a flexão.
 
-    Resulting sign convention:
-    - Flexion toward the palm -> positive
-    - Extension / abduction outward -> zero or negative
+    Convenção de sinal resultante:
+    - Flexão em direção à palma -> positivo
+    - Extensão / abdução para fora -> zero ou negativo
 
-    Parameters:
-        landmarks   : list of 21 MediaPipe landmarks.
-        hand_normal : correct dorsal normal (already adjusted for handedness)
-                      from _hand_normal() in compute_all().
+    Parâmetros:
+        landmarks   : lista de 21 landmarks do MediaPipe.
+        hand_normal : normal dorsal correta (já ajustada para lateralidade)
+                      de `_hand_normal()` em `compute_all()`.
     """
     cmc = _lm_to_array(landmarks[THUMB_CMC])
     mcp = _lm_to_array(landmarks[THUMB_MCP])
 
-    # Thumb metacarpal axis — stable, does not change with MCP/IP flexion.
+    # Eixo do metacarpo do polegar — estável, não varia com a flexão da MCP/IP.
     thumb_shaft = _normalize(mcp - cmc)
 
-    # Palmar direction = opposite of the dorsal normal.
+    # Direção palmar = oposta à normal dorsal.
     palmar = -hand_normal
 
-    # cross(thumb_axis, palmar) produces the perpendicular vector
-    # pointing in the direction that defines palmar flexion as positive.
+    # `cross(thumb_axis, palmar)` produz o vetor perpendicular
+    # apontando na direção que define a flexão palmar como positiva.
     raw = np.cross(thumb_shaft, palmar)
 
     norm_mag = np.linalg.norm(raw)
     if norm_mag < 1e-9:
-        # Fallback: thumb is parallel to the hand normal (anatomically extreme pose).
+        # Fallback: polegar paralelo à normal da mão (pose anatomicamente extrema).
         return hand_normal
 
     return _normalize(raw)
 
 
 # =============================================================================
-# DIGITAL GONIOMETER
+# GONIÔMETRO DIGITAL
 # =============================================================================
 
 class DigitalGoniometer:
     """
-    Implements hand joint angle calculations.
+    Implementa o cálculo dos ângulos articulares da mão.
 
-    This class encapsulates the clinical formulas and sign conventions
-    to produce a structured dictionary organized by finger and joint.
+    Esta classe encapsula as fórmulas clínicas e convenções de sinal
+    para produzir um dicionário estruturado organizado por dedo e articulação.
     """
 
     def mcp_flex(self, landmarks: List[Any], mcp_idx: int, pip_idx: int, normal: np.ndarray) -> float:
         """
-        Compute MCP flexion for a non-thumb finger.
+        Calcula a flexão da MCP para um dedo que não seja o polegar.
         """
         wrist = _lm_to_array(landmarks[WRIST])
         mcp = _lm_to_array(landmarks[mcp_idx])
@@ -200,7 +199,7 @@ class DigitalGoniometer:
         normal: np.ndarray,
     ) -> float:
         """
-        Compute PIP flexion.
+        Calcula a flexão da PIP.
         """
         mcp = _lm_to_array(landmarks[mcp_idx])
         pip = _lm_to_array(landmarks[pip_idx])
@@ -217,7 +216,7 @@ class DigitalGoniometer:
         normal: np.ndarray,
     ) -> float:
         """
-        Compute DIP flexion.
+        Calcula a flexão da DIP.
         """
         pip = _lm_to_array(landmarks[pip_idx])
         dip = _lm_to_array(landmarks[dip_idx])
@@ -225,24 +224,24 @@ class DigitalGoniometer:
 
         return angle_between_vectors_3d(dip - pip, tip - dip, normal)
 
-    # Abduction reference per finger: uses the immediately adjacent finger.
-    # Using the middle finger as an absolute reference for all fingers
-    # overestimated index abduction and distorted the little finger.
+    # Referência de abdução por dedo: utiliza o dedo imediatamente adjacente.
+    # O uso do dedo médio como referência absoluta para todos os dedos
+    # superestimava a abdução do indicador e distorcia a do mínimo.
     _ABD_REFERENCE = {
-        INDEX_MCP:  MIDDLE_MCP,   # index  -> middle
-        MIDDLE_MCP: MIDDLE_MCP,   # middle -> itself (result 0, no ABD defined)
-        RING_MCP:   MIDDLE_MCP,   # ring   -> middle
-        PINKY_MCP:  RING_MCP,     # little -> ring
+        INDEX_MCP:  MIDDLE_MCP,   # indicador -> médio
+        MIDDLE_MCP: MIDDLE_MCP,   # médio     -> ele mesmo (resultado 0, sem ABD definida)
+        RING_MCP:   MIDDLE_MCP,   # anelar    -> médio
+        PINKY_MCP:  RING_MCP,     # mínimo    -> anelar
     }
 
     def mcp_abduction(self, landmarks: List[Any], mcp_idx: int) -> float:
         """
-        Compute MCP abduction using the adjacent finger as reference.
+        Calcula a abdução da MCP utilizando o dedo adjacente como referência.
 
-        Clinical references:
-        - Index and Ring: reference is the Middle finger.
-        - Little: reference is the Ring finger.
-        - Middle: returns 0 (no abduction reference defined clinically).
+        Referências clínicas:
+        - Indicador e Anelar: referência é o dedo Médio.
+        - Mínimo: referência é o dedo Anelar.
+        - Médio: retorna 0 (nenhuma referência de abdução definida clinicamente).
         """
         ref_idx = self._ABD_REFERENCE.get(mcp_idx, MIDDLE_MCP)
         wrist = _lm_to_array(landmarks[WRIST])
@@ -250,7 +249,7 @@ class DigitalGoniometer:
         current_mcp = _lm_to_array(landmarks[mcp_idx])
 
         if mcp_idx == ref_idx:
-            return 0.0  # middle finger has no adjacent reference
+            return 0.0  # o dedo médio não possui referência adjacente
 
         ref = _normalize(ref_mcp - wrist)
         cur = _normalize(current_mcp - wrist)
@@ -260,14 +259,14 @@ class DigitalGoniometer:
 
     def total_active_motion(self, mcp: float, pip: float, dip: float) -> float:
         """
-        Compute TAM (Total Active Motion) using the full ASSH formula.
+        Calcula o TAM (Total Active Motion) utilizando a fórmula completa da ASSH.
 
-        ASSH formula:
-            TAM = (MCP + PIP + DIP)_flex - (MCP + PIP + DIP)_deficit
+        Fórmula ASSH:
+            `TAM = (MCP + PIP + DIP)_flex - (MCP + PIP + DIP)_deficit`
 
-        Deficit = negative angle (incomplete extension / flexion contracture).
-        A patient with PIP locked at -30° has that deficit subtracted from TAM,
-        which was not reflected in the previous formula that ignored negative values.
+        Déficit = ângulo negativo (extensão incompleta / contratura em flexão).
+        Um paciente com PIP travada em -30° tem esse déficit subtraído do TAM,
+        o que não era refletido na fórmula anterior que ignorava valores negativos.
         """
         flex_sum    = max(mcp, 0.0) + max(pip, 0.0) + max(dip, 0.0)
         deficit_sum = abs(min(mcp, 0.0)) + abs(min(pip, 0.0)) + abs(min(dip, 0.0))
@@ -275,13 +274,13 @@ class DigitalGoniometer:
 
     def total_active_motion_thumb(self, mcp: float, ip: float) -> float:
         """
-        Thumb TAM: sum of MCP + IP using the adapted ASSH clinical protocol.
+        TAM do polegar: soma de MCP + IP utilizando protocolo clínico adaptado da ASSH.
 
-        Different anatomy — the thumb has only two mobile joints:
-          - MCP: normal range 50–60°
-          - IP:  normal range 70–90°
-        Expected maximum TAM: ~120–130° (full thumb flexion).
-        Negative values (extension deficit) are subtracted from the total.
+        Anatomia diferenciada — o polegar possui apenas duas articulações móveis:
+          - MCP: faixa normal de 50–60°
+          - IP:  faixa normal de 70–90°
+        TAM máximo esperado: ~120–130° (flexão completa do polegar).
+        Valores negativos (déficit de extensão) são subtraídos do total.
         """
         flex_sum    = max(0.0, mcp) + max(0.0, ip)
         deficit_sum = abs(min(0.0, mcp)) + abs(min(0.0, ip))
@@ -289,40 +288,40 @@ class DigitalGoniometer:
 
     def thumb_mcp_flex(self, landmarks: List[Any], normal: np.ndarray) -> float:
         """
-        Thumb MCP flexion using a stable LOCAL normal.
+        Flexão da MCP do polegar utilizando uma normal LOCAL estável.
 
-        Stationary arm = THUMB_CMC -> THUMB_MCP (metacarpal)
-        Mobile arm     = THUMB_MCP -> THUMB_IP  (proximal phalanx)
+        Braço fixo = `THUMB_CMC -> THUMB_MCP` (metacarpo)
+        Braço móvel = `THUMB_MCP -> THUMB_IP` (falange proximal)
 
-        The movement plane normal is computed by _thumb_local_normal(),
-        which uses only CMC, MCP, and the dorsal hand normal — without
-        depending on IP or TIP. This eliminates the circular dependency
-        that previously inverted the sign during palmar flexion.
+        A normal do plano de movimento é calculada por `_thumb_local_normal()`,
+        que utiliza apenas `CMC`, `MCP` e a normal dorsal da mão — sem depender
+        de `IP` ou `TIP`. Isso elimina a dependência circular que anteriormente
+        invertia o sinal durante a flexão palmar.
 
-        Expected:
-        - Thumb flexed toward the palm (opposition): +40° to +60°
-        - Thumb extended/abducted outward           : near 0° or negative
+        Esperado:
+        - Polegar flexionado em direção à palma (oposição): +40° a +60°
+        - Polegar estendido/abduzido para fora            : próximo de 0° ou negativo
         """
         cmc = _lm_to_array(landmarks[THUMB_CMC])
         mcp = _lm_to_array(landmarks[THUMB_MCP])
         ip  = _lm_to_array(landmarks[THUMB_IP])
 
-        # Pass the correct dorsal normal (with handedness) to the local calculation.
+        # Passa a normal dorsal correta (com lateralidade) para o cálculo local.
         thumb_normal = _thumb_local_normal(landmarks, normal)
         return angle_between_vectors_3d(mcp - cmc, ip - mcp, thumb_normal)
 
     def thumb_ip_flex(self, landmarks: List[Any], normal: np.ndarray) -> float:
         """
-        Thumb IP joint flexion using a stable LOCAL normal.
+        Flexão da articulação IP do polegar utilizando uma normal LOCAL estável.
 
-        Stationary arm = THUMB_MCP -> THUMB_IP  (proximal phalanx)
-        Mobile arm     = THUMB_IP  -> THUMB_TIP (distal phalanx)
+        Braço fixo = `THUMB_MCP -> THUMB_IP` (falange proximal)
+        Braço móvel = `THUMB_IP -> THUMB_TIP` (falange distal)
 
-        Uses the same local normal as MCP to maintain consistent sign convention.
+        Utiliza a mesma normal local da MCP para manter convenção de sinais coerente.
 
-        Expected:
-        - IP flexed (thumb tip curling toward palm): +70° to +90°
-        - IP extended                              : near 0°
+        Esperado:
+        - IP flexionada (ponta do polegar curvando para a palma): +70° a +90°
+        - IP estendida                                         : próximo de 0°
         """
         mcp = _lm_to_array(landmarks[THUMB_MCP])
         ip  = _lm_to_array(landmarks[THUMB_IP])
@@ -337,13 +336,13 @@ class DigitalGoniometer:
         eh_mao_direita: bool = True,
     ) -> Dict[str, Dict[str, float]]:
         """
-        Compute all hand joint metrics.
+        Calcula todas as métricas articulares da mão.
 
-        Parameters:
-            landmarks     : list of MediaPipe landmarks (21 points).
-            eh_mao_direita: True for the right hand, False for the left hand.
-                            Negates the plane normal to correct the
-                            flexion/extension sign for mirrored hands.
+        Parâmetros:
+            landmarks     : lista de landmarks do MediaPipe (21 pontos).
+            eh_mao_direita: True para mão direita, False para mão esquerda.
+                            Inverte a normal do plano para corrigir o
+                            sinal de flexão/extensão em mãos espelhadas.
         """
         normal = _hand_normal(landmarks, eh_mao_direita=eh_mao_direita)
 
@@ -362,13 +361,13 @@ class DigitalGoniometer:
             dip_angle = self.dip_flex(landmarks, pip_i, dip_i, tip_i, normal)
             abd_angle = self.mcp_abduction(landmarks, mcp_i)
 
-            # TAM uses absolute values because the sign convention
-            # (positive = flexion for right hand, negative = flexion for left hand)
-            # is a geometric artifact of the normal direction, not a clinical
-            # distinction. TAM measures total range of motion regardless of hand side.
+            # O TAM utiliza valores absolutos porque a convenção de sinais
+            # (positivo = flexão para mão direita, negativo = flexão para mão esquerda)
+            # é um artefato geométrico do sentido da normal, não uma distinção
+            # clínica. O TAM mede a amplitude total de movimento independente do lado da mão.
             tam = self.total_active_motion(abs(mcp_angle), abs(pip_angle), abs(dip_angle))
 
-            # Biomechanical ceiling — clamp TAM to the anatomical maximum for this finger
+            # Teto biomecânico — limita o TAM ao máximo anatômico deste dedo
             ceiling = config.TAM_CEILING.get(finger_name, 270.0)
             if tam > ceiling:
                 tam = ceiling
@@ -385,7 +384,7 @@ class DigitalGoniometer:
         thumb_ip  = round(self.thumb_ip_flex(landmarks, normal), 2)
         thumb_tam = self.total_active_motion_thumb(abs(thumb_mcp), abs(thumb_ip))
 
-        # Biomechanical ceiling — clamp thumb TAM to anatomical maximum
+        # Teto biomecânico — limita o TAM do polegar ao máximo anatômico
         ceiling_thumb = config.TAM_CEILING.get("THUMB", 130.0)
         if thumb_tam > ceiling_thumb:
             thumb_tam = ceiling_thumb
@@ -401,12 +400,12 @@ class DigitalGoniometer:
     @staticmethod
     def classify_tam(tam: float, is_thumb: bool = False) -> Dict[str, object]:
         """
-        Classify a TAM value according to the functional reference ranges.
+        Classifica um valor de TAM de acordo com as faixas funcionais de referência.
 
-        Parameters:
-            tam      : TAM value to classify.
-            is_thumb : if True, uses adapted ranges for the thumb
-                       (maximum TAM ~120° instead of ~270°).
+        Parâmetros:
+            tam      : valor de TAM a classificar.
+            is_thumb : se `True`, utiliza faixas adaptadas para o polegar
+                       (TAM máximo ~120° em vez de ~270°).
         """
         table = TAM_CLASSIFICATION_THUMB if is_thumb else TAM_CLASSIFICATION
         for lo, hi, label, color_bgr in table:
@@ -423,15 +422,15 @@ class DigitalGoniometer:
 
 
 # =============================================================================
-# NORMAL RANGE CLASSIFICATION
+# CLASSIFICAÇÃO DE INTERVALO NORMAL
 # =============================================================================
 
 def is_in_normal_range(finger: str, metric: str, value: float) -> str:
     """
-    Determine whether a value is:
-    - within the normal range;
-    - borderline;
-    - outside the expected range.
+    Determina se um valor está:
+    - dentro do intervalo normal;
+    - limítrofe (borderline);
+    - fora do intervalo esperado.
     """
     key_map = {
         ("INDEX", "MCP"): "MCP_flex",
