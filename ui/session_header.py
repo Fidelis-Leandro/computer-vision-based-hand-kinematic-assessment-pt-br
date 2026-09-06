@@ -167,8 +167,8 @@ class SessionHeaderWidget(QWidget):
         """
         Cria o seletor de mão avaliada com QComboBox.
 
-        "Right" e "Left" correspondem ao parâmetro 'side' do
-        generate_pdf_report() e ao parâmetro is_right_hand do DigitalGoniometer.
+        "Direita" e "Esquerda" correspondem ao parâmetro 'side' do
+        generate_pdf_report() e ao parâmetro eh_mao_direita do DigitalGoniometer.
 
         Parâmetros:
             layout: Layout pai onde o grupo de widgets será adicionado.
@@ -181,7 +181,7 @@ class SessionHeaderWidget(QWidget):
         lbl.setStyleSheet(LABEL_SECTION_TITLE_STYLE)
 
         self._combo_hand = QComboBox()
-        self._combo_hand.addItems(["Right", "Left"])
+        self._combo_hand.addItems(["Direita", "Esquerda"])
         self._combo_hand.setMinimumWidth(100)
         self._combo_hand.currentTextChanged.connect(self.hand_changed.emit)
         self._combo_hand.setStyleSheet(
@@ -343,7 +343,7 @@ class SessionHeaderWidget(QWidget):
         Retorna:
             dict com chaves:
                 patient_name (str): Nome completo do paciente sem espaços extras.
-                hand (str): "Right" ou "Left" — conforme selecionado no ComboBox.
+                hand (str): "Direita" ou "Esquerda" — conforme selecionado no ComboBox.
                 session_number (int): Número da sessão (1–999).
                 start_time (datetime | None): Horário de início da sessão,
                     ou None se start_timer() ainda não foi chamado.

@@ -93,7 +93,7 @@ def test_straight_hand_angles():
     # 1. Open hand → angles close to 0°
     lms = create_straight_hand()
     gonio = DigitalGoniometer()
-    res = gonio.compute_all(lms, is_right_hand=True)
+    res = gonio.compute_all(lms, eh_mao_direita=True)
     
     for finger in ["INDEX", "MIDDLE", "RING", "PINKY"]:
         assert abs(res[finger]["MCP"]) < 5.0
@@ -106,7 +106,7 @@ def test_flexed_hand_angles_positive():
     # 8. Negative values do not appear in normal flexion
     lms = create_flexed_hand()
     gonio = DigitalGoniometer()
-    res = gonio.compute_all(lms, is_right_hand=True)
+    res = gonio.compute_all(lms, eh_mao_direita=True)
     
     for finger in ["INDEX", "MIDDLE", "RING", "PINKY"]:
         assert res[finger]["MCP"] > 0
@@ -119,8 +119,8 @@ def test_flexed_hand_angles_positive():
 def test_tam_increases_with_flexion():
     # 3. Long finger TAM increases with flexion
     gonio = DigitalGoniometer()
-    res_straight = gonio.compute_all(create_straight_hand(), is_right_hand=True)
-    res_flexed = gonio.compute_all(create_flexed_hand(), is_right_hand=True)
+    res_straight = gonio.compute_all(create_straight_hand(), eh_mao_direita=True)
+    res_flexed = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
     
     for finger in ["INDEX", "MIDDLE", "RING", "PINKY"]:
         assert res_flexed[finger]["TAM"] > res_straight[finger]["TAM"]
@@ -128,7 +128,7 @@ def test_tam_increases_with_flexion():
 def test_thumb_tam_is_calculated():
     # 4. Thumb TAM is computed and included in result
     gonio = DigitalGoniometer()
-    res = gonio.compute_all(create_straight_hand(), is_right_hand=True)
+    res = gonio.compute_all(create_straight_hand(), eh_mao_direita=True)
     
     assert "THUMB" in res
     assert "TAM" in res["THUMB"]
@@ -141,7 +141,7 @@ def test_csv_contains_thumb_tam():
         logger = GoniometryCSVLogger(csv_path)
         
         gonio = DigitalGoniometer()
-        angles = gonio.compute_all(create_flexed_hand(), is_right_hand=True)
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
         
         logger.log(1, angles)
         logger.close()
@@ -166,7 +166,7 @@ def test_thumb_classification_logic():
 def test_dashboard_utils_classify_hand_state():
     # 7. Dashboard and utility functions do not break with THUMB_TAM
     gonio = DigitalGoniometer()
-    angles = gonio.compute_all(create_flexed_hand(), is_right_hand=True)
+    angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
     
     # Force thumb TAM to closed state (>= 85.0)
     angles["THUMB"]["TAM"] = 90.0

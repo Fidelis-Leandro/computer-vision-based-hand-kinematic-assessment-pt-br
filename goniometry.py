@@ -104,12 +104,12 @@ def angle_between_vectors_3d(v1: np.ndarray, v2: np.ndarray, normal: np.ndarray)
     return angle_deg if sign >= 0 else -angle_deg
 
 
-def _hand_normal(landmarks: List[Any], is_right_hand: bool = True) -> np.ndarray:
+def _hand_normal(landmarks: List[Any], eh_mao_direita: bool = True) -> np.ndarray:
     """
     Compute the normal vector of the hand plane.
 
     The normal points outward from the palm of the right hand.
-    For the left hand (is_right_hand=False), the vector is negated
+    For the left hand (eh_mao_direita=False), the vector is negated
     to maintain the correct sign convention for flexion/extension.
 
     Note: cv2.flip() mirrors the frame visually but does not alter the
@@ -124,7 +124,7 @@ def _hand_normal(landmarks: List[Any], is_right_hand: bool = True) -> np.ndarray
     v2 = mcp_pinky - wrist
 
     normal = _normalize(np.cross(v2, v1))
-    if not is_right_hand:
+    if not eh_mao_direita:
         normal = -normal
     return normal
 
@@ -334,18 +334,18 @@ class DigitalGoniometer:
     def compute_all(
         self,
         landmarks: List[Any],
-        is_right_hand: bool = True,
+        eh_mao_direita: bool = True,
     ) -> Dict[str, Dict[str, float]]:
         """
         Compute all hand joint metrics.
 
         Parameters:
-            landmarks    : list of MediaPipe landmarks (21 points).
-            is_right_hand: True for the right hand, False for the left hand.
-                           Negates the plane normal to correct the
-                           flexion/extension sign for mirrored hands.
+            landmarks     : list of MediaPipe landmarks (21 points).
+            eh_mao_direita: True for the right hand, False for the left hand.
+                            Negates the plane normal to correct the
+                            flexion/extension sign for mirrored hands.
         """
-        normal = _hand_normal(landmarks, is_right_hand=is_right_hand)
+        normal = _hand_normal(landmarks, eh_mao_direita=eh_mao_direita)
 
         result: Dict[str, Dict[str, float]] = {}
 

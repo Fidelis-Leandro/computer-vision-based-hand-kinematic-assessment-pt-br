@@ -267,14 +267,14 @@ class ProcessingWorker(QThread):
         self._session_lock: threading.Lock = threading.Lock()
 
         # State for hand-side logic tracking
-        self.current_hand_side: str = "Right"
-        self.previous_hand_side: str = "Right"
+        self.current_hand_side: str = "Direita"
+        self.previous_hand_side: str = "Direita"
         self._hand_side_lock: threading.Lock = threading.Lock()
 
     def set_evaluated_hand(self, side: str) -> None:
-        """Updates the evaluated hand side ('Right' or 'Left') safely from UI."""
+        """Updates the evaluated hand side ('Direita' or 'Esquerda') safely from UI."""
         side = side.strip().title()
-        if side in ("Right", "Left"):
+        if side in ("Direita", "Esquerda"):
             with self._hand_side_lock:
                 self.current_hand_side = side
 
@@ -448,13 +448,13 @@ class ProcessingWorker(QThread):
             self._reset_for_hand_change()
             self.previous_hand_side = local_hand_side
             
-        is_right_hand: bool = (local_hand_side == "Right")
+        eh_mao_direita: bool = (local_hand_side == "Direita")
 
         # --- Step 3: Raw angle calculation ---
         # compute_all() receives the 21 normalized 3D landmarks (coordinates 0.0-1.0)
         # and returns a dict {finger: {joint: angle_in_degrees}}.
         landmarks = results.multi_hand_landmarks[0].landmark
-        angles_raw: dict = self._gonio.compute_all(landmarks, is_right_hand=is_right_hand)
+        angles_raw: dict = self._gonio.compute_all(landmarks, eh_mao_direita=eh_mao_direita)
 
         # --- Step 4: EMA -> Kalman smoothing ---
         # Why does the order EMA BEFORE Kalman matter?
