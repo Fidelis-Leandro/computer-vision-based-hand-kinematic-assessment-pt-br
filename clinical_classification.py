@@ -33,20 +33,20 @@ def classify_articular_tam(finger: str, best_tam_session: float) -> Dict[str, st
     """
     if finger == "THUMB":
         if best_tam_session > 120.0:
-            return {"label": "Excelente", "color": COLOR_EXCELLENT, "source": "articular_tam"}
+            return {"rotulo": "Excelente", "cor": COLOR_EXCELLENT, "origem": "articular_tam"}
         elif best_tam_session >= 100.0:
-            return {"label": "Bom", "color": COLOR_GOOD, "source": "articular_tam"}
+            return {"rotulo": "Bom", "cor": COLOR_GOOD, "origem": "articular_tam"}
         else:
-            return {"label": "Ruim", "color": COLOR_POOR, "source": "articular_tam"}
+            return {"rotulo": "Ruim", "cor": COLOR_POOR, "origem": "articular_tam"}
     else:
         if best_tam_session >= 260.0:
-            return {"label": "Excelente", "color": COLOR_EXCELLENT, "source": "articular_tam"}
+            return {"rotulo": "Excelente", "cor": COLOR_EXCELLENT, "origem": "articular_tam"}
         elif best_tam_session >= 195.0:
-            return {"label": "Bom", "color": COLOR_GOOD, "source": "articular_tam"}
+            return {"rotulo": "Bom", "cor": COLOR_GOOD, "origem": "articular_tam"}
         elif best_tam_session >= 130.0:
-            return {"label": "Razoável", "color": COLOR_FAIR, "source": "articular_tam"}
+            return {"rotulo": "Razoável", "cor": COLOR_FAIR, "origem": "articular_tam"}
         else:
-            return {"label": "Ruim", "color": COLOR_POOR, "source": "articular_tam"}
+            return {"rotulo": "Ruim", "cor": COLOR_POOR, "origem": "articular_tam"}
 
 def detect_valid_repetitions(
     tam_series: List[float],
@@ -75,13 +75,13 @@ def detect_valid_repetitions(
 
     if len(tam_series) < 3:
         return {
-            "valid_cycles": 0,
-            "good_hits": 0,
-            "excellent_hits": 0,
-            "success_rate_good": 0.0,
-            "success_rate_excellent": 0.0,
-            "best_peak": 0.0,
-            "mean_peak": 0.0
+            "ciclos_validos": 0,
+            "acertos_bom": 0,
+            "acertos_excelente": 0,
+            "taxa_sucesso_bom": 0.0,
+            "taxa_sucesso_excelente": 0.0,
+            "melhor_pico": 0.0,
+            "media_picos": 0.0
         }
 
     last_peak_time = -999.0
@@ -120,13 +120,13 @@ def detect_valid_repetitions(
     success_rate_excellent = excellent_hits / valid_cycles if valid_cycles > 0 else 0.0
 
     return {
-        "valid_cycles": valid_cycles,
-        "good_hits": good_hits,
-        "excellent_hits": excellent_hits,
-        "success_rate_good": float(success_rate_good),
-        "success_rate_excellent": float(success_rate_excellent),
-        "best_peak": float(best_peak),
-        "mean_peak": float(mean_peak)
+        "ciclos_validos": valid_cycles,
+        "acertos_bom": good_hits,
+        "acertos_excelente": excellent_hits,
+        "taxa_sucesso_bom": float(success_rate_good),
+        "taxa_sucesso_excelente": float(success_rate_excellent),
+        "melhor_pico": float(best_peak),
+        "media_picos": float(mean_peak)
     }
 
 def classify_functional_session(
@@ -138,9 +138,9 @@ def classify_functional_session(
     """
     CAMADA 3: Classificação funcional da sessão baseada em repetições.
     """
-    valid_cycles = repetition_stats["valid_cycles"]
-    success_rate_good = repetition_stats["success_rate_good"]
-    success_rate_excellent = repetition_stats["success_rate_excellent"]
+    valid_cycles = repetition_stats["ciclos_validos"]
+    success_rate_good = repetition_stats["taxa_sucesso_bom"]
+    success_rate_excellent = repetition_stats["taxa_sucesso_excelente"]
 
     rom = realtime_metrics.get("rom", 0.0)
     mean_velocity = realtime_metrics.get("vel_media", 0.0)
@@ -167,12 +167,12 @@ def classify_functional_session(
         color = COLOR_POOR
 
     return {
-        "label": label,
-        "color": color,
-        "source": "functional_session",
-        "valid_cycles": valid_cycles,
-        "success_rate_good": success_rate_good,
-        "success_rate_excellent": success_rate_excellent
+        "rotulo": label,
+        "cor": color,
+        "origem": "sessao_funcional",
+        "ciclos_validos": valid_cycles,
+        "taxa_sucesso_bom": success_rate_good,
+        "taxa_sucesso_excelente": success_rate_excellent
     }
 
 def classify_final_session_result(
@@ -184,13 +184,13 @@ def classify_final_session_result(
     """
     CAMADA 4 (Final): Classificação híbrida da sessão para o relatório.
     """
-    art_label = articular["label"]
-    func_label = functional["label"]
-    best_peak = repetition_stats["best_peak"]
-    valid_cycles = repetition_stats["valid_cycles"]
-    success_rate_good = repetition_stats["success_rate_good"]
-    success_rate_excellent = repetition_stats["success_rate_excellent"]
-    excellent_hits = repetition_stats["excellent_hits"]
+    art_label = articular["rotulo"]
+    func_label = functional["rotulo"]
+    best_peak = repetition_stats["melhor_pico"]
+    valid_cycles = repetition_stats["ciclos_validos"]
+    success_rate_good = repetition_stats["taxa_sucesso_bom"]
+    success_rate_excellent = repetition_stats["taxa_sucesso_excelente"]
+    excellent_hits = repetition_stats["acertos_excelente"]
 
     target_good = 100.0 if finger == "THUMB" else 180.0
     target_exc = 120.0 if finger == "THUMB" else 220.0
@@ -243,15 +243,15 @@ def classify_final_session_result(
     }
 
     return {
-        "label": final_label,
-        "color": colors.get(final_label, COLOR_POOR),
-        "source": "final_hybrid",
-        "explanation": explanation
+        "rotulo": final_label,
+        "cor": colors.get(final_label, COLOR_POOR),
+        "origem": "hibrido_final",
+        "explicacao": explanation
     }
 
 def generate_clinical_observation_text(final_hybrid: Dict[str, str]) -> str:
     """Gera um texto automático de observação clínica baseado no rótulo final."""
-    lbl = final_hybrid["label"]
+    lbl = final_hybrid["rotulo"]
     if lbl == "Excelente":
         return "Desempenho funcional consistente, com flexões repetidas atingindo o intervalo de excelência durante a sessão."
     elif lbl == "Bom":

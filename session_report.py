@@ -406,9 +406,9 @@ def _empty_finger_summary(finger: str) -> Dict[str, Any]:
         "regularidade": "-",
         "cv": 0.0,
         "n_picos": 0,
-        "articular_class": {"label": "Ruim", "color": "#ef4444"},
-        "functional_class": {"label": "Ruim", "color": "#ef4444"},
-        "hybrid_class": {"label": "Ruim", "color": "#ef4444", "explanation": "No data available for analysis."},
+        "articular_class": {"rotulo": "Ruim", "cor": "#ef4444"},
+        "functional_class": {"rotulo": "Ruim", "cor": "#ef4444"},
+        "hybrid_class": {"rotulo": "Ruim", "cor": "#ef4444", "explicacao": "No data available for analysis."},
     }
     if finger == "THUMB":
         entry["mcp_medio"] = 0.0
@@ -536,13 +536,13 @@ def build_clinical_observation(summary: Dict[str, Dict[str, Any]]) -> str:
     worst_rank = 4
 
     for s in valid.values():
-        label = s["hybrid_class"]["label"]
+        label = s["hybrid_class"]["rotulo"]
         rank = ranks.get(label, 1)
         if rank < worst_rank:
             worst_rank = rank
             worst_label = label
 
-    return generate_clinical_observation_text({"label": worst_label})
+    return generate_clinical_observation_text({"rotulo": worst_label})
 
 
 def _build_interpretation(summary: Dict[str, Dict[str, Any]]) -> str:
@@ -776,7 +776,7 @@ def _add_main_table(
             f"{s['vel_pico']:.0f}°/s",
             f"{s['freq_hz']:.2f}Hz",
             s["regularidade"],
-            s["articular_class"]["label"],
+            s["articular_class"]["rotulo"],
         ]
 
         for i, val in enumerate(values):
@@ -828,9 +828,9 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         _cell(pdf, 5, 4, "")
         _cell(pdf, 55, 4, "Articular classification (TAM):")
         pdf.set_font("Helvetica", "B", 8)
-        color_art = _hex_to_rgb(s["articular_class"]["color"])
+        color_art = _hex_to_rgb(s["articular_class"]["cor"])
         pdf.set_text_color(*color_art)
-        _cell(pdf, 0, 4, s["articular_class"]["label"], ln=True)
+        _cell(pdf, 0, 4, s["articular_class"]["rotulo"], ln=True)
 
         # Functional
         pdf.set_font("Helvetica", "", 8)
@@ -838,9 +838,9 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         _cell(pdf, 5, 4, "")
         _cell(pdf, 55, 4, "Functional session classification:")
         pdf.set_font("Helvetica", "B", 8)
-        color_func = _hex_to_rgb(s["functional_class"]["color"])
+        color_func = _hex_to_rgb(s["functional_class"]["cor"])
         pdf.set_text_color(*color_func)
-        _cell(pdf, 0, 4, s["functional_class"]["label"], ln=True)
+        _cell(pdf, 0, 4, s["functional_class"]["rotulo"], ln=True)
 
         # Hybrid
         pdf.set_font("Helvetica", "", 8)
@@ -848,15 +848,15 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         _cell(pdf, 5, 4, "")
         _cell(pdf, 55, 4, "Final hybrid classification:")
         pdf.set_font("Helvetica", "B", 8)
-        color_hyb = _hex_to_rgb(s["hybrid_class"]["color"])
+        color_hyb = _hex_to_rgb(s["hybrid_class"]["cor"])
         pdf.set_text_color(*color_hyb)
-        _cell(pdf, 0, 4, s["hybrid_class"]["label"], ln=True)
+        _cell(pdf, 0, 4, s["hybrid_class"]["rotulo"], ln=True)
 
         # Rationale
         pdf.set_font("Helvetica", "I", 8)
         pdf.set_text_color(80, 80, 90)
         _cell(pdf, 5, 4, "")
-        _multi_cell(pdf, 0, 4, f"Rationale: {s['hybrid_class']['explanation']}")
+        _multi_cell(pdf, 0, 4, f"Rationale: {s['hybrid_class']['explicacao']}")
         pdf.ln(3)
 
     pdf.ln(3)
