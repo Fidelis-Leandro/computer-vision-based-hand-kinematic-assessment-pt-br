@@ -1,19 +1,19 @@
 """
-app_pyqt.py — Desktop interface entry point (PyQt6)
-====================================================
+app_pyqt.py — Ponto de entrada da interface desktop (PyQt6)
+============================================================
 
-This is the main entry point for the Digital Hand Goniometry application,
-replacing the previous web-based interface built on Streamlit.
+Este é o ponto de entrada principal da aplicação Goniometria Digital da Mão,
+substituindo a interface anterior baseada em web construída com Streamlit.
 
-Responsibilities:
-    1. Configure the global logging system (file and console handlers).
-    2. Optimize graphics rendering on Windows (disabling OpenGL if needed).
-    3. Initialize the Qt application and apply the dark visual theme.
-    4. Instantiate and display the MainWindow.
-    5. Catch unhandled fatal exceptions to prevent silent crashes.
+Responsabilidades:
+    1. Configurar o sistema de logging global (handlers de arquivo e console).
+    2. Otimizar a renderização gráfica no Windows (desativando OpenGL se necessário).
+    3. Inicializar a aplicação Qt e aplicar o tema visual escuro.
+    4. Instanciar e exibir o MainWindow.
+    5. Capturar exceções fatais não tratadas para evitar travamentos silenciosos.
 
-Run commands:
-    - PyQt6 interface (main)      : python app_pyqt.py
+Comandos de execução:
+    - Interface PyQt6 (principal)  : python app_pyqt.py
 """
 
 import logging
@@ -27,118 +27,118 @@ import config
 import themes
 from ui.main_window import MainWindow
 
-# Attempt to load pyqtgraph. On some Windows machines, pyqtgraph tries to
-# use OpenGL and crashes when basic video drivers are present.
+# Tenta carregar o pyqtgraph. Em algumas máquinas Windows, o pyqtgraph tenta
+# usar OpenGL e trava quando há drivers de vídeo básicos instalados.
 try:
     import pyqtgraph as pg
-    # Disable native OpenGL as a precaution. The software (raster) renderer
-    # in PyQtGraph is extremely fast and more than sufficient for 2D line
-    # charts, and is 100% stable on any PC configuration.
+    # Desativa o OpenGL nativo como precaução. O renderizador de software (raster)
+    # do PyQtGraph é extremamente rápido e mais do que suficiente para gráficos
+    # de linha 2D, sendo 100% estável em qualquer configuração de PC.
     pg.setConfigOption("useOpenGL", False)
 except ImportError:
-    # Handled inside the widgets that use pyqtgraph.
+    # Tratado dentro dos widgets que usam pyqtgraph.
     pass
 
 
 def setup_logging() -> None:
     """
-    Configure the global logging system for console and file output.
+    Configura o sistema de logging global para saída em console e arquivo.
 
-    Why configure this globally at the entry point?
-        Any module (MainWindow, CameraWorker, etc.) can call
-        logging.getLogger(__name__) and automatically inherit this
-        formatting, without configuring a logger individually per file.
+    Por que configurar globalmente no ponto de entrada?
+        Qualquer módulo (MainWindow, CameraWorker, etc.) pode chamar
+        logging.getLogger(__name__) e automaticamente herdar esta
+        formatação, sem configurar um logger individualmente por arquivo.
 
-    Format:
-        "2026-06-23 14:35:12,123 | INFO | ui.main_window | Session started"
+    Formato:
+        "2026-06-23 14:35:12,123 | INFO | ui.main_window | Sessão iniciada"
     """
-    # Ensure the log directory exists
+    # Garante que o diretório de log exista
     os.makedirs(config.LOG_DIR, exist_ok=True)
     log_file = os.path.join(config.LOG_DIR, "app.log")
 
-    # Standardized format: date/time | level | module | message
+    # Formato padronizado: data/hora | nível | módulo | mensagem
     log_format = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
-    # Configure the root logger
+    # Configura o logger raiz
     logging.basicConfig(
         level=logging.INFO,
         format=log_format,
         handlers=[
-            logging.FileHandler(log_file, encoding="utf-8"),  # File handler
-            logging.StreamHandler(sys.stdout),                 # Console handler
+            logging.FileHandler(log_file, encoding="utf-8"),  # Handler de arquivo
+            logging.StreamHandler(sys.stdout),                 # Handler de console
         ]
     )
 
 
 def exception_hook(exc_type, exc_value, exc_traceback) -> None:
     """
-    Global handler for uncaught exceptions.
+    Handler global para exceções não capturadas.
 
-    Why use sys.excepthook?
-        In PyQt applications, exceptions raised inside slots or signals
-        are sometimes silently swallowed by Qt, causing the program to
-        crash without any visible error. The excepthook guarantees that
-        NO fatal exception goes unnoticed: all will be recorded in app.log
-        with a full traceback before the application terminates.
+    Por que usar sys.excepthook?
+        Em aplicações PyQt, exceções levantadas dentro de slots ou sinais
+        às vezes são silenciosamente engolidas pelo Qt, causando o travamento
+        do programa sem nenhum erro visível. O excepthook garante que
+        NENHUMA exceção fatal passe despercebida: todas serão registradas em app.log
+        com o traceback completo antes do encerramento da aplicação.
     """
-    # If the exception is a keyboard interrupt (Ctrl+C in terminal),
-    # do not treat it as a fatal error — just let the application close.
+    # Se a exceção for uma interrupção por teclado (Ctrl+C no terminal),
+    # não tratar como erro fatal — apenas deixar a aplicação fechar.
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
 
-    # Log the fatal error with the full call stack (traceback)
+    # Registra o erro fatal com a pilha de chamadas completa (traceback)
     logger = logging.getLogger("sys.excepthook")
     logger.critical(
-        "Unhandled Fatal Exception:\n",
+        "Exceção Fatal não tratada:\n",
         exc_info=(exc_type, exc_value, exc_traceback),
     )
 
 
 def main() -> None:
     """
-    Main application entry point.
-    Configures the environment, creates the UI, and starts the Qt event loop.
+    Ponto de entrada principal da aplicação.
+    Configura o ambiente, cria a interface e inicia o loop de eventos Qt.
     """
-    # 1. Configure logging and global exception capture
+    # 1. Configura o logging e a captura global de exceções
     setup_logging()
     sys.excepthook = exception_hook
 
     logger = logging.getLogger("app_pyqt")
-    logger.info("Initializing Digital Hand Goniometry (PyQt6 interface)...")
+    logger.info("Inicializando Goniometria Digital da Mão (interface PyQt6)...")
 
-    # Wrap the entire application execution in try/except to ensure
-    # initialization errors are always logged.
+    # Envolve toda a execução da aplicação em try/except para garantir
+    # que erros de inicialização sejam sempre registrados.
     try:
-        # 2. Create the main Qt application instance
-        # sys.argv allows the application to accept command-line parameters
-        # (e.g., native Qt style parameters)
+        # 2. Cria a instância principal da aplicação Qt
+        # sys.argv permite que a aplicação aceite parâmetros de linha de comando
+        # (ex.: parâmetros nativos de estilo Qt)
         app = QApplication(sys.argv)
 
-        # 3. Set the application name (used internally by the OS and Qt)
+        # 3. Define o nome da aplicação (usado internamente pelo SO e pelo Qt)
         app.setApplicationName(config.APP_TITLE)
 
-        # 4. Apply the standardized dark theme to all native components
+        # 4. Aplica o tema escuro padronizado a todos os componentes nativos
         themes.apply_dark_theme(app)
 
-        # 5. Instantiate the main window, which orchestrates everything else
+        # 5. Instancia a janela principal, que orquestra todo o restante
         window = MainWindow()
 
-        # 6. Display the window (show() respects screen boundaries by default)
+        # 6. Exibe a janela (show() respeita os limites da tela por padrão)
         window.show()
 
-        logger.info("Interface started successfully. Qt event loop active.")
+        logger.info("Interface iniciada com sucesso. Loop de eventos Qt ativo.")
 
-        # 7. Start the event loop (blocking until the window is closed)
-        # sys.exit passes the return code from app.exec() to the OS
+        # 7. Inicia o loop de eventos (bloqueante até o fechamento da janela)
+        # sys.exit passa o código de retorno de app.exec() ao sistema operacional
         sys.exit(app.exec())
 
     except Exception as e:
-        logger.critical("Fatal error starting the application: %s", e, exc_info=True)
-        # Exit with error code 1
+        logger.critical("Erro fatal ao iniciar a aplicação: %s", e, exc_info=True)
+        # Encerra com código de erro 1
         sys.exit(1)
 
 
-# Execute only when this file is run directly (python app_pyqt.py)
+# Executa somente quando este arquivo é executado diretamente (python app_pyqt.py)
 if __name__ == "__main__":
     main()
