@@ -14,7 +14,7 @@ Responsabilidade:
 Por que um log em vez de QMessageBox para cada evento?
     QMessageBox bloqueia o programa aguardando o clique do usuário.
     No processamento em tempo real (~30 FPS), qualquer bloqueio seria catastrófico —
-    frames seriam perdidos e a câmera ficaria sem leitura.
+    quadros seriam perdidos e a câmera ficaria sem leitura.
     O LogWidget registra eventos sem interromper nenhum processamento.
 
 Quem usa o LogWidget:
@@ -58,7 +58,7 @@ class LogWidget(QTextEdit):
     Exemplo de conteúdo:
         14:35:12  Aplicação iniciada.
         14:35:15  Sessão iniciada — Paciente: João da Silva | Mão: Direita | Sessão 1
-        14:36:02  ERRO DE CÂMERA: Câmera perdida após 10 frames inválidos.
+        14:36:02  ERRO DE CÂMERA: Câmera perdida após 10 quadros inválidos.
         14:36:03  Sessão encerrada. Duração: 00:00:48
     """
 
@@ -67,7 +67,7 @@ class LogWidget(QTextEdit):
         Inicializa o LogWidget com estilo visual e configurações de comportamento.
 
         Parâmetros:
-            parent: Widget pai Qt (opcional). Geralmente o container do layout.
+            parent: Widget pai Qt (opcional). Geralmente o contêiner do layout.
         """
         super().__init__(parent)
 
@@ -176,7 +176,7 @@ class LogWidget(QTextEdit):
         erros sem ler linha a linha.
 
         Parâmetros:
-            message: Descrição do erro. Ex.: "Câmera perdida após 10 frames."
+            message: Descrição do erro. Ex.: "Câmera perdida após 10 quadros."
         """
         self.log(f"❌ ERRO: {message}")
 
@@ -206,10 +206,10 @@ class LogWidget(QTextEdit):
 
     def clear_log(self) -> None:
         """
-        Limpa todo o conteúdo do log e insere uma mensagem de reset.
+        Limpa todo o conteúdo do log e insere uma mensagem de reinicialização.
 
         Chamado pelo MainWindow ao iniciar uma nova sessão, para que o log da
-        sessão anterior não contamine a nova. A mensagem de reset garante que o
+        sessão anterior não contamine a nova. A mensagem de reinicialização garante que o
         log nunca apareça completamente vazio — evitando ambiguidade entre
         "log limpo" e "nenhum evento ocorreu".
         """
