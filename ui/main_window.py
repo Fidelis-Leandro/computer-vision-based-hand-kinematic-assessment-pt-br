@@ -373,7 +373,7 @@ class MainWindow(QMainWindow):
         # --- Botões → ações ---
         self.btn_new_session.clicked.connect(self._new_session)
         self.btn_start.clicked.connect(self._start_session)
-        self.btn_end.clicked.connect(self._end_session)
+        self.btn_end.clicked.connect(self._confirm_end_session)
         self.btn_pdf.clicked.connect(self._gerar_relatorio)
         self.btn_csv.clicked.connect(self._exportar_csv)
         self.btn_historico.clicked.connect(self._abrir_historico)
@@ -977,6 +977,35 @@ class MainWindow(QMainWindow):
 
         # Transição autorizada para a Página 0 (avaliação em tempo real)
         self._stack.setCurrentIndex(0)
+
+    def _confirm_end_session(self) -> None:
+        """
+        Solicita confirmação do usuário antes de encerrar a sessão ativa.
+
+        Protege contra cliques acidentais no botão 'Encerrar Sessão'.
+        Se confirmado, desabilita o botão imediatamente contra duplo clique
+        e chama o encerramento operacional em _end_session().
+        """
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Encerrar Avaliação?")
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setText("Deseja encerrar a avaliação clínica?")
+        msg.setInformativeText(
+            "Os dados coletados até agora serão salvos e a sessão será finalizada."
+        )
+        btn_encerrar = msg.addButton(
+            "Encerrar e Salvar", QMessageBox.ButtonRole.AcceptRole
+        )
+        btn_cancelar = msg.addButton(
+            "Cancelar", QMessageBox.ButtonRole.RejectRole
+        )
+        msg.setDefaultButton(btn_cancelar)
+
+        msg.exec()
+
+        if msg.clickedButton() == btn_encerrar:
+            self.btn_end.setEnabled(False)
+            self._end_session()
 
     def _end_session(self) -> None:
         """
