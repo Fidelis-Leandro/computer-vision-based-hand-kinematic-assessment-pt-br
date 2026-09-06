@@ -1,17 +1,17 @@
 """
-goniometry_overlay.py — Hand and goniometric visual overlay
-=============================================================
+goniometry_overlay.py — Sobreposição visual da mão e goniometria
+================================================================
 
-This module generates the visual panel displayed on top of the webcam feed.
+Este módulo gera o painel visual exibido sobre o fluxo da câmera.
 
-Responsibilities:
-- Draw the hand skeleton.
-- Draw the virtual goniometer arms.
-- Draw angular arcs and labels.
-- Color structures according to clinical range.
-- Show qualitative filter stability per joint.
+Responsabilidades:
+- Desenhar o esqueleto da mão.
+- Desenhar os braços do goniômetro virtual.
+- Desenhar arcos e rótulos angulares.
+- Colorir estruturas de acordo com a faixa clínica.
+- Exibir a estabilidade qualitativa do filtro por articulação.
 
-The primary exported function is draw_goniometry_overlay().
+A principal função exportada é draw_goniometry_overlay().
 """
 
 import math
@@ -23,7 +23,7 @@ import numpy as np
 from goniometry import is_in_normal_range, DigitalGoniometer
 
 # =============================================================================
-# VISUAL PALETTE
+# PALETA VISUAL
 # =============================================================================
 
 BG_DARK = (26, 26, 26)
@@ -60,7 +60,7 @@ ARC_TICK = 3
 ARM_TICK = 3
 
 # =============================================================================
-# HAND TOPOLOGY
+# TOPOLOGIA DA MÃO
 # =============================================================================
 
 CONNECTIONS = [
@@ -101,7 +101,7 @@ GONIO_JOINTS = [
 ]
 
 # =============================================================================
-# DRAWING HELPER FUNCTIONS
+# FUNÇÕES AUXILIARES DE DESENHO
 # =============================================================================
 
 def _stability_color(status: str) -> Tuple[int, int, int]:
@@ -140,7 +140,7 @@ def _dashed(
     gap: int = 5,
 ) -> None:
     """
-    Draws a simple dashed line for wrist connections.
+    Desenha uma linha tracejada simples para conexões do punho.
     """
     x1, y1 = p1
     x2, y2 = p2
@@ -177,7 +177,7 @@ def _arc(
     thickness: int,
 ) -> None:
     """
-    Draws an angular arc between two 2D vectors.
+    Desenha um arco angular entre dois vetores 2D.
     """
     a1 = math.degrees(math.atan2(-v1[1], v1[0]))
     a2 = math.degrees(math.atan2(-v2[1], v2[0]))
@@ -210,14 +210,14 @@ def _alpha_rect(
     alpha: float = 0.60,
 ) -> None:
     """
-    Draws a semi-transparent rectangle operating only on the ROI.
+    Desenha um retângulo semitransparente operando apenas na ROI.
 
-    Optimized: instead of copying the full image (img.copy()),
-    operates only on the rectangle's region, reducing memory allocation
-    from ~1MB to ~500 bytes per call.
+    Otimizado: em vez de copiar a imagem completa (img.copy()),
+    opera apenas na região do retângulo, reduzindo a alocação de memória
+    de ~1MB para ~500 bytes por chamada.
     """
     img_h, img_w = img.shape[:2]
-    # Clipping to avoid out-of-bounds image access.
+    # Ajuste para evitar acesso fora dos limites da imagem.
     x1 = max(0, x)
     y1 = max(0, y)
     x2 = min(img_w, x + w)
@@ -231,9 +231,9 @@ def _alpha_rect(
 
 def _tam_bar(img: np.ndarray, x: int, y: int, w: int, h: int, pct: float) -> None:
     """
-    Draws a normalized TAM progress bar.
+    Desenha uma barra de progresso normalizada do TAM.
 
-    Uses column-wise NumPy/OpenCV painting to keep per-frame cost low.
+    Utiliza pintura por colunas via NumPy/OpenCV para manter baixo custo por quadro.
     """
     filled = max(0, min(int(w * pct), w))
     cv2.rectangle(img, (x, y), (x + w, y + h), (45, 45, 45), -1)
@@ -307,7 +307,7 @@ def _tw(text: str, scale: float = 0.40, thickness: int = 1) -> int:
 
 
 # =============================================================================
-# SKELETON + GONIOMETER PANEL
+# PAINEL DE ESQUELETO + GONIÔMETRO
 # =============================================================================
 
 def _build_skeleton(
@@ -320,18 +320,18 @@ def _build_skeleton(
     stability_map: Optional[Dict],
 ) -> np.ndarray:
     """
-    Builds the panel with the hand skeleton and virtual goniometer.
+    Constrói o painel com o esqueleto da mão e o goniômetro virtual.
     """
     canvas = np.full((ph, pw, 3), BG_DARK, dtype=np.uint8)
-    _center_text(canvas, "DIGITAL GONIOMETRY", 26, pw, WHITE, 0.60)
+    _center_text(canvas, "GONIOMETRIA DIGITAL", 26, pw, WHITE, 0.60)
 
     if not landmarks:
-        _center_text(canvas, "Waiting for hand detection...", ph // 2, pw, GRAY_MID, 0.45)
+        _center_text(canvas, "Aguardando detecção da mão...", ph // 2, pw, GRAY_MID, 0.45)
         return canvas
 
     width, height = pw, ph
 
-    # Draw basic skeleton.
+    # Desenha o esqueleto básico.
     for a, b in CONNECTIONS:
         p1 = _lm_px(landmarks, a, width, height)
         p2 = _lm_px(landmarks, b, width, height)
@@ -341,13 +341,13 @@ def _build_skeleton(
         else:
             cv2.line(canvas, p1, p2, (185, 185, 185), 2, cv2.LINE_AA)
 
-    # Landmarks by anatomical category.
+    # Landmarks por categoria anatômica.
     for idx, (_, color, radius) in LM_STYLE.items():
         pt = _lm_px(landmarks, idx, width, height)
         cv2.circle(canvas, pt, radius + 1, BLACK, -1)
         cv2.circle(canvas, pt, radius, color, -1, cv2.LINE_AA)
 
-    # Virtual goniometer per joint.
+    # Goniômetro virtual por articulação.
     for ax_i, prox_i, dist_i, joint_type, finger in GONIO_JOINTS:
         center = _lm_px(landmarks, ax_i, width, height)
         pt_prox = _lm_px(landmarks, prox_i, width, height)
@@ -406,27 +406,27 @@ def _build_skeleton(
 
     lx, ly = 8, ph - 30
     cv2.line(canvas, (lx, ly), (lx + 20, ly), COLOR_STAT, 2)
-    _put(canvas, "Stationary", lx + 24, ly + 4, GRAY_LIGHT, 0.28)
+    _put(canvas, "Fixo", lx + 24, ly + 4, GRAY_LIGHT, 0.28)
 
     cv2.line(canvas, (lx + 130, ly), (lx + 150, ly), COLOR_MOB, 2)
-    _put(canvas, "Mobile", lx + 154, ly + 4, GRAY_LIGHT, 0.28)
+    _put(canvas, "Móvel", lx + 154, ly + 4, GRAY_LIGHT, 0.28)
 
     cv2.circle(canvas, (lx + 210, ly), 4, COLOR_AXIS, -1)
-    _put(canvas, "Axis", lx + 218, ly + 4, GRAY_LIGHT, 0.28)
+    _put(canvas, "Eixo", lx + 218, ly + 4, GRAY_LIGHT, 0.28)
 
     if frozen:
-        _center_text(canvas, "[ FROZEN FRAME ]", ph - 14, pw, COLOR_BORDER, 0.38)
+        _center_text(canvas, "[ QUADRO CONGELADO ]", ph - 14, pw, COLOR_BORDER, 0.38)
         cv2.rectangle(canvas, (2, 2), (pw - 2, ph - 2), COLOR_BORDER, 2)
 
     return canvas
 
 
 # =============================================================================
-# CLINICAL DATA PANEL (with static template cache)
+# PAINEL DE DADOS CLÍNICOS (com cache de modelo estático)
 # =============================================================================
 
-# Global cache for the static data panel template.
-# Key: (pw, ph) -> numpy array template.
+# Cache global para o modelo estático do painel de dados.
+# Chave: (pw, ph) -> modelo em array numpy.
 _data_template_cache: Dict[Tuple[int, int], np.ndarray] = {}
 
 _DATA_FINGERS = ["INDEX", "MIDDLE", "RING", "PINKY", "THUMB"]
@@ -444,24 +444,24 @@ _DATA_MARGIN_X = 14
 
 def _build_data_template(pw: int, ph: int) -> np.ndarray:
     """
-    Builds the static template for the clinical data panel.
+    Constrói o modelo estático para o painel de dados clínicos.
 
-    This template contains all elements that do NOT change between frames:
-    - dark background, title, subtitle;
-    - dividing lines between fingers;
-    - finger labels (Index, Middle, etc.);
-    - "TAM" label for each block;
-    - footer legend (ranges, TAM classification, stability).
+    Este modelo contém todos os elementos que NÃO se alteram entre quadros:
+    - fundo escuro, título, subtítulo;
+    - linhas divisórias entre os dedos;
+    - rótulos dos dedos (Index, Middle, etc.);
+    - rótulo "TAM" para cada bloco;
+    - legenda de rodapé (faixas, classificação de TAM, estabilidade).
 
-    Called once per dimension (pw, ph). On subsequent calls,
-    _build_data_panel copies this template and fills only the dynamic data.
+    Chamado uma vez por dimensão (pw, ph). Nas chamadas subsequentes,
+    _build_data_panel copia este modelo e preenche apenas os dados dinâmicos.
     """
     canvas = np.full((ph, pw, 3), BG_DARK, dtype=np.uint8)
 
-    _center_text(canvas, "Data per finger", 26, pw, WHITE, 0.55)
+    _center_text(canvas, "Dados por dedo", 26, pw, WHITE, 0.55)
     _center_text(
         canvas,
-        "Range of motion | Green=normal | Red=out of range",
+        "ROM | Verde=normal | Vermelho=fora da faixa",
         44,
         pw,
         GRAY_LIGHT,
@@ -472,23 +472,23 @@ def _build_data_template(pw: int, ph: int) -> np.ndarray:
     for fi, finger in enumerate(_DATA_FINGERS):
         by = _DATA_START_Y + fi * _DATA_BLOCK_H
 
-        # Dividing line.
+        # Linha divisória.
         cv2.line(canvas, (_DATA_MARGIN_X, by), (pw - _DATA_MARGIN_X, by), GRAY_DARK, 1)
 
-        # Finger name (fixed position; bullet is dynamic).
+        # Nome do dedo (posição fixa; o marcador é dinâmico).
         bx, bry = _DATA_MARGIN_X + 8, by + 18
         _put(canvas, _DATA_LABELS[finger], bx + 16, bry + 4, WHITE, 0.48, 1)
 
-        # "TAM" label (fixed).
+        # Rótulo "TAM" (fixo).
         bar_y = by + 52
         _put(canvas, "TAM", _DATA_MARGIN_X + 10, bar_y + 9, GRAY_LIGHT, 0.33)
 
-    # Footer legend (completely static).
+    # Legenda de rodapé (completamente estática).
     fy = ph - 56
     cv2.line(canvas, (10, fy - 4), (pw - 10, fy - 4), GRAY_DARK, 1)
 
     lines = [
-        "Ranges: MCP 85-90 | PIP 100-120 | DIP 60-80 | ABD 15-20",
+        "Faixas: MCP 85-90 | PIP 100-120 | DIP 60-80 | ABD 15-20",
         "TAM dedos: >=260 Excelente | 195-259 Bom | 130-194 Razoável | <130 Ruim",
         "TAM polegar (MCP+IP max~120): >=110 Exc | 80-109 Bom | 50-79 Razoável | <50 Ruim",
     ]
@@ -496,15 +496,15 @@ def _build_data_template(pw: int, ph: int) -> np.ndarray:
         y = fy + 4 + i * 14
         _center_text(canvas, line, y, pw, GRAY_LIGHT, 0.29)
 
-    # Stability legend.
+    # Legenda de estabilidade.
     y = fy + 4 + 3 * 14
     _put(canvas, "●", 14, y, STAB_STABLE, 0.30)
-    _put(canvas, "Stable", 26, y, GRAY_LIGHT, 0.28)
+    _put(canvas, "Estável", 26, y, GRAY_LIGHT, 0.28)
     _put(canvas, "●", 90, y, STAB_CONV, 0.30)
-    _put(canvas, "Converging", 102, y, GRAY_LIGHT, 0.28)
+    _put(canvas, "Convergindo", 102, y, GRAY_LIGHT, 0.28)
     _put(canvas, "●", 208, y, STAB_UNSTAB, 0.30)
-    _put(canvas, "Unstable", 220, y, GRAY_LIGHT, 0.28)
-    _put(canvas, "(EMA -> Kalman filter)", pw // 2 + 40, y, GRAY_MID, 0.27)
+    _put(canvas, "Instável", 220, y, GRAY_LIGHT, 0.28)
+    _put(canvas, "(Filtro EMA -> Kalman)", pw // 2 + 40, y, GRAY_MID, 0.27)
 
     return canvas
 
@@ -517,12 +517,12 @@ def _build_data_panel(
     stability_map: Optional[Dict],
 ) -> np.ndarray:
     """
-    Builds the lateral text panel with the clinical summary per finger.
+    Constrói o painel de texto lateral com o resumo clínico por dedo.
 
-    Optimized: copies the static template and draws only the dynamic elements
-    (color bullet, numeric values, TAM bars, classification badge).
+    Otimizado: copia o modelo estático e desenha apenas os elementos dinâmicos
+    (marcador colorido, valores numéricos, barras de TAM, selo de classificação).
     """
-    # Retrieve or create the template for these dimensions.
+    # Recupera ou cria o modelo para estas dimensões.
     cache_key = (pw, ph)
     if cache_key not in _data_template_cache:
         _data_template_cache[cache_key] = _build_data_template(pw, ph)
@@ -533,7 +533,7 @@ def _build_data_panel(
         data = angles.get(finger, {})
         by = _DATA_START_Y + fi * _DATA_BLOCK_H
 
-        # Color bullet (dynamic — depends on clinical status).
+        # Marcador colorido (dinâmico — depende do estado clínico).
         if finger == "THUMB":
             checks = [
                 ("MCP", data.get("MCP", 0.0)),
@@ -559,7 +559,7 @@ def _build_data_panel(
         cv2.circle(canvas, (bx, bry), 7, bullet_color, -1, cv2.LINE_AA)
         cv2.circle(canvas, (bx, bry), 7, WHITE, 1, cv2.LINE_AA)
 
-        # Numeric angle values (dynamic).
+        # Valores angulares numéricos (dinâmicos).
         ax, ay = _DATA_MARGIN_X + 10, by + 36
 
         if finger == "THUMB":
@@ -580,7 +580,7 @@ def _build_data_panel(
             abd = data.get("ABD", 0.0)
             _put(canvas, f"ABD:{abd:.1f}", ax, ay, COLOR_SEC, 0.34)
 
-        # TAM bar (dynamic).
+        # Barra de TAM (dinâmica).
         tam = data.get("TAM", 0.0)
         is_thumb = (finger == "THUMB")
         tam_info = DigitalGoniometer.classify_tam(tam, is_thumb=is_thumb)
@@ -622,7 +622,7 @@ def _build_data_panel(
 
 
 # =============================================================================
-# PUBLIC MAIN FUNCTION
+# FUNÇÃO PÚBLICA PRINCIPAL
 # =============================================================================
 
 def draw_goniometry_overlay(
@@ -635,7 +635,7 @@ def draw_goniometry_overlay(
     stability_map: Optional[Dict] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generates the main panels of the goniometric visual system.
+    Gera os painéis principais do sistema visual goniométrico.
     """
     h, w = frame.shape[:2]
     pw = panel_w or w
@@ -649,7 +649,7 @@ def draw_goniometry_overlay(
 
 def compose_side_by_side(skel: np.ndarray, data: np.ndarray) -> np.ndarray:
     """
-    Composes two panels side by side into a single image.
+    Compõe dois painéis lado a lado em uma única imagem.
     """
     h1, h2 = skel.shape[0], data.shape[0]
     max_h = max(h1, h2)
