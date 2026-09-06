@@ -1,19 +1,19 @@
 """
-session_report.py — Post-session PDF report generator
-=======================================================
+session_report.py — Gerador de relatórios clínicos pós-sessão em PDF
+=====================================================================
 
-Reads the goniometry session CSV, computes per-finger summary metrics,
-generates TAM charts, and assembles a clinical PDF report.
+Lê o CSV da sessão de goniometria, calcula métricas de resumo por dedo,
+gera gráficos de TAM e monta o relatório clínico em formato PDF.
 
-Main functions:
-- load_session_csv()          : reads the CSV and structures data per finger
-- compute_session_summary()   : computes clinical metrics per finger
-- generate_tam_plot()         : overall TAM-vs-time chart
-- generate_individual_plots() : 5 individual plots (one per finger)
-- build_clinical_observation(): automatic interpretive text
-- generate_pdf_report()       : assembles the complete PDF
+Funções principais:
+- load_session_csv()          : lê o CSV e estrutura os dados por dedo
+- compute_session_summary()   : calcula métricas clínicas por dedo
+- generate_tam_plot()         : gráfico de TAM versus tempo geral
+- generate_individual_plots() : 5 gráficos individuais (um por dedo)
+- build_clinical_observation(): gera texto interpretativo automático
+- generate_pdf_report()       : monta o relatório completo em PDF
 
-External dependencies: fpdf2, matplotlib
+Dependências externas: fpdf2, matplotlib
 """
 
 import csv
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
-matplotlib.use("Agg")  # windowless backend — generates PNG only
+matplotlib.use("Agg")  # backend sem janela — gera apenas PNG
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
@@ -49,28 +49,28 @@ from clinical_classification import (
 
 
 # =============================================================================
-# PDF TEXT SANITIZATION
+# SANITIZAÇÃO DE TEXTO PARA PDF
 # =============================================================================
 
 def sanitize_for_pdf(text: str) -> str:
     """
-    Converts Unicode characters unsupported by FPDF built-in fonts
-    (WinAnsi / Latin-1 range) to safe ASCII equivalents.
+    Converte caracteres Unicode não suportados pelas fontes padrão do FPDF
+    (faixa WinAnsi / Latin-1) para equivalentes seguros em ASCII.
     """
     if not isinstance(text, str):
         return text
     replacements = {
-        "\u2014": "-",   # em-dash  —
-        "\u2013": "-",   # en-dash  –
-        "\u2018": "'",   # left single quotation mark  '
-        "\u2019": "'",   # right single quotation mark  '
-        "\u201C": '"',   # left double quotation mark  "
-        "\u201D": '"',   # right double quotation mark  "
-        "\u2026": "...", # ellipsis  …
-        "\u00B0": " deg",# degree sign  °
-        "\u00B1": "+/-", # plus-minus  ±
-        "\u2264": "<=",  # less-than or equal  ≤
-        "\u2265": ">=",  # greater-than or equal  ≥
+        "\u2014": "-",   # travessão duplo —
+        "\u2013": "-",   # traço en –
+        "\u2018": "'",   # aspas simples esquerda '
+        "\u2019": "'",   # aspas simples direita '
+        "\u201C": '"',   # aspas duplas esquerda "
+        "\u201D": '"',   # aspas duplas direita "
+        "\u2026": "...", # reticências …
+        "\u00B0": " deg",# símbolo de grau °
+        "\u00B1": "+/-", # mais-ou-menos ±
+        "\u2264": "<=",  # menor ou igual ≤
+        "\u2265": ">=",  # maior ou igual ≥
     }
     for char, replacement in replacements.items():
         text = text.replace(char, replacement)
@@ -94,23 +94,23 @@ def _multi_cell(pdf, *args, **kwargs):
 
 
 # =============================================================================
-# CONSTANTS
+# CONSTANTES
 # =============================================================================
 
 FINGER_LABELS: Dict[str, str] = {
-    "INDEX":  "Index",
-    "MIDDLE": "Middle",
-    "RING":   "Ring",
-    "PINKY":  "Pinky",
-    "THUMB":  "Thumb",
+    "INDEX":  "Indicador",
+    "MIDDLE": "Médio",
+    "RING":   "Anelar",
+    "PINKY":  "Mínimo",
+    "THUMB":  "Polegar",
 }
 
 FINGER_COLORS: Dict[str, str] = {
-    "INDEX":  "#2563eb",   # blue
-    "MIDDLE": "#16a34a",   # green
-    "RING":   "#ea580c",   # orange
-    "PINKY":  "#9333ea",   # purple
-    "THUMB":  "#dc2626",   # red
+    "INDEX":  "#2563eb",   # azul
+    "MIDDLE": "#16a34a",   # verde
+    "RING":   "#ea580c",   # laranja
+    "PINKY":  "#9333ea",   # roxo
+    "THUMB":  "#dc2626",   # vermelho
 }
 
 ASSH_COLORS_RGB: Dict[str, Tuple[int, int, int]] = {
@@ -121,27 +121,27 @@ ASSH_COLORS_RGB: Dict[str, Tuple[int, int, int]] = {
     "Ruim":      (239, 68, 68),
 }
 
-REPORT_TITLE = "Digital Hand Goniometry — Session Report"
+REPORT_TITLE = "Goniometria Digital da Mão — Relatório de Sessão"
 
 FOOTER_METHOD = (
-    "Method: webcam + landmark tracking (MediaPipe Hands) "
-    "+ EMA/Kalman smoothing."
+    "Método: webcam + rastreamento de marcos anatômicos (MediaPipe Hands) "
+    "+ suavização EMA/Kalman."
 )
 FOOTER_DISCLAIMER = (
-    "This report is intended for academic use and functional documentation support. "
-    "It does not replace formal clinical validation."
+    "Este relatório destina-se a uso acadêmico e suporte à documentação funcional. "
+    "Não substitui validação clínica formal."
 )
 
 
 # =============================================================================
-# 1. CSV LOADING
+# 1. CARREGAMENTO DE CSV
 # =============================================================================
 
 def load_session_csv(csv_path: str) -> Dict[str, Any]:
     """
-    Reads the session CSV and returns structured data per finger.
+    Lê o CSV da sessão e retorna os dados estruturados por dedo.
 
-    Returns:
+    Retorna:
     {
         "timestamps": [float, ...],
         "frame_ids":  [int, ...],
@@ -156,12 +156,12 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
             "THUMB": {
                 "MCP": [float, ...],
                 "IP":  [float, ...],
-                "TAM": [float, ...],   # computed: MCP + IP
+                "TAM": [float, ...],   # calculado: MCP + IP
             },
             ...
         },
-        "session_start": float,   # first timestamp
-        "session_end":   float,   # last timestamp
+        "session_start": float,   # primeiro timestamp
+        "session_end":   float,   # último timestamp
         "n_frames":      int,
     }
     """
@@ -186,7 +186,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
             timestamps.append(ts)
             frame_ids.append(fid)
 
-            # Long fingers
+            # Dedos longos
             for finger in ("INDEX", "MIDDLE", "RING", "PINKY"):
                 for joint in FINGER_JOINTS[finger]:
                     col = f"{finger}_{joint}"
@@ -196,7 +196,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
                         val = 0.0
                     fingers_data[finger][joint].append(val)
 
-            # Thumb
+            # Polegar
             try:
                 thumb_mcp = float(row.get("THUMB_MCP", 0.0))
             except (ValueError, TypeError):
@@ -214,7 +214,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
             except (ValueError, TypeError):
                 thumb_tam = 0.0
 
-            # Fallback: if an older CSV does not have THUMB_TAM, compute it.
+            # Fallback: se um CSV mais antigo não possuir THUMB_TAM, calcula-o.
             if thumb_tam < 0.01 and (thumb_mcp > 0.01 or thumb_ip > 0.01):
                 thumb_tam = max(thumb_mcp, 0.0) + max(thumb_ip, 0.0)
 
@@ -234,7 +234,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
 
 
 # =============================================================================
-# 2. PER-FINGER SUMMARY METRICS
+# 2. MÉTRICAS DE RESUMO POR DEDO
 # =============================================================================
 
 def _safe_mean(values: List[float]) -> float:
@@ -251,16 +251,16 @@ def _safe_stdev(values: List[float]) -> float:
 
 def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """
-    Computes clinical summary metrics for each finger.
+    Calcula métricas clínicas de resumo para cada dedo.
 
-    Returns a dict per finger containing:
+    Retorna um dicionário por dedo contendo:
     - tam_final, tam_medio, tam_max, tam_min
     - rom
     - vel_media, vel_pico (°/s)
     - freq_hz
     - regularidade, cv
     - assh_label, assh_color
-    - mcp_medio, pip_medio, dip_medio (or ip_medio for the thumb)
+    - mcp_medio, pip_medio, dip_medio (ou ip_medio para o polegar)
     """
     timestamps = data["timestamps"]
     fingers = data["fingers"]
@@ -274,10 +274,10 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             summary[finger] = _empty_finger_summary(finger)
             continue
 
-        # Filter null/zero values indicating frames without detection.
+        # Filtra valores nulos/zero que indicam quadros sem detecção.
         valid_tam = [v for v in tam_values if v > 0.01]
         if not valid_tam:
-            valid_tam = tam_values  # fallback: use all
+            valid_tam = tam_values  # fallback: usa todos
 
         tam_final = tam_values[-1]
         tam_medio = _safe_mean(valid_tam)
@@ -285,7 +285,7 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         tam_min = min(valid_tam)
         rom = tam_max - tam_min
 
-        # Angular velocities
+        # Velocidades angulares
         velocities: List[float] = []
         for i in range(1, len(tam_values)):
             d_angle = abs(tam_values[i] - tam_values[i - 1])
@@ -296,7 +296,7 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         vel_media = _safe_mean(velocities)
         vel_pico = max(velocities) if velocities else 0.0
 
-        # Frequency and regularity via peak detection
+        # Frequência e regularidade via detecção de picos
         peaks = _detect_peaks(tam_values, timestamps)
         valleys = _detect_valleys(tam_values, timestamps)
         n_picos = len(peaks)
@@ -331,9 +331,9 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                 regularity = "Irregular"
         else:
             cv = 0.0
-            regularity = "-"  # indeterminate
+            regularity = "-"  # indeterminado
 
-        # Hybrid classifications
+        # Classificações híbridas
         articular_class = classify_articular_tam(finger, tam_max)
 
         realtime_metrics_for_hybrid = {
@@ -355,7 +355,7 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             finger, articular_class, functional_class, repetition_stats
         )
 
-        # Joint averages
+        # Médias articulares
         joint_means: Dict[str, float] = {}
         for joint in FINGER_JOINTS[finger]:
             vals = fdata.get(joint, [])
@@ -378,7 +378,7 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "hybrid_class": hybrid_class,
         }
 
-        # Add joint-specific averages
+        # Adiciona médias articulares específicas
         if finger == "THUMB":
             entry["mcp_medio"] = round(joint_means.get("MCP", 0.0), 1)
             entry["ip_medio"] = round(joint_means.get("IP", 0.0), 1)
@@ -393,7 +393,7 @@ def compute_session_summary(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
 
 def _empty_finger_summary(finger: str) -> Dict[str, Any]:
-    """Returns an empty summary for fingers with no data."""
+    """Retorna um resumo vazio para dedos sem dados."""
     entry: Dict[str, Any] = {
         "tam_final": 0.0,
         "tam_medio": 0.0,
@@ -408,7 +408,7 @@ def _empty_finger_summary(finger: str) -> Dict[str, Any]:
         "n_picos": 0,
         "articular_class": {"rotulo": "Ruim", "cor": "#ef4444"},
         "functional_class": {"rotulo": "Ruim", "cor": "#ef4444"},
-        "hybrid_class": {"rotulo": "Ruim", "cor": "#ef4444", "explicacao": "No data available for analysis."},
+        "hybrid_class": {"rotulo": "Ruim", "cor": "#ef4444", "explicacao": "Sem dados disponíveis para análise."},
     }
     if finger == "THUMB":
         entry["mcp_medio"] = 0.0
@@ -421,11 +421,11 @@ def _empty_finger_summary(finger: str) -> Dict[str, Any]:
 
 
 # =============================================================================
-# 3. CHARTS
+# 3. GRÁFICOS
 # =============================================================================
 
 def _time_axis(timestamps: List[float]) -> List[float]:
-    """Converts absolute timestamps to seconds relative to the start."""
+    """Converte timestamps absolutos para segundos relativos ao início."""
     if not timestamps:
         return []
     t0 = timestamps[0]
@@ -434,9 +434,9 @@ def _time_axis(timestamps: List[float]) -> List[float]:
 
 def generate_tam_plot(data: Dict[str, Any], output_path: str) -> str:
     """
-    Generates a line chart of TAM over time for all fingers.
+    Gera um gráfico de linhas de TAM ao longo do tempo para todos os dedos.
 
-    Returns the path of the generated PNG file.
+    Retorna o caminho do arquivo PNG gerado.
     """
     timestamps = data["timestamps"]
     fingers = data["fingers"]
@@ -458,9 +458,9 @@ def generate_tam_plot(data: Dict[str, Any], output_path: str) -> str:
                 alpha=0.85,
             )
 
-    ax.set_xlabel("Time (s)", fontsize=10)
+    ax.set_xlabel("Tempo (s)", fontsize=10)
     ax.set_ylabel("TAM (°)", fontsize=10)
-    ax.set_title("TAM over session — all fingers", fontsize=12, fontweight="bold")
+    ax.set_title("TAM ao longo da sessão — todos os dedos", fontsize=12, fontweight="bold")
     ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
     ax.grid(True, alpha=0.3, linestyle="--")
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
@@ -474,9 +474,9 @@ def generate_tam_plot(data: Dict[str, Any], output_path: str) -> str:
 
 def generate_individual_plots(data: Dict[str, Any], output_dir: str) -> Dict[str, str]:
     """
-    Generates 5 individual charts (one per finger) of TAM over time.
+    Gera 5 gráficos individuais (um por dedo) de TAM ao longo do tempo.
 
-    Returns dict {finger: png_path}.
+    Retorna dicionário {finger: png_path}.
     """
     os.makedirs(output_dir, exist_ok=True)
     timestamps = data["timestamps"]
@@ -502,7 +502,7 @@ def generate_individual_plots(data: Dict[str, Any], output_dir: str) -> Dict[str
         )
         ax.fill_between(time_s, tam, alpha=0.08, color=FINGER_COLORS[finger])
 
-        ax.set_xlabel("Time (s)", fontsize=8)
+        ax.set_xlabel("Tempo (s)", fontsize=8)
         ax.set_ylabel("TAM (°)", fontsize=8)
         ax.set_title(
             f"TAM — {FINGER_LABELS[finger]}",
@@ -522,14 +522,14 @@ def generate_individual_plots(data: Dict[str, Any], output_dir: str) -> Dict[str
 
 
 # =============================================================================
-# 4. AUTOMATIC CLINICAL OBSERVATION
+# 4. OBSERVAÇÃO CLÍNICA AUTOMÁTICA
 # =============================================================================
 
 def build_clinical_observation(summary: Dict[str, Dict[str, Any]]) -> str:
-    """Generates a general interpretive text for the session based on the global hybrid classification."""
+    """Gera um texto interpretativo geral para a sessão com base na classificação híbrida global."""
     valid = {f: s for f, s in summary.items() if s["tam_medio"] > 0.01}
     if not valid:
-        return "Insufficient data to generate a clinical observation."
+        return "Dados insuficientes para gerar observação clínica."
 
     ranks = {"Excelente": 4, "Bom": 3, "Razoável": 2, "Ruim": 1}
     worst_label = "Excelente"
@@ -547,48 +547,48 @@ def build_clinical_observation(summary: Dict[str, Dict[str, Any]]) -> str:
 
 def _build_interpretation(summary: Dict[str, Dict[str, Any]]) -> str:
     """
-    Generates 1–2 paragraphs of summarized clinical interpretation.
+    Gera 1–2 parágrafos de interpretação clínica sumarizada.
     """
     valid = {f: s for f, s in summary.items() if s["tam_medio"] > 0.01}
     if not valid:
-        return "Insufficient data for clinical interpretation."
+        return "Dados insuficientes para interpretação clínica."
 
     sorted_by_tam = sorted(valid.items(), key=lambda x: x[1]["tam_medio"], reverse=True)
 
-    # Names of best and worst performers
+    # Nomes dos melhores e piores desempenhos
     top_names = [FINGER_LABELS[f].lower() for f, _ in sorted_by_tam[:2]]
     bottom_names = [FINGER_LABELS[f].lower() for f, _ in sorted_by_tam[-2:]] if len(sorted_by_tam) >= 3 else []
 
-    # Overall mobility level
+    # Nível geral de mobilidade
     tam_medio_geral = _safe_mean([s["tam_medio"] for s in valid.values()])
     if tam_medio_geral >= 260:
-        nivel = "good"
+        nivel = "boa"
     elif tam_medio_geral >= 195:
-        nivel = "moderate"
+        nivel = "moderada"
     elif tam_medio_geral >= 130:
-        nivel = "reduced"
+        nivel = "reduzida"
     else:
-        nivel = "severely reduced"
+        nivel = "severamente reduzida"
 
     paragraphs: List[str] = []
 
     p1 = (
-        f"Session analysis shows overall {nivel} mobility "
-        f"(mean global TAM: {tam_medio_geral:.1f}°). "
+        f"A análise da sessão demonstra mobilidade geral {nivel} "
+        f"(TAM médio global: {tam_medio_geral:.1f}°). "
     )
     if top_names:
         p1 += (
-            f"The best functional performance was observed in the "
-            f"{' and '.join(top_names)} finger(s), with higher mean TAM values"
+            f"O melhor desempenho funcional foi observado no(s) dedo(s) "
+            f"{' e '.join(top_names)}, com maiores valores de TAM médio"
         )
-        # Check for good regularity
+        # Verifica boa regularidade
         top_regular = [
             FINGER_LABELS[f].lower()
             for f, s in sorted_by_tam[:2]
             if s["regularidade"] == "Regular"
         ]
         if top_regular:
-            p1 += " and greater temporal regularity"
+            p1 += " e maior regularidade temporal"
         p1 += "."
 
     paragraphs.append(p1)
@@ -599,13 +599,13 @@ def _build_interpretation(summary: Dict[str, Dict[str, Any]]) -> str:
             nome = FINGER_LABELS[f].lower()
             issues: List[str] = []
             if s["rom"] < 30:
-                issues.append("reduced rom")
+                issues.append("amplitude reduzida")
             if s["vel_media"] < 20:
-                issues.append("lower mean velocity")
+                issues.append("menor velocidade média")
             if s["regularidade"] == "Irregular":
-                issues.append("higher irregularity")
+                issues.append("maior irregularidade")
             if issues:
-                p2_parts.append(f"The {nome} finger showed {', '.join(issues)}.")
+                p2_parts.append(f"O dedo {nome} apresentou {', '.join(issues)}.")
         if p2_parts:
             paragraphs.append(" ".join(p2_parts))
 
@@ -613,11 +613,11 @@ def _build_interpretation(summary: Dict[str, Dict[str, Any]]) -> str:
 
 
 # =============================================================================
-# 5. PDF GENERATION
+# 5. GERAÇÃO DO PDF
 # =============================================================================
 
 class _ReportPDF(FPDF):
-    """Custom PDF with page header and footer."""
+    """PDF customizado com cabeçalho e rodapé de página."""
 
     def __init__(self, logo_path: Optional[str] = None):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -625,11 +625,11 @@ class _ReportPDF(FPDF):
         self.set_auto_page_break(auto=True, margin=20)
 
     def header(self):
-        # Header background
-        self.set_fill_color(230, 242, 255)  # light blue
+        # Fundo do cabeçalho
+        self.set_fill_color(230, 242, 255)  # azul claro
         self.rect(0, 0, 210, 28, style="F")
 
-        # Logo (if present)
+        # Logotipo (se presente)
         x_text = 10
         if self.logo_path and os.path.isfile(self.logo_path):
             try:
@@ -638,13 +638,13 @@ class _ReportPDF(FPDF):
             except Exception:
                 pass
 
-        # Report title
+        # Título do relatório
         self.set_text_color(30, 50, 80)
         self.set_font("Helvetica", "B", 11)
         self.set_xy(x_text, 12)
         _cell(self, 0, 5, REPORT_TITLE, align="L")
 
-        # Decorative line
+        # Linha decorativa
         self.set_draw_color(100, 150, 220)
         self.set_line_width(0.8)
         self.line(10, 28, 200, 28)
@@ -655,7 +655,7 @@ class _ReportPDF(FPDF):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 7)
         self.set_text_color(130, 130, 130)
-        _cell(self, 0, 5, f"Page {self.page_no()}/{{nb}}", align="C")
+        _cell(self, 0, 5, f"Página {self.page_no()}/{{nb}}", align="C")
 
 
 def _add_identification_block(
@@ -666,14 +666,14 @@ def _add_identification_block(
     side: str,
     observation: str,
 ) -> None:
-    """Adds the patient and session identification block."""
+    """Adiciona o bloco de identificação do paciente e da sessão."""
     y_start = pdf.get_y()
     pdf.set_draw_color(180, 180, 190)
     pdf.set_line_width(0.3)
 
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Patient and Session Identification", ln=True)
+    _cell(pdf, 0, 7, "Identificação do Paciente e da Sessão", ln=True)
 
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(60, 60, 70)
@@ -686,11 +686,11 @@ def _add_identification_block(
     duration_min = duration_s / 60.0
 
     fields = [
-        ("Patient:",       patient_name or "Not provided"),
-        ("Session date:",  start_dt.strftime("%Y-%m-%d") if start_dt else "-"),
-        ("Time:",          f"{start_dt.strftime('%H:%M:%S') if start_dt else '-'} to {end_dt.strftime('%H:%M:%S') if end_dt else '-'} ({duration_min:.1f} min)"),
-        ("Report generated:", now_dt.strftime("%Y-%m-%d %H:%M:%S")),
-        ("Evaluated side:", side or "Not provided"),
+        ("Paciente:",        patient_name or "Não informado"),
+        ("Data da sessão:",  start_dt.strftime("%Y-%m-%d") if start_dt else "-"),
+        ("Horário:",         f"{start_dt.strftime('%H:%M:%S') if start_dt else '-'} às {end_dt.strftime('%H:%M:%S') if end_dt else '-'} ({duration_min:.1f} min)"),
+        ("Relatório gerado:", now_dt.strftime("%Y-%m-%d %H:%M:%S")),
+        ("Lado avaliado:",   side or "Não informado"),
     ]
 
     for label, value in fields:
@@ -699,16 +699,16 @@ def _add_identification_block(
         pdf.set_font("Helvetica", "", 9)
         _cell(pdf, 0, 5, value, ln=True)
 
-    # Automatic observation
+    # Observação automática
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 42, 5, "Observation:")
+    _cell(pdf, 42, 5, "Observação:")
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(80, 80, 90)
     _multi_cell(pdf, 0, 4.5, observation)
 
-    # Border around the block
+    # Borda ao redor do bloco
     y_end = pdf.get_y() + 2
     pdf.rect(8, y_start - 2, 194, y_end - y_start + 4, style="D")
     pdf.ln(5)
@@ -718,18 +718,18 @@ def _add_main_table(
     pdf: _ReportPDF,
     summary: Dict[str, Dict[str, Any]],
 ) -> None:
-    """Adds the main metrics table per finger."""
+    """Adiciona a tabela principal de métricas por dedo."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Main Table — Metrics per Finger", ln=True)
+    _cell(pdf, 0, 7, "Tabela Principal — Métricas por Dedo", ln=True)
 
     headers = [
-        "Finger", "TAM\nfinal", "TAM\nmean", "TAM\nmax.", "TAM\nmin.",
-        "Ampl.", "Avg.\nVel.", "Peak\nVel.", "Freq.", "Reg.", "Articular",
+        "Dedo", "TAM\nfinal", "TAM\nmédio", "TAM\nmáx.", "TAM\nmín.",
+        "Ampl.", "Vel.\nMédia", "Vel.\nPico", "Freq.", "Reg.", "Articular",
     ]
     col_widths = [22, 15, 15, 15, 15, 15, 15, 15, 14, 17, 18]
 
-    # Table header
+    # Cabeçalho da tabela
     pdf.set_fill_color(220, 225, 235)
     pdf.set_font("Helvetica", "B", 6.5)
     pdf.set_text_color(40, 40, 60)
@@ -752,14 +752,14 @@ def _add_main_table(
 
     pdf.ln(row_h)
 
-    # Data per finger
+    # Dados por dedo
     pdf.set_font("Helvetica", "", 7)
     row_h = 7
 
     for idx, finger in enumerate(FINGERS):
         s = summary.get(finger, _empty_finger_summary(finger))
 
-        # Zebra coloring
+        # Efeito zebrado
         if idx % 2 == 0:
             pdf.set_fill_color(248, 248, 252)
         else:
@@ -780,7 +780,7 @@ def _add_main_table(
         ]
 
         for i, val in enumerate(values):
-            # Special color for ASSH classification
+            # Cor especial para a classificação ASSH
             if i == len(values) - 1:
                 assh_rgb = ASSH_COLORS_RGB.get(val, (130, 130, 130))
                 pdf.set_text_color(*assh_rgb)
@@ -803,10 +803,10 @@ def _hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
 
 
 def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) -> None:
-    """Adds explanatory functional classification blocks per finger."""
+    """Adiciona blocos explicativos de classificação funcional por dedo."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Hybrid Functional Assessment", ln=True)
+    _cell(pdf, 0, 7, "Avaliação Funcional Híbrida", ln=True)
     pdf.ln(2)
 
     for idx, finger in enumerate(FINGERS):
@@ -815,48 +815,48 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         pdf.set_fill_color(248, 248, 252) if idx % 2 == 0 else pdf.set_fill_color(255, 255, 255)
         pdf.rect(10, pdf.get_y(), 190, 24, style="F")
 
-        # Finger header
+        # Cabeçalho do dedo
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(30, 30, 40)
         _cell(pdf, 0, 5, f" {FINGER_LABELS[finger]}:", ln=True)
 
-        # Items
+        # Itens
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(50, 50, 60)
 
         # Articular
         _cell(pdf, 5, 4, "")
-        _cell(pdf, 55, 4, "Articular classification (TAM):")
+        _cell(pdf, 55, 4, "Classificação articular (TAM):")
         pdf.set_font("Helvetica", "B", 8)
         color_art = _hex_to_rgb(s["articular_class"]["cor"])
         pdf.set_text_color(*color_art)
         _cell(pdf, 0, 4, s["articular_class"]["rotulo"], ln=True)
 
-        # Functional
+        # Funcional
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(50, 50, 60)
         _cell(pdf, 5, 4, "")
-        _cell(pdf, 55, 4, "Functional session classification:")
+        _cell(pdf, 55, 4, "Classificação funcional da sessão:")
         pdf.set_font("Helvetica", "B", 8)
         color_func = _hex_to_rgb(s["functional_class"]["cor"])
         pdf.set_text_color(*color_func)
         _cell(pdf, 0, 4, s["functional_class"]["rotulo"], ln=True)
 
-        # Hybrid
+        # Híbrida
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(50, 50, 60)
         _cell(pdf, 5, 4, "")
-        _cell(pdf, 55, 4, "Final hybrid classification:")
+        _cell(pdf, 55, 4, "Classificação híbrida final:")
         pdf.set_font("Helvetica", "B", 8)
         color_hyb = _hex_to_rgb(s["hybrid_class"]["cor"])
         pdf.set_text_color(*color_hyb)
         _cell(pdf, 0, 4, s["hybrid_class"]["rotulo"], ln=True)
 
-        # Rationale
+        # Justificativa
         pdf.set_font("Helvetica", "I", 8)
         pdf.set_text_color(80, 80, 90)
         _cell(pdf, 5, 4, "")
-        _multi_cell(pdf, 0, 4, f"Rationale: {s['hybrid_class']['explicacao']}")
+        _multi_cell(pdf, 0, 4, f"Justificativa: {s['hybrid_class']['explicacao']}")
         pdf.ln(3)
 
     pdf.ln(3)
@@ -866,12 +866,12 @@ def _add_complementary_table(
     pdf: _ReportPDF,
     summary: Dict[str, Dict[str, Any]],
 ) -> None:
-    """Adds the supplementary table with joint averages."""
+    """Adiciona a tabela suplementar com médias articulares."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Supplementary Table — Joint Averages", ln=True)
+    _cell(pdf, 0, 7, "Tabela Suplementar — Médias Articulares", ln=True)
 
-    headers = ["Finger", "MCP mean", "PIP / IP mean", "DIP mean"]
+    headers = ["Dedo", "MCP média", "PIP / IP média", "DIP média"]
     widths = [35, 35, 35, 35]
 
     pdf.set_fill_color(220, 225, 235)
@@ -905,42 +905,42 @@ def _add_complementary_table(
 
 
 def _add_legend(pdf: _ReportPDF) -> None:
-    """Adds the clinical legend for abbreviations."""
+    """Adiciona a legenda clínica de abreviações."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Clinical Legend", ln=True)
+    _cell(pdf, 0, 7, "Legenda Clínica", ln=True)
 
     legends = [
         ("TAM (Total Active Motion)",
-         "Sum of active motion ranges across the main joints of the finger, used as the global functional movement indicator."),
-        ("Thumb TAM",
-         "Sum of thumb MCP and IP. Maximum anatomical TAM ~120°. ASSH classification is proportionally adapted."),
-        ("MCP (Metacarpophalangeal)",
-         "Joint at the base of the finger."),
-        ("PIP (Proximal Interphalangeal)",
-         "Middle joint of the finger."),
-        ("DIP (Distal Interphalangeal)",
-         "Joint near the fingertip."),
-        ("IP (Interphalangeal — Thumb)",
-         "Joint between the phalanges of the thumb (equivalent to the DIP of long fingers)."),
+         "Soma das amplitudes de movimento ativo das principais articulações do dedo, utilizada como indicador funcional global de movimento."),
+        ("TAM do Polegar",
+         "Soma de MCP e IP do polegar. TAM anatômico máximo ~120°. Classificação ASSH adaptada proporcionalmente."),
+        ("MCP (Metacarpofalângica)",
+         "Articulação na base do dedo."),
+        ("PIP (Interfalângica Proximal)",
+         "Articulação intermediária do dedo."),
+        ("DIP (Interfalângica Distal)",
+         "Articulação próxima à ponta do dedo."),
+        ("IP (Interfalângica — Polegar)",
+         "Articulação entre as falanges do polegar (equivalente à DIP dos dedos longos)."),
         ("ASSH",
          "Classificação funcional (dedos longos): Excelente (>=260°), Bom (195–259°), Razoável (130–194°), Ruim (<130°)."),
-        ("ASSH (Thumb)",
+        ("ASSH (Polegar)",
          "Classificação funcional adaptada (polegar): Excelente (>=110°), Bom (80–109°), Razoável (50–79°), Ruim (<50°)."),
         ("TAM final",
-         "Total finger mobility value at the end of the session."),
-        ("TAM mean",
-         "Mean total finger mobility throughout the session."),
-        ("ROM",
-         "Difference between maximum and minimum movement values during the session."),
-        ("Mean velocity",
-         "Mean angular speed of movement during the session (°/s)."),
-        ("Peak velocity",
-         "Maximum angular velocity recorded (°/s)."),
-        ("Frequency",
-         "Rate of movement repetitions during the session (Hz)."),
-        ("Temporal regularity",
-         "Consistency of the movement pattern over time (CV of inter-peak intervals)."),
+         "Valor de mobilidade total do dedo no encerramento da sessão."),
+        ("TAM médio",
+         "Mobilidade total média do dedo ao longo de toda a sessão."),
+        ("ROM (Amplitude)",
+         "Diferença entre os valores máximo e mínimo de movimento durante a sessão."),
+        ("Velocidade média",
+         "Velocidade angular média do movimento durante a sessão (°/s)."),
+        ("Velocidade de pico",
+         "Velocidade angular máxima registrada (°/s)."),
+        ("Frequência",
+         "Taxa de repetições de movimento durante a sessão (Hz)."),
+        ("Regularidade temporal",
+         "Consistência do padrão de movimento ao longo do tempo (CV dos intervalos entre picos)."),
     ]
 
     pdf.set_font("Helvetica", "", 7)
@@ -957,7 +957,7 @@ def _add_legend(pdf: _ReportPDF) -> None:
 
 
 def _add_footer_technical(pdf: _ReportPDF) -> None:
-    """Adds the technical footer."""
+    """Adiciona o rodapé técnico."""
     pdf.set_draw_color(180, 180, 190)
     pdf.set_line_width(0.3)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -969,11 +969,11 @@ def _add_footer_technical(pdf: _ReportPDF) -> None:
     pdf.ln(1)
     pdf.set_font("Helvetica", "B", 7)
     pdf.set_text_color(180, 80, 80)
-    _multi_cell(pdf, 0, 4, f"Disclaimer: {FOOTER_DISCLAIMER}")
+    _multi_cell(pdf, 0, 4, f"Aviso legal: {FOOTER_DISCLAIMER}")
 
 
 # =============================================================================
-# 6. MAIN FUNCTION
+# 6. FUNÇÃO PRINCIPAL
 # =============================================================================
 
 def generate_pdf_report(
@@ -984,52 +984,52 @@ def generate_pdf_report(
     output_path: Optional[str] = None,
 ) -> str:
     """
-    Generates the complete PDF report from the session CSV.
+    Gera o relatório clínico completo em PDF a partir do CSV da sessão.
 
-    Parameters:
-        csv_path     : path of the CSV generated by the session
-        patient_name : full patient name
-        side         : evaluated side (e.g., "Right", "Left")
-        logo_path    : path to an institutional logo (PNG/JPG), optional
-        output_path  : PDF output path; if None, generated automatically
+    Parâmetros:
+        csv_path     : caminho do CSV gerado pela sessão
+        patient_name : nome completo do paciente
+        side         : lado avaliado (ex.: "Direita", "Esquerda")
+        logo_path    : caminho para logotipo institucional (PNG/JPG), opcional
+        output_path  : caminho de saída do PDF; se None, gerado automaticamente
 
-    Returns:
-        path of the generated PDF file
+    Retorna:
+        caminho do arquivo PDF gerado
     """
     if output_path is None:
         base = os.path.splitext(csv_path)[0]
         output_path = f"{base}_report.pdf"
 
-    # Temporary directory for charts
+    # Diretório temporário para gráficos
     plot_dir = os.path.join(os.path.dirname(csv_path) or ".", "_report_plots")
     os.makedirs(plot_dir, exist_ok=True)
 
-    print("  [1/5] Reading session CSV...")
+    print("  [1/5] Lendo CSV da sessão...")
     data = load_session_csv(csv_path)
 
     if data["n_frames"] < 5:
-        print("  WARNING: CSV has very few frames. Report data may be limited.")
+        print("  AVISO: CSV possui pouquíssimos quadros. Os dados do relatório podem ser limitados.")
 
-    print("  [2/5] Computing per-finger metrics...")
+    print("  [2/5] Calculando métricas por dedo...")
     summary = compute_session_summary(data)
 
-    print("  [3/5] Generating charts...")
+    print("  [3/5] Gerando gráficos...")
     tam_plot_path = os.path.join(plot_dir, "tam_overall.png")
     generate_tam_plot(data, tam_plot_path)
     individual_paths = generate_individual_plots(data, plot_dir)
 
-    print("  [4/5] Generating interpretive text...")
+    print("  [4/5] Gerando texto interpretativo...")
     observation = build_clinical_observation(summary)
     interpretation = _build_interpretation(summary)
 
-    print("  [5/5] Assembling PDF...")
+    print("  [5/5] Montando PDF...")
     pdf = _ReportPDF(logo_path=logo_path)
     pdf.alias_nb_pages()
     pdf.add_page()
 
-    # --- PAGE 1 ---
+    # --- PÁGINA 1 ---
 
-    # Identification block
+    # Bloco de identificação
     _add_identification_block(
         pdf,
         patient_name=patient_name,
@@ -1039,33 +1039,33 @@ def generate_pdf_report(
         observation=observation,
     )
 
-    # Main table
+    # Tabela principal
     _add_main_table(pdf, summary)
 
-    # Functional blocks
+    # Blocos funcionais
     _add_functional_blocks(pdf, summary)
 
-    # Supplementary table
+    # Tabela suplementar
     _add_complementary_table(pdf, summary)
 
-    # --- PAGE 2 ---
+    # --- PÁGINA 2 ---
     pdf.add_page()
 
-    # Overall chart
+    # Gráfico geral
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "TAM Chart Over Session", ln=True)
+    _cell(pdf, 0, 7, "Gráfico de TAM ao Longo da Sessão", ln=True)
 
     if os.path.isfile(tam_plot_path):
         pdf.image(tam_plot_path, x=10, w=190)
         pdf.ln(3)
 
-    # Individual charts
+    # Gráficos individuais
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Individual Charts per Finger", ln=True)
+    _cell(pdf, 0, 7, "Gráficos Individuais por Dedo", ln=True)
 
-    # 2×3 grid layout
+    # Layout de grade 2×3
     x_positions = [10, 105]
     img_w = 90
     col_idx = 0
@@ -1074,47 +1074,47 @@ def generate_pdf_report(
         path = individual_paths.get(finger)
         if path and os.path.isfile(path):
             x = x_positions[col_idx % 2]
-            # Check if a new page is needed
+            # Verifica se é necessária uma nova página
             if pdf.get_y() > 230:
                 pdf.add_page()
 
             pdf.image(path, x=x, y=pdf.get_y(), w=img_w)
             col_idx += 1
             if col_idx % 2 == 0:
-                pdf.ln(65)  # approximate chart height
+                pdf.ln(65)  # altura aproximada do gráfico
 
     if col_idx % 2 != 0:
         pdf.ln(65)
 
-    # Check space for text
+    # Verifica espaço para o texto
     if pdf.get_y() > 200:
         pdf.add_page()
 
-    # Interpretive text
+    # Texto interpretativo
     pdf.ln(3)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Clinical Interpretation", ln=True)
+    _cell(pdf, 0, 7, "Interpretação Clínica", ln=True)
 
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(50, 50, 60)
     _multi_cell(pdf, 0, 4.5, interpretation)
     pdf.ln(5)
 
-    # Clinical legend
+    # Legenda clínica
     if pdf.get_y() > 220:
         pdf.add_page()
     _add_legend(pdf)
 
-    # Technical footer
+    # Rodapé técnico
     if pdf.get_y() > 250:
         pdf.add_page()
     _add_footer_technical(pdf)
 
-    # Save PDF
+    # Salva o PDF
     pdf.output(output_path)
 
-    # Clean up temporary charts
+    # Limpeza dos gráficos temporários
     try:
         for f_path in individual_paths.values():
             if os.path.isfile(f_path):
@@ -1126,5 +1126,5 @@ def generate_pdf_report(
     except OSError:
         pass
 
-    print(f"\n  PDF report generated: {output_path}")
+    print(f"\n  Relatório PDF gerado: {output_path}")
     return output_path
