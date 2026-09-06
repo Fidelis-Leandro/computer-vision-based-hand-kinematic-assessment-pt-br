@@ -293,6 +293,7 @@ class MainWindow(QMainWindow):
         # Botão Encerrar Sessão — estilo vermelho para ação destrutiva/final.
         self.btn_end = QPushButton("■  Encerrar Sessão")
         self.btn_end.setStyleSheet(BUTTON_DANGER_STYLE)
+        self.btn_end.setMinimumHeight(42)
         self.btn_end.setToolTip("Encerra a captura e finaliza o arquivo CSV.")
 
         # Botões de pós-processamento — estilos padrão do tema.
@@ -432,6 +433,8 @@ class MainWindow(QMainWindow):
         mid_row.addWidget(self.video_widget, stretch=3)
 
         # Métricas: ocupa ~40% da largura da linha do meio.
+        # Ativa o modo clínico (oculta CPU, RAM, FPS e Quadro #; destaca estado da mão).
+        self.metrics_widget.set_clinical_mode(True)
         mid_row.addWidget(self.metrics_widget, stretch=2)
 
         main_layout.addLayout(mid_row)
@@ -457,7 +460,8 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(cards_scroll)
 
         # --- 5. Log de eventos ---
-        self.log_widget.setMinimumHeight(150)
+        self.log_widget.setMinimumHeight(80)
+        self.log_widget.setMaximumHeight(100)
         main_layout.addWidget(self.log_widget)
 
         # --- 6. Barra de botões ---

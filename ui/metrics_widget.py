@@ -332,6 +332,9 @@ class MetricsWidget(QGroupBox):
         for col in range(3):
             self._grid.setColumnStretch(col, 1)
 
+        # Estado do modo clínico (True = oculta telemetria; False = modo completo).
+        self._clinical_mode: bool = False
+
         # --- Timer de atualização das métricas do sistema ---
         # Dispara a cada 1000ms (1 segundo) — taxa adequada para CPU e RAM.
         # Atualizar mais rápido não traria informações úteis adicionais, pois
@@ -346,6 +349,59 @@ class MetricsWidget(QGroupBox):
 
         # Força a primeira leitura de CPU/RAM imediatamente na criação do widget.
         self._update_system_stats()
+
+    # =========================================================================
+    # CONTROLE DE MODO CLÍNICO
+    # =========================================================================
+
+    def set_clinical_mode(self, enabled: bool = True) -> None:
+        """
+        Alterna entre o modo de métricas completo e o modo clínico simplificado.
+
+        No modo clínico (enabled=True):
+        - Oculta os cards de telemetria de hardware (FPS, CPU, RAM, Quadro #).
+        - Reposiciona o HandStateCard para ocupar a largura total da grade (linha 0, colunas 0-2).
+        - Altera o título do grupo para 'Estado Clínico da Mão'.
+        - Preserva a coleta de dados interna em update_from_result() e o timer psutil.
+
+        No modo completo (enabled=False):
+        - Restaura a visibilidade dos quatro cards de telemetria.
+        - Reposiciona o HandStateCard na sua localização original (linha 1, colunas 1-2).
+        - Restaura o título do grupo para 'Métricas do Sistema'.
+        """
+        if hasattr(self, "_clinical_mode") and self._clinical_mode == enabled:
+            return
+
+        self._clinical_mode = enabled
+
+        if enabled:
+            # 1. Oculta cards de telemetria de sistema
+            self._card_fps.setVisible(False)
+            self._card_cpu.setVisible(False)
+            self._card_ram.setVisible(False)
+            self._card_frame.setVisible(False)
+
+            # 2. Atualiza título
+            self.setTitle("Estado Clínico da Mão")
+
+            # 3. Reposiciona o HandStateCard para ocupar a largura total (linha 0, colspan=3)
+            self._grid.removeWidget(self._card_hand)
+            self._grid.addWidget(self._card_hand, 0, 0, 1, 3)
+            self._card_hand.setVisible(True)
+        else:
+            # 1. Atualiza título
+            self.setTitle("Métricas do Sistema")
+
+            # 2. Reposiciona o HandStateCard na posição original (linha 1, col 1, colspan=2)
+            self._grid.removeWidget(self._card_hand)
+            self._grid.addWidget(self._card_hand, 1, 1, 1, 2)
+            self._card_hand.setVisible(True)
+
+            # 3. Reexibe cards de telemetria de sistema
+            self._card_fps.setVisible(True)
+            self._card_cpu.setVisible(True)
+            self._card_ram.setVisible(True)
+            self._card_frame.setVisible(True)
 
     # =========================================================================
     # ATUALIZAÇÃO COM DADOS DE PROCESSAMENTO
