@@ -259,19 +259,27 @@ class HandStateCard(QWidget):
 
 class MetricsWidget(QGroupBox):
     """
-    Painel lateral para métricas do sistema e estado clínico da mão.
+    Painel para métricas do sistema e monitoramento do estado clínico da mão.
 
-    Organiza cards individuais em uma grade 2×3 e conecta as fontes de dados
-    (ProcessingResult e psutil) a cada card correspondente.
+    Organiza cards individuais em uma grade dinâmica e conecta as fontes de dados
+    (ProcessingResult e psutil) a cada card correspondente. Suporta dois modos de operação:
+    modo técnico completo e modo clínico simplificado (Fase 3).
 
-    Hierarquia do widget:
-        MetricsWidget (QGroupBox)
-        └── QGridLayout
+    Hierarquia padrão (Modo Técnico completo, set_clinical_mode(False)):
+        MetricsWidget (QGroupBox: "Métricas do Sistema")
+        └── QGridLayout (2 linhas × 3 colunas)
             ├── _MetricCard("FPS")          [linha 0, coluna 0]
             ├── _MetricCard("CPU")          [linha 0, coluna 1]
             ├── _MetricCard("RAM")          [linha 0, coluna 2]
             ├── _MetricCard("Quadro #")     [linha 1, coluna 0]
             └── HandStateCard               [linha 1, colunas 1–2, colspan=2]
+
+    Hierarquia no Modo Clínico (set_clinical_mode(True), padrão na MainWindow):
+        MetricsWidget (QGroupBox: "Estado Clínico da Mão")
+        └── QGridLayout
+            └── HandStateCard               [linha 0, colunas 0–2, colspan=3]
+        (Cards de hardware FPS, CPU, RAM e Quadro # ficam ocultos para eliminar
+        distrações técnicas e priorizar o foco na visualização postural da mão).
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:

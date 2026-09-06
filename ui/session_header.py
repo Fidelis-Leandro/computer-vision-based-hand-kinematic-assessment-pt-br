@@ -52,17 +52,23 @@ from themes import (
 
 class SessionHeaderWidget(QWidget):
     """
-    Barra superior da interface de goniometria com formulário de paciente e cronômetro de sessão.
+    Cabeçalho da sessão clínica com dados do paciente e cronômetro em tempo real.
 
-    Exibida permanentemente no topo do MainWindow, independentemente do estado da sessão
-    (IDLE, READY, RUNNING, STOPPED). Campos do formulário são editáveis nos estados IDLE/READY
-    e bloqueados em RUNNING/STOPPED para evitar alterações acidentais durante a gravação.
+    Inserido no topo do painel clínico rolável da Tela de Avaliação (Página 0),
+    permanecendo visível durante a avaliação ativa (estado RUNNING) para exibir
+    a identificação do paciente, a mão avaliada, o número da sessão e a contagem
+    progressiva de tempo de coleta.
 
     Layout visual:
         ┌───────────────────────────────────────────────────────────────────────┐
         │ Paciente: [___________________] Mão: [▾] Sessão: [▲1▼] │Início: 14:35│
         │                                                          │Decorrido: 00:12:48│
         └───────────────────────────────────────────────────────────────────────┘
+
+    Campos e cronômetro:
+        - Identificação: exibe nome do paciente, mão avaliada (Direita/Esquerda) e sessão.
+        - Cronômetro: registra o horário de início (start_timer) e formata o tempo
+          decorrido em HH:MM:SS a cada segundo via QTimer interno.
     """
 
     hand_changed = pyqtSignal(str)

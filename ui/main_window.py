@@ -3,23 +3,37 @@ ui/main_window.py — Janela principal e orquestrador do sistema
 ==============================================================
 
 Este módulo implementa o MainWindow: o orquestrador da aplicação de goniometria PyQt6.
-Instancia todos os componentes, conecta sinais entre threads e controla
-o ciclo de vida completo (inicialização → sessão → encerramento → relatório).
+Instancia todos os componentes, conecta sinais entre threads e controla o ciclo
+de vida completo da avaliação através de uma arquitetura multitelas desacoplada
+gerenciada por um QStackedWidget central e uma barra fixa superior de encerramento.
+
+Telas do sistema (QStackedWidget):
+    - Página 1: Tela de Configuração da Sessão (formulário do paciente e início).
+    - Página 0: Tela de Avaliação em Andamento (área rolável clínica com vídeo,
+      métricas clínicas, gráficos temporais, cartões por dedo e gaveta de logs).
+    - Página 2: Tela de Resultado da Sessão (resumo informativo e ações pós-sessão:
+      geração de PDF sob demanda, exportação de CSV, nova avaliação e limpeza de dados).
+
+Barra fixa superior de avaliação (_assessment_bar):
+    - Localizada fora da área de rolagem clínica, no topo da janela principal.
+    - Exibe o status da avaliação e o botão "■ Encerrar Sessão", garantindo
+      acesso visual permanente e encerramento seguro com diálogo de confirmação.
+    - Visível exclusivamente durante a avaliação clínica (Página 0 e estado RUNNING).
 
 Responsabilidades do MainWindow:
-    1. Instanciar e organizar visualmente todos os widgets da interface.
+    1. Instanciar e orquestrar as três páginas da interface e a barra fixa superior.
     2. Instanciar os workers (CameraWorker, ProcessingWorker) SEM iniciá-los.
     3. Conectar sinais dos workers aos widgets de forma thread-safe.
     4. Gerenciar a máquina de estados (IDLE → READY → RUNNING → STOPPED).
     5. Controlar o ciclo de vida dos workers (iniciar, parar, aguardar).
-    6. Gerar o relatório PDF sem congelar a interface (thread separada).
+    6. Gerar o relatório PDF sob demanda sem congelar a interface (thread separada).
     7. Encerrar a aplicação de forma limpa ao fechar a janela.
 
 Máquina de estados:
-    IDLE    → Estado inicial. Câmera não iniciada. Formulário editável.
-    READY   → Nome do paciente preenchido. Botão Iniciar habilitado.
-    RUNNING → Câmera e processamento ativos. Botão Encerrar habilitado.
-    STOPPED → Sessão encerrada. PDF, CSV e Histórico habilitados.
+    IDLE    → Estado inicial na Tela de Configuração. Câmera desligada.
+    READY   → Nome do paciente preenchido. Botão "▶ Iniciar Avaliação" habilitado.
+    RUNNING → Avaliação ativa na Tela 2. Gravação em CSV e barra fixa visível.
+    STOPPED → Sessão encerrada. Transição para Tela 3 com ações pós-sessão disponíveis.
 
 Fluxo de dados (thread-safe via pyqtSignal):
     CameraWorker ──frame_ready──► ProcessingWorker (via put_frame, fila)
@@ -196,13 +210,15 @@ class MainWindow(QMainWindow):
             2. Criação de todos os widgets da interface.
             3. Instanciação dos workers (SEM iniciar as threads).
             4. Conexão de todos os sinais entre workers e widgets.
-            5. Montagem do layout visual.
-            6. Estado inicial definido como "IDLE".
+            5. Montagem do layout visual (barra fixa superior e QStackedWidget).
+            6. Definição da Página 1 (Tela de Configuração) como ponto de partida inicial.
+            7. Estado inicial definido como "IDLE".
 
         Por que instanciar workers em __init__ mas não iniciá-los?
             Os workers precisam existir para que seus sinais possam ser conectados.
-            Mas iniciar as threads (start()) antes de o usuário clicar em "Iniciar Sessão"
-            desperdiçaria recursos de CPU e câmera mesmo quando a aplicação está ociosa.
+            Mas iniciar as threads (start()) antes de o usuário clicar em "Iniciar Avaliação"
+            na Tela de Configuração desperdiçaria recursos de CPU e câmera mesmo quando
+            a aplicação está ociosa.
 
         Parâmetros:
             parent: Widget pai Qt (opcional). Geralmente None para a janela principal.
@@ -248,7 +264,7 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage("Pronto. Preencha os dados do paciente para iniciar.")
 
         # === ESTADO INICIAL ===
-        # Inicia em IDLE: nenhum botão habilitado exceto o formulário.
+        # Inicia em IDLE na Tela de Configuração (Página 1), aguardando dados do paciente.
         self._set_state("IDLE")
 
         logger.info("MainWindow inicializado com sucesso.")
@@ -409,22 +425,27 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self) -> None:
         """
-        Monta a hierarquia de widgets e layouts na janela principal.
+        Monta a hierarquia visual central da MainWindow com arquitetura multitelas.
 
-        Layout final (QVBoxLayout central):
-            1. SessionHeaderWidget          — topo, altura fixa
-            2. QHBoxLayout:
-               VideoWidget (stretch=3) │ MetricsWidget (stretch=2)
-            3. GoniometryPlotWidget         — altura fixa 220px
-            4. FingerCardsPanel             — altura fixa
-            5. LogWidget                    — altura máxima 120px
-            6. Linha de botões QHBoxLayout  — altura fixa
+        Hierarquia de widgets do Central Widget:
+            root_widget (QWidget)
+            └── root_layout (QVBoxLayout, sem margens)
+                ├── self._assessment_bar (barra fixa superior com botão 'Encerrar Sessão')
+                └── self._stack (QStackedWidget gerenciador de telas, stretch=1)
+                    ├── Página 0: QScrollArea contendo o painel clínico de avaliação:
+                    │   ├── SessionHeaderWidget (cabeçalho da sessão ativa)
+                    │   ├── QHBoxLayout (Vídeo 60% stretch=3 │ Métricas Clínicas 40% stretch=2)
+                    │   ├── GoniometryPlotWidget (gráfico dinâmico de TAM)
+                    │   ├── FingerCardsPanel (cartões individuais por dedo)
+                    │   └── LogWidget recolhível (painel diagnóstico com botão de alternância)
+                    ├── Página 1: Tela de Configuração da Sessão (_page_setup)
+                    └── Página 2: Tela de Resultado da Sessão (_page_result)
 
-        Por que usar fatores de esticamento no QHBoxLayout do vídeo?
-            stretch=3 para vídeo e stretch=2 para métricas resulta numa proporção
-            60%/40%, que na maioria dos monitores equivale a ~768px/512px.
-            Isso mantém o vídeo grande o suficiente para visualizar o overlay sem
-            reduzir as métricas a um tamanho ilegível.
+        Por que a Página 0 é encapsulada em uma QScrollArea?
+            Em monitores de menor resolução vertical, o conjunto de vídeo (450px),
+            métricas, gráfico TAM (280px), cards e logs ultrapassa a altura disponível.
+            A QScrollArea garante que todos os elementos clínicos sejam acessíveis via rolagem,
+            enquanto a barra superior (_assessment_bar) permanece estática e sempre visível.
         """
         # =========================================================
         # 1. Configuração da ScrollArea central (Página 0)
@@ -515,7 +536,7 @@ class MainWindow(QMainWindow):
         # =========================================================
         self._stack = QStackedWidget()
 
-        # Página 0: Layout atual em produção (intacto)
+        # Página 0: Tela de Avaliação em Andamento (painel clínico rolável)
         self._stack.addWidget(self._page_current_layout)
 
         # Página 1: Tela de Configuração da Sessão (Fase 2)
@@ -1030,7 +1051,14 @@ class MainWindow(QMainWindow):
 
     def _update_navigation_chrome(self) -> None:
         """
-        Atualiza a visibilidade da barra fixa de avaliação.
+        Controla a visibilidade dos elementos cromáticos globais de navegação.
+
+        Determina dinamicamente se a barra superior fixa (_assessment_bar) deve ser
+        exibida com base no índice da página atual do QStackedWidget e no estado da sessão:
+        - Exibida (True): exclusivamente na Página 0 (Tela de Avaliação) quando o estado
+          for "RUNNING". Isso mantém o botão 'Encerrar Sessão' sempre acessível no topo.
+        - Oculta (False): na Página 1 (Configuração), na Página 2 (Resultado) ou quando
+          a avaliação estiver encerrada/em transição (IDLE, READY, STOPPED).
         """
         is_eval_active = (
             self._stack.currentIndex() == 0
