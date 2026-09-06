@@ -506,11 +506,9 @@ class MainWindow(QMainWindow):
         self._page_setup = self._build_setup_page()
         self._stack.addWidget(self._page_setup)
 
-        # Página 2: Placeholder de Resultado
-        self._page_placeholder_result = self._create_placeholder_page(
-            "📊 Resultado da Sessão — Em desenvolvimento (Fase 5)"
-        )
-        self._stack.addWidget(self._page_placeholder_result)
+        # Página 2: Tela de Resultado da Sessão (Fase 5A)
+        self._page_result = self._build_result_page()
+        self._stack.addWidget(self._page_result)
 
         # Define Página 1 como inicial (Tela de Configuração)
         self._stack.setCurrentIndex(1)
@@ -676,6 +674,214 @@ class MainWindow(QMainWindow):
         lbl.setStyleSheet("color: #64748b; font-size: 16px; font-weight: bold;")
         layout.addWidget(lbl)
         return page
+
+    def _build_result_page(self) -> QWidget:
+        """
+        Constrói a Tela de Resultado da Sessão (Página 2 do QStackedWidget).
+
+        Apresenta resumo informativo pós-sessão e botões de ação para
+        geração de PDF, exportação de CSV e abertura da pasta de histórico.
+        """
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(24, 24, 24, 24)
+
+        page_layout.addStretch(1)
+
+        center_row = QHBoxLayout()
+        center_row.addStretch(1)
+
+        # Cartão centralizado baseado em QFrame
+        card_frame = QFrame()
+        card_frame.setFixedWidth(560)
+        card_frame.setStyleSheet(
+            f"QFrame {{ background-color: {COLOR_BG_MEDIUM}; "
+            f"border: 1px solid #334155; border-radius: 8px; }}"
+        )
+
+        card_layout = QVBoxLayout(card_frame)
+        card_layout.setContentsMargins(32, 28, 32, 28)
+        card_layout.setSpacing(12)
+
+        # Título
+        lbl_title = QLabel("Sessão Encerrada com Sucesso")
+        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_title.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_PRIMARY}; font-size: 20px; font-weight: bold; border: none; }}"
+        )
+        card_layout.addWidget(lbl_title)
+
+        # Subtítulo
+        lbl_subtitle = QLabel("Resumo da Avaliação Goniométrica")
+        lbl_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_subtitle.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 13px; margin-bottom: 8px; border: none; }}"
+        )
+        card_layout.addWidget(lbl_subtitle)
+
+        card_layout.addSpacing(4)
+
+        # Linhas de informação estruturadas
+        info_items = [
+            ("Paciente:", "_lbl_result_patient"),
+            ("Mão Avaliada:", "_lbl_result_hand"),
+            ("Sessão Nº:", "_lbl_result_session"),
+            ("Início:", "_lbl_result_start"),
+            ("Duração:", "_lbl_result_duration"),
+        ]
+
+        for text_label, attr_name in info_items:
+            row_layout = QHBoxLayout()
+            row_layout.setSpacing(8)
+
+            lbl_name = QLabel(text_label)
+            lbl_name.setFixedWidth(120)
+            lbl_name.setStyleSheet(
+                f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 12px; font-weight: bold; border: none; }}"
+            )
+
+            lbl_val = QLabel("—")
+            lbl_val.setStyleSheet(
+                f"QLabel {{ color: {COLOR_TEXT_PRIMARY}; font-size: 13px; border: none; }}"
+            )
+            setattr(self, attr_name, lbl_val)
+
+            row_layout.addWidget(lbl_name)
+            row_layout.addWidget(lbl_val, stretch=1)
+            card_layout.addLayout(row_layout)
+
+        # Campo: CSV salvo em:
+        lbl_csv_title = QLabel("CSV salvo em:")
+        lbl_csv_title.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 12px; font-weight: bold; margin-top: 4px; border: none; }}"
+        )
+        card_layout.addWidget(lbl_csv_title)
+
+        self._lbl_result_csv = QLabel("—")
+        self._lbl_result_csv.setWordWrap(True)
+        self._lbl_result_csv.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._lbl_result_csv.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 11px; padding: 6px 8px; "
+            f"background-color: #0f172a; border: 1px solid #334155; border-radius: 4px; }}"
+        )
+        card_layout.addWidget(self._lbl_result_csv)
+
+        card_layout.addSpacing(12)
+
+        # Linha de ações principais: PDF e CSV
+        btn_action_row = QHBoxLayout()
+        btn_action_row.setSpacing(10)
+
+        self._btn_result_pdf = QPushButton("📄  Gerar Relatório PDF")
+        self._btn_result_pdf.setMinimumHeight(42)
+        self._btn_result_pdf.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_pdf.setToolTip("Gera o relatório clínico em PDF a partir do CSV da sessão encerrada.")
+        self._btn_result_pdf.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_PRIMARY};
+                border: 1px solid #334155;
+                border-radius: 5px;
+                font-size: 13px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {COLOR_ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: #64748b;
+                border-color: #334155;
+                background-color: #0f172a;
+            }}
+            """
+        )
+        self._btn_result_pdf.clicked.connect(self._gerar_relatorio)
+        btn_action_row.addWidget(self._btn_result_pdf)
+
+        self._btn_result_csv = QPushButton("💾  Exportar CSV")
+        self._btn_result_csv.setMinimumHeight(42)
+        self._btn_result_csv.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_csv.setToolTip("Copia o arquivo CSV da sessão para um local escolhido.")
+        self._btn_result_csv.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_PRIMARY};
+                border: 1px solid #334155;
+                border-radius: 5px;
+                font-size: 13px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {COLOR_ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: #64748b;
+                border-color: #334155;
+                background-color: #0f172a;
+            }}
+            """
+        )
+        self._btn_result_csv.clicked.connect(self._exportar_csv)
+        btn_action_row.addWidget(self._btn_result_csv)
+
+        card_layout.addLayout(btn_action_row)
+
+        # Botão: Abrir Pasta de Sessões
+        self._btn_result_history = QPushButton("📁  Abrir Pasta de Sessões")
+        self._btn_result_history.setMinimumHeight(38)
+        self._btn_result_history.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_history.setToolTip("Abre a pasta onde os arquivos de sessão são salvos.")
+        self._btn_result_history.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_SECONDARY};
+                border: 1px solid #334155;
+                border-radius: 5px;
+                font-size: 12px;
+                padding: 6px 12px;
+            }}
+            QPushButton:hover {{
+                color: {COLOR_TEXT_PRIMARY};
+                border-color: {COLOR_ACCENT};
+            }}
+            """
+        )
+        self._btn_result_history.clicked.connect(self._abrir_historico)
+        card_layout.addWidget(self._btn_result_history)
+
+        center_row.addWidget(card_frame)
+        center_row.addStretch(1)
+
+        page_layout.addLayout(center_row)
+        page_layout.addStretch(1)
+
+        return page
+
+    def _update_result_page_data(self) -> None:
+        """
+        Atualiza os rótulos da Tela de Resultado com os dados da sessão encerrada.
+
+        Lê dados exclusivamente de SessionHeaderWidget e self._csv_path, sem
+        realizar cálculos ou parsing de arquivos.
+        """
+        session_info = self.session_header.get_session_info()
+        start_time_text = self.session_header._lbl_start_time.text()
+        elapsed_text = self.session_header._lbl_elapsed.text()
+
+        self._lbl_result_patient.setText(session_info.get("patient_name", "—") or "—")
+        self._lbl_result_hand.setText(session_info.get("hand", "—") or "—")
+        self._lbl_result_session.setText(str(session_info.get("session_number", "—")))
+        self._lbl_result_start.setText(start_time_text or "—")
+        self._lbl_result_duration.setText(elapsed_text or "—")
+        self._lbl_result_csv.setText(self._csv_path or "—")
+
+        # Habilita botões de PDF e CSV com base na existência do arquivo
+        has_csv = bool(self._csv_path and os.path.exists(self._csv_path))
+        self._btn_result_pdf.setEnabled(has_csv)
+        self._btn_result_csv.setEnabled(has_csv)
 
     def _build_button_row(self) -> QHBoxLayout:
         """
@@ -1094,6 +1300,8 @@ class MainWindow(QMainWindow):
             f"Sessão encerrada. CSV salvo em: {self._csv_path}"
         )
         self._set_state("STOPPED")
+        self._update_result_page_data()
+        self._stack.setCurrentIndex(2)
         logger.info("Sessão encerrada. CSV: %s", self._csv_path)
 
     def _gerar_relatorio(self) -> None:
@@ -1126,6 +1334,9 @@ class MainWindow(QMainWindow):
         # Desabilita o botão durante a geração para evitar duplos cliques.
         self.btn_pdf.setEnabled(False)
         self.btn_pdf.setText("⏳  Gerando PDF...")
+        if hasattr(self, "_btn_result_pdf"):
+            self._btn_result_pdf.setEnabled(False)
+            self._btn_result_pdf.setText("⏳  Gerando PDF...")
         self._status_bar.showMessage("Gerando relatório PDF... Aguarde.")
         self.log_widget.log("Iniciando geração do relatório PDF...")
 
@@ -1158,6 +1369,9 @@ class MainWindow(QMainWindow):
         # Restaura o botão ao estado original.
         self.btn_pdf.setEnabled(True)
         self.btn_pdf.setText("📄  Gerar Relatório PDF")
+        if hasattr(self, "_btn_result_pdf"):
+            self._btn_result_pdf.setEnabled(True)
+            self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
         self._status_bar.showMessage(f"PDF gerado: {pdf_path}")
         self.log_widget.log_success(f"Relatório PDF gerado: {pdf_path}")
 
@@ -1182,6 +1396,9 @@ class MainWindow(QMainWindow):
         # Restaura o botão e reporta o erro.
         self.btn_pdf.setEnabled(True)
         self.btn_pdf.setText("📄  Gerar Relatório PDF")
+        if hasattr(self, "_btn_result_pdf"):
+            self._btn_result_pdf.setEnabled(True)
+            self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
         self._status_bar.showMessage("Falha ao gerar relatório PDF.")
         self.log_widget.log_error(f"Falha ao gerar PDF: {error_message}")
 
