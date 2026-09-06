@@ -39,11 +39,13 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -393,16 +395,15 @@ class MainWindow(QMainWindow):
             reduzir as métricas a um tamanho ilegível.
         """
         # =========================================================
-        # 1. Configuração da ScrollArea central
+        # 1. Configuração da ScrollArea central (Página 0)
         # =========================================================
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet(f"QScrollArea {{ border: none; background: {COLOR_BG_DARK}; }}")
-        self.setCentralWidget(scroll_area)
+        self._page_current_layout = QScrollArea()
+        self._page_current_layout.setWidgetResizable(True)
+        self._page_current_layout.setStyleSheet(f"QScrollArea {{ border: none; background: {COLOR_BG_DARK}; }}")
 
         # Widget contêiner dentro da ScrollArea.
         container_widget = QWidget()
-        scroll_area.setWidget(container_widget)
+        self._page_current_layout.setWidget(container_widget)
 
         # Layout vertical principal.
         main_layout = QVBoxLayout(container_widget)
@@ -455,6 +456,45 @@ class MainWindow(QMainWindow):
 
         # --- 6. Barra de botões ---
         main_layout.addLayout(self._build_button_row())
+
+        # =========================================================
+        # 7. Contêiner de Navegação (QStackedWidget)
+        # =========================================================
+        self._stack = QStackedWidget()
+
+        # Página 0: Layout atual em produção (intacto)
+        self._stack.addWidget(self._page_current_layout)
+
+        # Página 1: Placeholder de Configuração
+        self._page_placeholder_setup = self._create_placeholder_page(
+            "⚙️ Configuração da Sessão — Em desenvolvimento (Fase 2)"
+        )
+        self._stack.addWidget(self._page_placeholder_setup)
+
+        # Página 2: Placeholder de Resultado
+        self._page_placeholder_result = self._create_placeholder_page(
+            "📊 Resultado da Sessão — Em desenvolvimento (Fase 5)"
+        )
+        self._stack.addWidget(self._page_placeholder_result)
+
+        # Define Página 0 como inicial e configura como widget central
+        self._stack.setCurrentIndex(0)
+        self.setCentralWidget(self._stack)
+
+    def _create_placeholder_page(self, title: str) -> QWidget:
+        """
+        Cria uma página de placeholder neutra e puramente visual.
+
+        Utilizado exclusivamente na Fase 1 para reservar os índices de navegação
+        do QStackedWidget antes da implementação das páginas definitivas.
+        """
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        lbl = QLabel(title)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("color: #64748b; font-size: 16px; font-weight: bold;")
+        layout.addWidget(lbl)
+        return page
 
     def _build_button_row(self) -> QHBoxLayout:
         """
