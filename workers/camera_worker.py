@@ -1,31 +1,31 @@
 """
-workers/camera_worker.py — Webcam frame capture thread
-=======================================================
+workers/camera_worker.py — Thread de captura de quadros da câmera
+=================================================================
 
-This module isolates video capture in a dedicated thread (CameraWorker),
-ensuring the graphical interface (MainWindow) is never blocked waiting for
-camera frames.
+Este módulo isola a captura de vídeo em uma thread dedicada (CameraWorker),
+garantindo que a interface gráfica (MainWindow) nunca seja bloqueada à
+espera dos quadros da câmera.
 
-Problem solved by this module:
-    cap.read() is a BLOCKING call: the program halts and waits until a frame
-    arrives from the camera (~33ms at 30 FPS). If this wait occurred on the
-    main thread, the PyQt6 window would freeze on every frame, making the
-    interface unresponsive.
+Problema resolvido por este módulo:
+    cap.read() é uma chamada BLOQUEANTE: o programa é interrompido e aguarda
+    até que um quadro chegue da câmera (~33ms a 30 FPS). Se essa espera
+    ocorresse na thread principal, a janela do PyQt6 congelaria a cada quadro,
+    tornando a interface não responsiva.
 
-Solution:
-    CameraWorker runs in its own thread via QThread. It captures frames in a
-    continuous loop and delivers them to the main thread via pyqtSignal —
-    Qt's thread-safe communication mechanism.
+Solução:
+    CameraWorker executa em sua própria thread via QThread. Ele captura quadros
+    em um laço contínuo e os entrega à thread principal via pyqtSignal —
+    mecanismo de comunicação seguro entre threads (thread-safe) do Qt.
 
-Data flow:
-    Webcam -> cap.read() -> horizontal flip -> pyqtSignal(frame_bgr)
-                                                      |
-                                           ProcessingWorker.put_frame()
+Fluxo de dados:
+    Câmera -> cap.read() -> espelhamento horizontal -> pyqtSignal(frame_bgr)
+                                                              |
+                                                   ProcessingWorker.put_frame()
 
-Rules followed:
-    - Widgets are NEVER called from inside this thread.
-    - time.sleep or any blocking calls are NEVER used here.
-    - All communication with the interface is via pyqtSignal (thread-safe by design).
+Regras seguidas:
+    - Widgets NUNCA são chamados de dentro desta thread.
+    - time.sleep ou chamadas bloqueantes NUNCA são usadas na thread principal.
+    - Toda comunicação com a interface é via pyqtSignal (segura por concepção).
 """
 
 import sys
@@ -37,363 +37,363 @@ import cv2
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 
-# Import all constants from the centralized configuration file.
-# NEVER use magic numbers in this module — always via config.
+# Importa todas as constantes do arquivo de configuração centralizado.
+# NUNCA utilize números mágicos neste módulo — sempre via config.
 import config
 
 
 class CameraWorker(QThread):
     """
-    Real-time video capture thread using OpenCV.
+    Thread de captura de vídeo em tempo real utilizando OpenCV.
 
-    Inherits from QThread (not threading.Thread) because Qt requires that
-    all communication with the graphical interface go through its own signal
-    system (pyqtSignal). Pure Python threads do not have access to the Qt
-    event loop and would crash when trying to update widgets.
+    Herda de QThread (e não de threading.Thread) porque o Qt exige que
+    toda comunicação com a interface gráfica passe pelo seu próprio sistema
+    de sinais (pyqtSignal). Threads puras do Python não possuem acesso ao laço
+    de eventos do Qt e causariam falhas ao tentar atualizar widgets.
 
-    Lifecycle:
-        1. Instantiated by MainWindow in __init__() — not yet started.
-        2. camera_worker.start() is called on clicking "Start Session".
-        3. Qt calls run() automatically in a separate thread.
-        4. camera_worker.stop() is called on clicking "End" or closing the window.
-        5. The loop exits and cap.release() frees the camera.
+    Ciclo de vida:
+        1. Instanciado por MainWindow em __init__() — ainda não iniciado.
+        2. camera_worker.start() é chamado quando a sessão é iniciada.
+        3. O Qt chama run() automaticamente em uma thread separada.
+        4. camera_worker.stop() é chamado quando a sessão é encerrada ou a janela é fechada.
+        5. O laço é encerrado e cap.release() libera a câmera.
 
-    Signals emitted (thread-safe communication with MainWindow):
-        frame_ready(np.ndarray) : captured BGR frame, flipped and ready
-                                  to be processed by ProcessingWorker.
-        fps_updated(float)      : current frame rate, computed with EMA.
-                                  Received by MetricsWidget for display.
-        camera_error(str)       : error message for LogWidget when the
-                                  camera cannot be opened or freezes.
+    Sinais emitidos (comunicação thread-safe com MainWindow):
+        frame_ready(np.ndarray) : quadro BGR capturado, espelhado e pronto
+                                  para processamento pelo ProcessingWorker.
+        fps_updated(float)      : taxa de quadros atual, calculada com EMA.
+                                  Recebida pelo MetricsWidget para exibição.
+        camera_error(str)       : mensagem de erro para o LogWidget quando a
+                                  câmera não puder ser aberta ou travar.
     """
 
-    # --- Signal definitions ---
-    # pyqtSignal declares the data types each signal carries.
-    # Qt uses this for safe inter-thread routing.
+    # --- Definições de sinais ---
+    # pyqtSignal declara os tipos de dados carregados por cada sinal.
+    # O Qt utiliza isso para roteamento seguro entre threads.
 
-    # Carries a NumPy BGR array — the captured and flipped frame.
+    # Carrega um array NumPy BGR — o quadro capturado e espelhado.
     frame_ready: pyqtSignal = pyqtSignal(np.ndarray)
 
-    # Carries a float — the smoothed FPS for display in the interface.
+    # Carrega um float — o FPS suavizado para exibição na interface.
     fps_updated: pyqtSignal = pyqtSignal(float)
 
-    # Carries a string — a human-readable error message for the LogWidget.
+    # Carrega uma string — mensagem de erro legível por humanos para o LogWidget.
     camera_error: pyqtSignal = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         """
-        Initializes the CameraWorker with a safe initial state.
+        Inicializa o CameraWorker com um estado inicial seguro.
 
-        Only configures internal attributes. The camera is NOT opened here —
-        that happens in run() when the thread starts. This separation is
-        important: __init__ runs on the main thread, while the camera must
-        be opened and used exclusively on the worker thread.
+        Apenas configura atributos internos. A câmera NÃO é aberta aqui —
+        isso ocorre em run() quando a thread é iniciada. Esta separação é
+        importante: __init__ executa na thread principal, enquanto a câmera
+        deve ser aberta e utilizada exclusivamente na thread trabalhadora (worker thread).
 
-        Parameters:
-            parent: Qt parent widget (optional). Used by Qt to manage the
-                    object lifecycle. Typically None for workers.
+        Parâmetros:
+            parent: widget pai do Qt (opcional). Utilizado pelo Qt para gerenciar o
+                    ciclo de vida do objeto. Normalmente None para workers.
         """
         super().__init__(parent)
 
-        # Thread event used to signal that the loop should stop.
-        # We use threading.Event (not a plain boolean) because it is
-        # thread-safe: it can be read/written from any thread without
-        # race conditions.
+        # Evento de thread usado para sinalizar que o laço deve parar.
+        # Utilizamos threading.Event (e não um booleano simples) porque ele é
+        # seguro entre threads (thread-safe): pode ser lido/escrito de qualquer
+        # thread sem condições de corrida.
         self._stop_event: threading.Event = threading.Event()
 
-        # Reference to the camera object. Initially None because the camera
-        # is only opened when run() is called by the worker thread.
+        # Referência ao objeto da câmera. Inicialmente None porque a câmera
+        # só é aberta quando run() é chamado pela thread trabalhadora.
         self._cap: Optional[cv2.VideoCapture] = None
 
-        # Stores the EMA-smoothed FPS between emissions.
-        # Initialized to 0.0 to indicate no frame has been captured yet.
+        # Armazena o FPS suavizado por EMA entre as emissões.
+        # Inicializado em 0.0 para indicar que nenhum quadro foi capturado ainda.
         self._fps_ema: float = 0.0
 
-        # Counter of successfully captured frames in this run.
-        # Used to control the emission frequency of the fps_updated signal.
+        # Contador de quadros capturados com sucesso nesta execução.
+        # Utilizado para controlar a frequência de emissão do sinal fps_updated.
         self._frame_count: int = 0
 
     # =========================================================================
-    # CAMERA OPENING
+    # ABERTURA DA CÂMERA
     # =========================================================================
 
     def _open_camera(self) -> Optional[cv2.VideoCapture]:
         """
-        Attempts to open the camera with the best available configuration.
+        Tenta abrir a câmera com a melhor configuração disponível.
 
-        Fallback strategy:
-            1. Tries CAP_DSHOW (DirectShow — native Windows backend).
-               CAP_DSHOW significantly reduces latency on Windows by
-               eliminating the generic driver abstraction layer. Without it,
-               each cap.read() may have 50–150ms of extra latency.
-            2. If CAP_DSHOW fails (Linux/macOS or incompatible driver),
-               tries OpenCV's default backend (automatic by OS).
-            3. If both fail, returns None so run() can emit camera_error
-               and exit the loop safely.
+        Estratégia de contingência (fallback):
+            1. Tenta CAP_DSHOW (DirectShow — backend nativo do Windows).
+               CAP_DSHOW reduz significativamente a latência no Windows ao
+               eliminar a camada de abstração genérica do driver. Sem ele,
+               cada cap.read() pode ter 50–150ms de latência adicional.
+            2. Se CAP_DSHOW falhar (Linux/macOS ou driver incompatível),
+               tenta o backend padrão do OpenCV (automático pelo SO).
+            3. Se ambos falharem, retorna None para que run() possa emitir
+               camera_error e sair do laço com segurança.
 
-        Returns:
-            cv2.VideoCapture: opened and configured camera object, or
-            None if the camera could not be opened.
+        Retorna:
+            cv2.VideoCapture: objeto de câmera aberto e configurado, ou
+            None caso a câmera não possa ser aberta.
         """
-        # CAP_DSHOW is Windows-only — only attempt on this platform.
-        # On Linux/macOS, cv2.CAP_DSHOW does not exist or is ignored.
+        # CAP_DSHOW é exclusivo do Windows — tentativa apenas nesta plataforma.
+        # No Linux/macOS, cv2.CAP_DSHOW não existe ou é ignorado.
         if sys.platform == "win32":
             cap = cv2.VideoCapture(config.CAMERA_INDEX, cv2.CAP_DSHOW)
 
-            # Verify CAP_DSHOW opened successfully before configuring.
+            # Verifica se CAP_DSHOW abriu com sucesso antes de configurar.
             if cap.isOpened():
                 self._configure_camera(cap)
                 return cap
 
-            # If CAP_DSHOW failed, release before trying again.
+            # Se CAP_DSHOW falhou, libera antes de tentar novamente.
             cap.release()
 
-        # Fallback: OpenCV default backend (V4L2 on Linux, AVFoundation on macOS).
+        # Fallback: backend padrão do OpenCV (V4L2 no Linux, AVFoundation no macOS).
         cap = cv2.VideoCapture(config.CAMERA_INDEX)
 
         if cap.isOpened():
             self._configure_camera(cap)
             return cap
 
-        # No backend worked — camera is unavailable.
+        # Nenhum backend funcionou — a câmera está indisponível.
         return None
 
     def _configure_camera(self, cap: cv2.VideoCapture) -> None:
         """
-        Applies resolution and FPS settings to the camera object.
+        Aplica as configurações de resolução e FPS ao objeto da câmera.
 
-        OpenCV does not guarantee the driver will honor requested settings —
-        it tries, but the camera may return the closest supported resolution.
-        We use CAP_PROP_BUFFERSIZE = 1 to ensure the driver's internal buffer
-        holds at most 1 queued frame, keeping latency minimal regardless of
-        the actual resolution.
+        O OpenCV não garante que o driver respeitará os ajustes solicitados —
+        ele tenta, mas a câmera pode retornar a resolução suportada mais próxima.
+        Utilizamos CAP_PROP_BUFFERSIZE = 1 para garantir que o buffer interno do driver
+        mantenha no máximo 1 quadro em fila, mantendo a latência mínima
+        independentemente da resolução real.
 
-        Parameters:
-            cap: already opened and valid cv2.VideoCapture object.
+        Parâmetros:
+            cap: objeto cv2.VideoCapture já aberto e válido.
         """
-        # Request the resolution defined in config.py.
+        # Solicita a resolução definida em config.py.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
 
-        # Request the desired FPS from the driver.
+        # Solicita o FPS desejado ao driver.
         cap.set(cv2.CAP_PROP_FPS, config.TARGET_FPS)
 
-        # Set the driver's internal buffer size to 1 frame.
-        # With larger buffers (default = 4 on Windows), cap.read() returns
-        # OLD frames from the buffer before capturing the current frame.
-        # This causes accumulated latency: the displayed image falls further
-        # and further behind the real movement. With BUFFERSIZE = 1, we
-        # always receive the most recent frame.
+        # Define o buffer interno do driver para 1 quadro.
+        # Com buffers maiores (padrão = 4 no Windows), cap.read() retorna
+        # quadros ANTIGOS do buffer antes de capturar o quadro atual.
+        # Isso causa latência acumulada: a imagem exibida fica cada vez mais
+        # atrasada em relação ao movimento real. Com BUFFERSIZE = 1,
+        # recebemos sempre o quadro mais recente.
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     # =========================================================================
-    # MAIN LOOP (runs in the separate thread)
+    # LAÇO PRINCIPAL (executa na thread dedicada)
     # =========================================================================
 
     def run(self) -> None:
         """
-        Main QThread method — called automatically by Qt when
-        camera_worker.start() is executed. Runs entirely on the worker thread,
-        never on the main thread.
+        Método principal do QThread — chamado automaticamente pelo Qt quando
+        camera_worker.start() é executado. Executa inteiramente na thread trabalhadora,
+        nunca na thread principal.
 
-        This method MUST NOT be called directly. Use start() to start the
-        thread correctly.
+        Este método NÃO DEVE ser chamado diretamente. Utilize start() para
+        iniciar a thread corretamente.
 
-        Internal flow:
-            1. Attempts to open the camera.
-            2. If it fails, emits camera_error and exits.
-            3. Capture loop: cap.read() -> flip -> compute FPS -> emit signals.
-            4. On stop (_stop_event set or consecutive failures), releases the camera.
+        Fluxo interno:
+            1. Tenta abrir a câmera.
+            2. Em caso de falha, emite camera_error e encerra.
+            3. Laço de captura: cap.read() -> flip -> calcula FPS -> emite sinais.
+            4. Ao parar (_stop_event ativado ou falhas consecutivas), libera a câmera.
 
-        Returns:
-            None. Results are delivered via pyqtSignal (frame_ready, etc.).
+        Retorna:
+            None. Os resultados são entregues via pyqtSignal (frame_ready, etc.).
         """
-        # Attempt to open the camera before entering the loop.
+        # Tenta abrir a câmera antes de entrar no laço.
         self._cap = self._open_camera()
 
         if self._cap is None:
-            # Emitting the error signal is thread-safe: Qt will route the call
-            # to the main thread automatically, where the LogWidget resides.
+            # Emitir o sinal de erro é seguro entre threads (thread-safe): o Qt roteará a chamada
+            # para a thread principal automaticamente, onde reside o LogWidget.
             self.camera_error.emit(
-                f"Could not open camera (index {config.CAMERA_INDEX}). "
-                "Check that it is connected and not in use by another program."
+                f"Não foi possível abrir a câmera (índice {config.CAMERA_INDEX}). "
+                "Verifique se ela está conectada e não está em uso por outro programa."
             )
             return
 
-        # Counter of consecutive cap.read() failures.
-        # If this counter reaches the limit, we interpret it as a hardware failure.
+        # Contador de falhas consecutivas de cap.read().
+        # Se este contador atingir o limite, interpretamos como falha de hardware.
         consecutive_failures: int = 0
 
-        # Failure limit before stopping. ~10 consecutive failures at ~30fps = ~333ms
-        # without camera response, indicating a real freeze.
+        # Limite de falhas antes de parar. ~10 falhas consecutivas a ~30fps = ~333ms
+        # sem resposta da câmera, indicando travamento real.
         max_consecutive_failures: int = 10
 
-        # Timestamp of the last successfully captured frame — for FPS calculation.
+        # Timestamp do último quadro capturado com sucesso — para cálculo de FPS.
         t_last: float = time.perf_counter()
 
-        # Main capture loop — runs until stop() is called
-        # or the consecutive failure count is reached.
+        # Laço principal de captura — executa até stop() ser chamado
+        # ou o limite de falhas consecutivas ser atingido.
         while not self._stop_event.is_set():
 
-            # cap.read() is BLOCKING: waits until a frame is available.
-            # Returns (True, frame) on success or (False, None) on failure.
+            # cap.read() é BLOQUEANTE: aguarda até que um quadro esteja disponível.
+            # Retorna (True, frame) em caso de sucesso ou (False, None) em falha.
             ret, frame = self._cap.read()
 
             if not ret or frame is None:
                 consecutive_failures += 1
 
                 if consecutive_failures >= max_consecutive_failures:
-                    # Camera stopped responding long enough to be considered
-                    # a real hardware failure (disconnection, driver, etc.)
+                    # A câmera parou de responder por tempo suficiente para ser considerada
+                    # uma falha real de hardware (desconexão, driver, etc.)
                     self.camera_error.emit(
-                        f"Camera lost after {max_consecutive_failures} consecutive "
-                        "invalid frames. Check the USB connection."
+                        f"Conexão com a câmera perdida após {max_consecutive_failures} quadros "
+                        "inválidos consecutivos. Verifique a conexão USB."
                     )
                     break
 
-                # Wait 10ms before retrying.
-                # Without this sleep, the loop would spin at max speed consuming
-                # 100% of a CPU core just trying to read invalid frames.
+                # Aguarda 10ms antes de tentar novamente.
+                # Sem esta pausa, o laço rodaria em velocidade máxima consumindo
+                # 100% de um núcleo da CPU apenas tentando ler quadros inválidos.
                 time.sleep(0.01)
                 continue
 
-            # Valid frame — reset failure counter.
+            # Quadro válido — reinicia o contador de falhas.
             consecutive_failures = 0
             self._frame_count += 1
 
-            # Horizontal flip of the frame.
-            # MediaPipe works with the original image, but from the user's
-            # perspective, seeing their own hand mirrored (like a physical mirror)
-            # is more intuitive for positioning the hand in the camera.
-            # cv2.flip(frame, 1): 1 = vertical axis (horizontal mirror).
+            # Espelhamento horizontal do quadro.
+            # O MediaPipe opera com a imagem original, mas da perspectiva do
+            # usuário, ver a própria mão espelhada (como em um espelho físico)
+            # é mais intuitivo para posicionar a mão na câmera.
+            # cv2.flip(frame, 1): 1 = eixo vertical (espelhamento horizontal).
             frame = cv2.flip(frame, 1)
 
-            # Compute real FPS and update the EMA-smoothed value.
+            # Calcula o FPS real e atualiza o valor suavizado por EMA.
             self._update_fps(t_last)
             t_last = time.perf_counter()
 
-            # Emit the captured frame to any connected slot.
-            # In production, ProcessingWorker receives it via put_frame().
-            # The signal is thread-safe by Qt design — no race condition risk
-            # when emitting from within this thread.
+            # Emite o quadro capturado para qualquer slot conectado.
+            # Em produção, o ProcessingWorker o recebe via put_frame().
+            # O sinal é thread-safe por concepção do Qt — sem risco de condição
+            # de corrida ao emitir de dentro desta thread.
             self.frame_ready.emit(frame)
 
-            # Emit the smoothed FPS every N frames to avoid flooding the UI.
-            # Emitting every frame (30x/s) would unnecessarily overload
-            # MetricsWidget with updates too fast for the human eye to see.
-            # Every 30 frames ≈ once per second is sufficient.
+            # Emite o FPS suavizado a cada N quadros para evitar sobrecarregar a interface.
+            # Emitir a cada quadro (30x/s) sobrecarregaria desnecessariamente o
+            # MetricsWidget com atualizações rápidas demais para o olho humano perceber.
+            # A cada 30 quadros ≈ uma vez por segundo é suficiente.
             if self._frame_count % 30 == 0:
                 self.fps_updated.emit(self._fps_ema)
 
-        # --- Cleanup after the loop ---
-        # Loop ended (by stop() or by failure). Release camera resources.
+        # --- Limpeza após o laço ---
+        # Laço encerrado (por stop() ou por falha). Libera recursos da câmera.
         self._release_camera()
 
     # =========================================================================
-    # FPS CALCULATION
+    # CÁLCULO DE FPS
     # =========================================================================
 
     def _update_fps(self, t_last: float) -> None:
         """
-        Updates the smoothed FPS using Exponential Moving Average (EMA).
+        Atualiza o FPS suavizado utilizando Média Móvel Exponencial (EMA).
 
-        Why EMA instead of a simple mean?
-            Simple mean (total_frames / total_time) has two problems:
-            1. Reacts too slowly to performance changes (needs many frames
-               to reflect the current speed).
-            2. Never "forgets" old frames — if the system was slow for 1 second
-               at the start, that affects the average for the entire session.
+        Por que EMA em vez de uma média simples?
+            A média simples (total_quadros / tempo_total) possui dois problemas:
+            1. Reage muito lentamente a variações de desempenho (necessita de muitos quadros
+               para refletir a velocidade atual).
+            2. Nunca "esquece" quadros antigos — se o sistema esteve lento por 1 segundo
+               no início, isso afeta a média de toda a sessão.
 
-            EMA with α=0.15 solves both:
-            - Reacts quickly to changes (α controls responsiveness).
-            - Slowly "forgets" old values, keeping the smoothed value stable.
-            - Computationally trivial: just one multiply and one add.
+            O EMA com α=0.15 resolve ambos:
+            - Reage rapidamente a mudanças (α controla a capacidade de resposta).
+            - "Esquece" gradualmente valores antigos, mantendo o valor suavizado estável.
+            - Computacionalmente trivial: apenas uma multiplicação e uma adição.
 
-        Parameters:
-            t_last: timestamp (in seconds) of the previous frame, obtained via
-                    time.perf_counter(). Used to compute the time delta.
+        Parâmetros:
+            t_last: timestamp (em segundos) do quadro anterior, obtido via
+                    time.perf_counter(). Utilizado para calcular o intervalo de tempo (dt).
         """
         t_now: float = time.perf_counter()
         dt: float = t_now - t_last
 
-        # Guard against division by zero: if dt is absurdly small
-        # (two frames at the same instant — impossible in practice but defensive),
-        # we skip the FPS update to avoid infinite values.
+        # Proteção contra divisão por zero: se dt for absurdamente pequeno
+        # (dois quadros no mesmo instante — impossível na prática, mas defensivo),
+        # ignoramos a atualização de FPS para evitar valores infinitos.
         if dt <= 0.0:
             return
 
-        # Instantaneous FPS for this frame: inverse of the inter-frame interval.
+        # FPS instantâneo para este quadro: inverso do intervalo entre quadros.
         fps_instant: float = 1.0 / dt
 
-        # EMA smoothing factor — α=0.15 (15% new value + 85% history).
-        # Empirically tuned: smooths FPS spikes caused by camera driver latency
-        # variations without introducing visible lag in the FPS indicator.
+        # Fator de suavização EMA — α=0.15 (15% valor novo + 85% histórico).
+        # Ajustado empiricamente: suaviza picos de FPS causados por variações de
+        # latência do driver da câmera sem introduzir atraso visível no indicador de FPS.
         ema_alpha: float = 0.15
 
         if self._fps_ema == 0.0:
-            # On the first reading, initialize with the instantaneous value.
-            # Using the EMA formula here would drag the FPS down from 0.0
-            # for the first dozens of frames.
+            # Na primeira leitura, inicializa com o valor instantâneo.
+            # Utilizar a fórmula EMA aqui puxaria o FPS para baixo a partir de 0.0
+            # pelas primeiras dezenas de quadros.
             self._fps_ema = fps_instant
         else:
-            # EMA formula: new = α × current + (1-α) × previous
+            # Fórmula EMA: novo = α × atual + (1-α) × anterior
             self._fps_ema = ema_alpha * fps_instant + (1.0 - ema_alpha) * self._fps_ema
 
     # =========================================================================
-    # LIFECYCLE CONTROL
+    # CONTROLE DE CICLO DE VIDA
     # =========================================================================
 
     def stop(self) -> None:
         """
-        Signals the capture loop to shut down cleanly.
+        Sinaliza o encerramento seguro do laço de captura.
 
-        Called by the main thread (e.g., on clicking "End Session" or closing
-        the window). Does NOT force the thread to stop immediately — the loop
-        checks the event on each iteration and exits at the next opportunity.
+        Chamado pela thread principal (por exemplo, quando a sessão é encerrada
+        ou a janela é fechada). NÃO força a thread a parar imediatamente — o laço
+        verifica o evento a cada iteração e sai na oportunidade seguinte.
 
-        Why threading.Event instead of a plain boolean?
-            Plain Python booleans are not thread-safe: reads and writes from
-            different threads can result in corrupted data (race condition).
-            threading.Event uses OS-level synchronization primitives that
-            guarantee safe access from any thread without manual locks.
+        Por que threading.Event em vez de um booleano simples?
+            Booleanos puros do Python não são thread-safe: leituras e escritas de
+            threads diferentes podem resultar em dados corrompidos (condição de corrida).
+            threading.Event utiliza primitivas de sincronização em nível de SO que
+            garantem acesso seguro a partir de qualquer thread sem travas manuais.
 
-        Returns:
-            None. The actual shutdown happens asynchronously in run()'s loop.
+        Retorna:
+            None. O encerramento real ocorre assincronamente no laço de run().
         """
         self._stop_event.set()
 
     def _release_camera(self) -> None:
         """
-        Safely releases camera resources when the thread exits.
+        Libera os recursos da câmera com segurança quando a thread é encerrada.
 
-        Why release explicitly?
-            Python has automatic garbage collection, but it does not guarantee
-            WHEN an object will be destroyed. If cap.release() is not called
-            explicitly, the camera driver may remain busy, preventing other
-            programs (or a new instance of ours) from opening the camera.
+        Por que liberar explicitamente?
+            O Python possui coleta de lixo automática, mas não garante QUANDO
+            um objeto será destruído. Se cap.release() não for chamado
+            explicitamente, o driver da câmera pode permanecer ocupado, impedindo
+            outros programas (ou uma nova instância nossa) de abrir a câmera.
 
-            On Windows, this results in the error: "camera is already in use
-            by another process" when trying to restart the application without
-            closing the previous process.
+            No Windows, isso resulta no erro: "a câmera já está em uso
+            por outro processo" ao tentar reiniciar a aplicação sem fechar
+            o processo anterior.
 
-        Returns:
+        Retorna:
             None.
         """
         if self._cap is not None and self._cap.isOpened():
-            # Release the camera handle in the OS driver.
+            # Libera o descritor da câmera no driver do sistema operacional.
             self._cap.release()
 
-        # Reset the reference to None to avoid accidental use after release.
+        # Redefine a referência para None para evitar uso acidental após a liberação.
         self._cap = None
 
     def is_camera_open(self) -> bool:
         """
-        Checks whether the camera is currently open and available.
+        Verifica se a câmera está atualmente aberta e disponível.
 
-        Useful for state checks in MainWindow before attempting to start
-        a new capture session.
+        Útil para verificações de estado na MainWindow antes de tentar iniciar
+        uma nova sessão de captura.
 
-        Returns:
-            bool: True if the camera is open and operational, False otherwise.
+        Retorna:
+            bool: True se a câmera estiver aberta e operacional, False caso contrário.
         """
         return self._cap is not None and self._cap.isOpened()
