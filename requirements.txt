@@ -24,3 +24,7 @@ numpy>=1.24.0,<2.0.0
 # PDF report generation
 fpdf2>=2.7.0
 matplotlib>=3.7.0
+
+# --- Dependências de Teste e Desenvolvimento (não necessárias em produção) ---
+pytest-qt>=4.4.0
+
