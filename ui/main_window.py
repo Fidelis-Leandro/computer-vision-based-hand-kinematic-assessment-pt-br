@@ -53,7 +53,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -61,7 +60,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QStatusBar,
@@ -712,21 +710,6 @@ class MainWindow(QMainWindow):
         # Se por qualquer motivo a sessão não atingiu RUNNING, reabilita o botão
         if self._state != "RUNNING":
             self._setup_btn_start.setEnabled(bool(self._setup_input_patient.text().strip()))
-
-    def _create_placeholder_page(self, title: str) -> QWidget:
-        """
-        Cria uma página de placeholder neutra e puramente visual.
-
-        Utilizado exclusivamente na Fase 1 para reservar os índices de navegação
-        do QStackedWidget antes da implementação das páginas definitivas.
-        """
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        lbl = QLabel(title)
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("color: #64748b; font-size: 16px; font-weight: bold;")
-        layout.addWidget(lbl)
-        return page
 
     def _build_result_page(self) -> QWidget:
         """
