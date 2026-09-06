@@ -1,37 +1,37 @@
 """
-ui/plot_widget.py — Real-time TAM chart for all 5 fingers
-==========================================================
+ui/plot_widget.py — Gráfico de TAM em tempo real para todos os 5 dedos
+======================================================================
 
-This module implements the GoniometryPlotWidget: a live line chart that
-displays the TAM (Total Active Motion) history of each finger simultaneously,
-allowing the clinician to monitor movement evolution in real time.
+Este módulo implementa o GoniometryPlotWidget: um gráfico de linhas em tempo real que
+exibe o histórico de TAM (Total Active Motion / Movimento Ativo Total) de cada dedo simultaneamente,
+permitindo ao clínico monitorar a evolução do movimento em tempo real.
 
-What is TAM (Total Active Motion)?
-    TAM is the most important clinical metric in hand function assessment.
-    Defined by the ASSH (American Society for Surgery of the Hand), it represents
-    the SUM of active ranges of motion across all joints of a finger:
+O que é TAM (Total Active Motion)?
+    O TAM é a métrica clínica mais importante na avaliação funcional da mão.
+    Definido pela ASSH (American Society for Surgery of the Hand), ele representa
+    a SOMA das amplitudes ativas de movimento em todas as articulações de um dedo:
 
-        TAM = MCP + PIP + DIP  (long fingers: Index, Middle, Ring, Pinky)
-        TAM = MCP + IP          (Thumb, which has no DIP)
+        TAM = MCP + PIP + DIP  (dedos longos: Indicador, Médio, Anelar, Mínimo)
+        TAM = MCP + IP          (Polegar, que não possui DIP)
 
-    A TAM of 270° (theoretical maximum: MCP 90° + PIP 110° + DIP 70°)
-    indicates full function. The chart allows visualization of whether TAM is:
-    - Increasing (functional improvement during the session).
-    - Stable (maintenance).
-    - Decreasing (fatigue or worsening).
+    Um TAM de 270° (máximo teórico: MCP 90° + PIP 110° + DIP 70°)
+    indica função completa. O gráfico permite visualizar se o TAM está:
+    - Aumentando (melhora funcional durante a sessão).
+    - Estável (manutenção).
+    - Diminuindo (fadiga ou piora).
 
-Why PyQtGraph instead of Matplotlib?
-    Matplotlib generates STATIC charts — redrawing at each frame (~30x/s)
-    would be catastrophically slow (150–400ms per redraw). PyQtGraph is
-    optimized for real-time data: uses OpenGL when available and updates
-    only the changed pixels. Updates at 30 FPS with PyQtGraph cost ~1–3ms,
-    versus 150–400ms with Matplotlib.
+Por que PyQtGraph em vez de Matplotlib?
+    O Matplotlib gera gráficos ESTÁTICOS — redesenhar a cada quadro (~30x/s)
+    seria catastroficamente lento (150–400ms por redesenho). O PyQtGraph é
+    otimizado para dados em tempo real: usa OpenGL quando disponível e atualiza
+    apenas os pixels alterados. Atualizações a 30 FPS com PyQtGraph custam ~1–3ms,
+    contra 150–400ms com Matplotlib.
 
-Data structure:
-    A deque(maxlen=BUFFER_SIZE) per finger holds the last N TAM values.
-    On each frame, the new TAM is appended and the oldest is discarded
-    automatically by the deque. The chart's X axis is implicitly the
-    sample index (0 to N-1) — it does not represent absolute time.
+Estrutura de dados:
+    Um deque(maxlen=BUFFER_SIZE) por dedo armazena os últimos N valores de TAM.
+    A cada quadro, o novo TAM é anexado e o mais antigo é descartado
+    automaticamente pelo deque. O eixo X do gráfico é implicitamente o
+    índice da amostra (0 a N-1) — não representa tempo absoluto.
 """
 
 from collections import deque
@@ -40,7 +40,7 @@ from typing import Deque, Dict, Optional
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
-# Import pyqtgraph with availability check.
+# Importa pyqtgraph com verificação de disponibilidade.
 try:
     import pyqtgraph as pg
     _PG_AVAILABLE = True
@@ -52,303 +52,303 @@ import config
 
 class GoniometryPlotWidget(QWidget):
     """
-    This module implements GoniometryPlotWidget, responsible for drawing the
-    live Total Active Motion (TAM) chart for the 5 fingers.
-    It uses pyqtgraph for high performance, maintaining a thread-safe sliding
-    window of historical data (self._buffers) and managing 5 separate curves
-    with finger names (config.FINGER_NAMES).
+    Este módulo implementa GoniometryPlotWidget, responsável por desenhar o
+    gráfico de TAM (Total Active Motion) em tempo real para os 5 dedos.
+    Utiliza pyqtgraph para alto desempenho, mantendo uma janela deslizante thread-safe
+    de dados históricos (self._buffers) e gerenciando 5 curvas separadas
+    com os nomes dos dedos (config.FINGER_NAMES).
 
-    Why inherit from QWidget instead of pg.PlotWidget directly?
-        Inheriting directly from pg.PlotWidget limits layout flexibility:
-        we cannot add extra widgets (e.g., title, controls) without creating
-        an external container. By inheriting from QWidget and CONTAINING an
-        internal PlotWidget, we retain full layout control and can add
-        future elements without refactoring.
+    Por que herdar de QWidget em vez de pg.PlotWidget diretamente?
+        Herdar diretamente de pg.PlotWidget limita a flexibilidade de layout:
+        não podemos adicionar widgets extras (ex.: título, controles) sem criar
+        um contêiner externo. Ao herdar de QWidget e CONTER um
+        PlotWidget interno, mantemos controle total do layout e podemos adicionar
+        elementos futuros sem refatoração.
 
-    Graceful degradation:
-        If PyQtGraph is not installed, the widget displays an informational
-        message instead of crashing the application. This allows the rest
-        of the interface to work even without the chart.
+    Degradação suave:
+        Se o PyQtGraph não estiver instalado, o widget exibe uma mensagem
+        informativa em vez de travar a aplicação. Isso permite que o restante
+        da interface funcione mesmo sem o gráfico.
 
-    Usage in MainWindow:
+    Uso na MainWindow:
         self.plot_widget = GoniometryPlotWidget()
         layout.addWidget(self.plot_widget)
-        # In _on_result():
+        # Em _on_result():
         self.plot_widget.update_data(result.angles_smooth, result.hand_detected)
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         """
-        Initializes the chart with 5 curves, legend, grid, and circular buffers.
+        Inicializa o gráfico com 5 curvas, legenda, grade e buffers circulares.
 
-        Configures PyQtGraph BEFORE instantiating any widget, because
-        pg.setConfigOption() must be called before PlotWidget creation to
-        take effect. Settings applied afterwards are ignored.
+        Configura o PyQtGraph ANTES de instanciar qualquer widget, porque
+        pg.setConfigOption() deve ser chamado antes da criação do PlotWidget para
+        ter efeito. Configurações aplicadas posteriormente são ignoradas.
 
-        Parameters:
-            parent: Qt parent widget (optional). Usually the layout container.
+        Parâmetros:
+            parent: Widget pai do Qt (opcional). Geralmente o contêiner de layout.
         """
         super().__init__(parent)
 
-        # Vertical layout containing only the PlotWidget (or the error message).
+        # Layout vertical contendo apenas o PlotWidget (ou a mensagem de erro).
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Fixed height for the chart — enough to see the 5 curves with
-        # visible rom, without dominating the main window layout.
+        # Altura fixa para o gráfico — suficiente para visualizar as 5 curvas com
+        # amplitude visível, sem dominar o layout da janela principal.
         self.setFixedHeight(220)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         if not _PG_AVAILABLE:
-            # PyQtGraph not installed — display warning without crashing.
+            # PyQtGraph não instalado — exibe aviso sem travar a aplicação.
             from PyQt6.QtWidgets import QLabel
-            lbl = QLabel("⚠️ PyQtGraph not installed.\nRun: pip install pyqtgraph")
+            lbl = QLabel("⚠️ PyQtGraph não instalado.\nExecute: pip install pyqtgraph")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet("color: #ef4444; font-size: 13px;")
             layout.addWidget(lbl)
-            # Empty dictionaries so update_data() does not break.
+            # Dicionários vazios para que update_data() não falhe.
             self._curves: Dict[str, object] = {}
             self._buffers: Dict[str, Deque[float]] = {}
             self._plot_widget = None
             return
 
-        # --- Global PyQtGraph settings ---
-        # Must be set BEFORE any PlotWidget instance is created.
+        # --- Configurações globais do PyQtGraph ---
+        # Devem ser definidas ANTES de qualquer instância de PlotWidget ser criada.
 
-        # Default background for all PlotWidgets created after this call.
-        # Using the same dark tone as the application theme (COLOR_BG_MEDIUM).
+        # Cor de fundo padrão para todos os PlotWidgets criados após esta chamada.
+        # Utiliza o mesmo tom escuro do tema da aplicação (COLOR_BG_MEDIUM).
         pg.setConfigOption("background", "#16213e")
 
-        # Default color for chart axes and text.
+        # Cor padrão para eixos e textos do gráfico.
         pg.setConfigOption("foreground", "#94a3b8")
 
-        # Disable OpenGL by default for maximum Windows compatibility.
-        # If the system supports OpenGL, it can be enabled in app_pyqt.py
-        # with pg.setConfigOption('useOpenGL', True) BEFORE creating this widget.
+        # Desativa OpenGL por padrão para compatibilidade máxima no Windows.
+        # Se o sistema suportar OpenGL, pode ser ativado em app_pyqt.py
+        # com pg.setConfigOption('useOpenGL', True) ANTES de criar este widget.
         pg.setConfigOption("useOpenGL", False)
 
-        # --- PlotWidget creation ---
+        # --- Criação do PlotWidget ---
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.setBackground("#16213e")
 
-        # Remove the default PlotWidget border — the parent QGroupBox already has one.
+        # Remove a borda padrão do PlotWidget — o QGroupBox pai já possui uma.
         self._plot_widget.setStyleSheet("border: none;")
 
         layout.addWidget(self._plot_widget)
 
-        # --- PlotItem configuration (the chart inside the PlotWidget) ---
+        # --- Configuração do PlotItem (o gráfico dentro do PlotWidget) ---
         plot_item: pg.PlotItem = self._plot_widget.getPlotItem()
 
-        # --- Chart title ---
+        # --- Título do gráfico ---
         plot_item.setTitle(
-            "Real-Time TAM — Total Active Motion per Finger",
+            "TAM em Tempo Real — Movimento Ativo Total por Dedo",
             color="#94a3b8",
             size="11pt",
         )
 
-        # --- Axis labels ---
-        # Y axis: "TAM (°)" — the displayed quantity and its unit.
+        # --- Rótulos dos eixos ---
+        # Eixo Y: "TAM (°)" — a grandeza exibida e sua unidade.
         plot_item.setLabel("left", "TAM", units="°", color="#94a3b8")
 
-        # X axis: no label because it represents only the sequential sample index,
-        # not absolute time. Displaying "Samples" or "Frames" would be technically
-        # correct but confusing for the clinician.
+        # Eixo X: sem rótulo porque representa apenas o índice sequencial da amostra,
+        # não tempo absoluto. Exibir "Amostras" ou "Quadros" seria tecnicamente
+        # correto, mas confuso para o clínico.
         plot_item.hideAxis("bottom")
 
-        # --- Subtle grid ---
-        # alpha=0.3: visible but discreet grid — does not compete with the curves.
-        # Higher values (0.5+) make the grid too prominent and hinder reading
-        # the overlaid colored curves.
+        # --- Grade sutil ---
+        # alpha=0.3: grade visível porém discreta — não compete com as curvas.
+        # Valores mais altos (0.5+) tornam a grade proeminente demais e dificultam
+        # a leitura das curvas coloridas sobrepostas.
         plot_item.showGrid(x=True, y=True, alpha=0.3)
 
-        # --- Y axis limits ---
-        # TAM ranges from 0° (fully closed hand) to ~270° for long fingers
-        # and ~130° for the thumb. Fixed at 280° so the chart does not "jump"
-        # when approaching the upper limit.
+        # --- Limites do eixo Y ---
+        # O TAM varia de 0° (mão totalmente fechada) a ~270° para dedos longos
+        # e ~130° para o polegar. Fixo em 280° para que o gráfico não dê "saltos"
+        # ao se aproximar do limite superior.
         self._plot_widget.setYRange(0, 280, padding=0.05)
 
-        # --- Legend ---
-        # addLegend() creates the legend in the top-right corner by default.
-        # offset=(10, 10): position relative to the corner — 10px margin.
+        # --- Legenda ---
+        # addLegend() cria a legenda no canto superior direito por padrão.
+        # offset=(10, 10): posição relativa ao canto — margem de 10px.
         legend = plot_item.addLegend(offset=(10, 10))
         legend.setLabelTextColor("#e2e8f0")
 
-        # --- Curve and buffer creation ---
-        # One PlotDataItem per finger + one deque per finger.
+        # --- Criação de curvas e buffers ---
+        # Um PlotDataItem por dedo + um deque por dedo.
         self._curves: Dict[str, pg.PlotDataItem] = {}
         self._buffers: Dict[str, Deque[float]] = {}
 
         for finger in config.FINGERS:
-            # Retrieve this finger's hex color from the configuration dictionary.
+            # Recupera a cor hexadecimal deste dedo a partir do dicionário de configuração.
             color_hex: str = config.FINGER_COLORS.get(finger, "#ffffff")
 
-            # Display name for the legend.
+            # Nome de exibição para a legenda.
             name_en: str = config.FINGER_NAMES.get(finger, finger)
 
-            # Create the curve with:
-            # - pen: pen with the finger's color and 2px width (readable thickness).
-            # - name: name shown in the legend.
-            # We do not pass x/y here — they will be set in update_data() via setData().
+            # Cria a curva com:
+            # - pen: caneta com a cor do dedo e largura de 2px (espessura legível).
+            # - name: nome exibido na legenda.
+            # Não passamos x/y aqui — serão definidos em update_data() via setData().
             curve = plot_item.plot(
                 pen=pg.mkPen(color=color_hex, width=2),
                 name=name_en,
             )
             self._curves[finger] = curve
 
-            # Circular buffer per finger.
-            # Why deque(maxlen=BUFFER_SIZE) instead of a growing list?
-            #   1. FIXED memory: a growing list never discards old data and would
-            #      grow indefinitely over a long session.
-            #      At 30 FPS for 60 minutes = 108,000 floats per finger ≈ 840KB.
-            #      With BUFFER_SIZE=500, we cap at ~3.9KB per finger regardless
-            #      of session duration.
-            #   2. Automatic FIFO: when adding a new value at maxlen capacity, the
-            #      oldest is discarded automatically — no extra management code.
-            #   3. Sliding window: the chart always displays the LAST N points,
-            #      creating the "window advancing with time" effect.
+            # Buffer circular por dedo.
+            # Por que deque(maxlen=BUFFER_SIZE) em vez de uma lista crescente?
+            #   1. Memória FIXA: uma lista crescente nunca descarta dados antigos e
+            #      cresceria indefinidamente em uma sessão longa.
+            #      A 30 FPS por 60 minutos = 108.000 floats por dedo ≈ 840KB.
+            #      Com BUFFER_SIZE=500, limitamos a ~3.9KB por dedo independentemente
+            #      da duração da sessão.
+            #   2. FIFO automático: ao adicionar um novo valor na capacidade maxlen, o
+            #      mais antigo é descartado automaticamente — sem código extra de gerenciamento.
+            #   3. Janela deslizante: o gráfico sempre exibe os ÚLTIMOS N pontos,
+            #      criando o efeito de "janela avançando com o tempo".
             self._buffers[finger] = deque(maxlen=config.BUFFER_SIZE)
 
     # =========================================================================
-    # CHART DATA UPDATE
+    # ATUALIZAÇÃO DE DADOS DO GRÁFICO
     # =========================================================================
 
     def update_data(self, angles_smooth: dict, hand_detected: bool) -> None:
         """
-        Updates the chart with smoothed angles from the current frame.
+        Atualiza o gráfico com os ângulos suavizados do quadro atual.
 
-        Called by MainWindow on each result_ready emission from ProcessingWorker
-        (~30 times/second). Must be fast: only append() to the deque and
-        setData() on the curve — no calculations, no disk access.
+        Chamado pela MainWindow a cada emissão de result_ready do ProcessingWorker
+        (~30 vezes/segundo). Deve ser rápido: apenas append() ao deque e
+        setData() na curva — sem cálculos, sem acesso a disco.
 
-        Why not add a point if hand_detected is False?
-            When the hand is not visible (out of frame, covered), the pipeline
-            returns zero angles or those from the last valid detection. Adding
-            zeros to the chart would create abrupt drops to 0 that do not represent
-            real movement — they are artifacts of missing detection. By keeping
-            the history static, the chart "pauses" while waiting for the hand
-            to return to the field of view.
+        Por que não adicionar um ponto se hand_detected for False?
+            Quando a mão não está visível (fora de quadro, encoberta), o pipeline
+            retorna ângulos zerados ou aqueles da última detecção válida. Adicionar
+            zeros ao gráfico criaria quedas abruptas para 0 que não representam
+            movimento real — são artefatos de ausência de detecção. Ao manter
+            o histórico estático, o gráfico "pausa" aguardando a mão
+            retornar ao campo de visão.
 
-        Parameters:
-            angles_smooth: Dictionary {finger: {joint: angle}} returned by
-                           GoniometryFilterBank.smooth_all(). E.g.:
+        Parâmetros:
+            angles_smooth: Dicionário {finger: {joint: angle}} retornado por
+                           GoniometryFilterBank.smooth_all(). Ex.:
                            {"INDEX": {"MCP": 45.2, "PIP": 88.1, "DIP": 62.3, "TAM": 195.6}}
-            hand_detected: True if MediaPipe detected the hand in this frame.
-                           False when no hand is visible.
+            hand_detected: True se o MediaPipe detectou a mão neste quadro.
+                           False quando nenhuma mão está visível.
         """
-        # If PyQtGraph is not available, there are no curves to update.
+        # Se o PyQtGraph não estiver disponível, não há curvas para atualizar.
         if not _PG_AVAILABLE:
             return
 
-        # Without detection, keep the current history without adding zeroed points.
+        # Sem detecção, mantém o histórico atual sem adicionar pontos zerados.
         if not hand_detected:
             return
 
         for finger in config.FINGERS:
-            # Extract this finger's TAM from the smoothed angles dictionary.
-            # TAM is chosen as the chart metric because:
-            #   1. It summarizes the whole finger's function in ONE NUMBER (sum of all angles).
-            #   2. It is the ASSH's official clinical metric for functional assessment.
-            #   3. It is stable enough for real-time visualization (does not oscillate
-            #      like individual MCP or PIP values during movement).
-            # .get(finger, {}).get("TAM", 0.0): safe access with fallback 0.0
-            # in case the dictionary does not contain this finger (e.g., partial occlusion).
+            # Extrai o TAM deste dedo a partir do dicionário de ângulos suavizados.
+            # O TAM é escolhido como métrica do gráfico porque:
+            #   1. Resume a função de todo o dedo em UM ÚNICO NÚMERO (soma de todos os ângulos).
+            #   2. É a métrica clínica oficial da ASSH para avaliação funcional.
+            #   3. É suficientemente estável para visualização em tempo real (não oscila
+            #      como valores individuais de MCP ou PIP durante o movimento).
+            # .get(finger, {}).get("TAM", 0.0): acesso seguro com fallback 0.0
+            # caso o dicionário não contenha este dedo (ex.: oclusão parcial).
             tam: float = float(angles_smooth.get(finger, {}).get("TAM", 0.0))
 
-            # Only add to the buffer if the value is positive.
-            # TAM = 0.0 indicates absent data, not a real angle.
-            # Including zeros would distort the chart's scale and visualization.
+            # Adiciona ao buffer somente se o valor for positivo.
+            # TAM = 0.0 indica ausência de dados, não um ângulo real.
+            # Incluir zeros distorceria a escala e a visualização do gráfico.
             if tam > 0.0:
                 self._buffers[finger].append(tam)
 
-            # Convert the deque to list() to pass to PyQtGraph.
-            # list(deque) creates a linear copy of the deque in O(n).
-            # setData() with a list of Python floats is accepted by PyQtGraph,
-            # which converts internally to numpy only at rendering time.
-            # This is more efficient than maintaining a separate NumPy array
-            # and concatenating on every frame.
+            # Converte o deque para list() para passar ao PyQtGraph.
+            # list(deque) cria uma cópia linear do deque em O(n).
+            # setData() com uma lista de floats do Python é aceito pelo PyQtGraph,
+            # que converte internamente para numpy apenas no momento da renderização.
+            # Isso é mais eficiente do que manter um array NumPy separado
+            # e concatenar a cada quadro.
             data = list(self._buffers[finger])
 
             if data:
-                # setData() with only y: the X axis is automatically
-                # 0, 1, 2, ..., len(data)-1 — the sample index.
-                # We do not need an explicit X array because the chart is
-                # a sliding index window, not timestamps.
+                # setData() apenas com y: o eixo X é automaticamente
+                # 0, 1, 2, ..., len(data)-1 — o índice da amostra.
+                # Não precisamos de um array X explícito porque o gráfico é
+                # uma janela deslizante de índices, não timestamps.
                 self._curves[finger].setData(y=data)
 
     # =========================================================================
-    # DATA RESET
+    # REINICIALIZAÇÃO DE DADOS
     # =========================================================================
 
     def clear_data(self) -> None:
         """
-        Clears all buffers and redraws the curves as empty.
+        Limpa todos os buffers e redesenha as curvas como vazias.
 
-        Called by MainWindow when starting a new session, so that the previous
-        session's data does not appear in the new session's chart.
-        Also useful for "zeroing" the chart without restarting the widget.
+        Chamado pela MainWindow ao iniciar uma nova sessão, para que os dados da
+        sessão anterior não apareçam no gráfico da nova sessão.
+        Também útil para "zerar" o gráfico sem reiniciar o widget.
 
-        After clear_data(), update_data() begins building the history from
-        scratch — curves grow gradually from left to right until BUFFER_SIZE
-        samples have accumulated.
+        Após clear_data(), update_data() começa a construir o histórico do
+        zero — as curvas crescem gradualmente da esquerda para a direita até
+        acumularem BUFFER_SIZE amostras.
         """
         if not _PG_AVAILABLE:
             return
 
         for finger in config.FINGERS:
-            # Clear the deque without recreating the object — more efficient than
-            # replacing it with deque(maxlen=BUFFER_SIZE) because no reallocation.
+            # Limpa o deque sem recriar o objeto — mais eficiente do que
+            # substituí-lo por deque(maxlen=BUFFER_SIZE) por não haver realocação.
             self._buffers[finger].clear()
 
-            # Redraw the curve with an empty array to visually clear the chart.
-            # Passing y=[] instructs PyQtGraph not to draw any point.
+            # Redesenha a curva com um array vazio para limpar visualmente o gráfico.
+            # Passar y=[] instrui o PyQtGraph a não desenhar nenhum ponto.
             self._curves[finger].setData(y=[])
 
     # =========================================================================
-    # CLINICAL RANGE CONFIGURATION
+    # CONFIGURAÇÃO DE INTERVALO CLÍNICO
     # =========================================================================
 
     def set_y_range(self, y_min: float, y_max: float) -> None:
         """
-        Adjusts the visible range of the chart's Y axis.
+        Ajusta o intervalo visível do eixo Y do gráfico.
 
-        Useful when the clinician wants to focus on a specific TAM range,
-        for example when evaluating patients with very limited range of motion
-        (TAM < 100°) where the default 0–280° scale would be too sparse.
+        Útil quando o clínico deseja focar em um intervalo específico de TAM,
+        por exemplo ao avaliar pacientes com amplitude de movimento muito limitada
+        (TAM < 100°) onde a escala padrão de 0–280° ficaria muito espaçada.
 
-        Parameters:
-            y_min: Minimum Y axis value in degrees. Usually 0.0.
-            y_max: Maximum Y axis value in degrees. Application default: 280.0.
+        Parâmetros:
+            y_min: Valor mínimo do eixo Y em graus. Geralmente 0.0.
+            y_max: Valor máximo do eixo Y em graus. Padrão da aplicação: 280.0.
         """
         if not _PG_AVAILABLE or self._plot_widget is None:
             return
 
-        # padding=0: no extra margin above and below the defined range.
-        # With default padding (~0.05), PyQtGraph adds 5% of space beyond
-        # the limits, which could clip the axis labels.
+        # padding=0: sem margem extra acima e abaixo do intervalo definido.
+        # Com o padding padrão (~0.05), o PyQtGraph adiciona 5% de espaço além
+        # dos limites, o que poderia cortar os rótulos dos eixos.
         self._plot_widget.setYRange(y_min, y_max, padding=0)
 
     # =========================================================================
-    # CURVE VISIBILITY
+    # VISIBILIDADE DE CURVAS
     # =========================================================================
 
     def set_finger_visible(self, finger: str, visible: bool) -> None:
         """
-        Shows or hides the curve for a specific finger.
+        Exibe ou oculta a curva de um dedo específico.
 
-        Allows the clinician to focus on a single finger by hiding the others,
-        or re-enable all after an individual assessment.
+        Permite ao clínico focar em um único dedo ocultando os demais,
+        ou reativar todos após uma avaliação individual.
 
-        Parameters:
-            finger: Finger key in the format used by the scientific pipeline.
-                    Valid values: "INDEX", "MIDDLE", "RING", "PINKY", "THUMB".
-            visible: True to show the curve, False to hide it.
+        Parâmetros:
+            finger: Chave do dedo no formato utilizado pelo pipeline científico.
+                    Valores válidos: "INDEX", "MIDDLE", "RING", "PINKY", "THUMB".
+            visible: True para exibir a curva, False para ocultá-la.
         """
         if not _PG_AVAILABLE:
             return
 
         curve = self._curves.get(finger)
         if curve is not None:
-            # setVisible() affects rendering but does not remove data from the buffer.
-            # When the curve is made visible again, the historical data is retained.
+            # setVisible() afeta a renderização, mas não remove dados do buffer.
+            # Quando a curva volta a ficar visível, os dados históricos são mantidos.
             curve.setVisible(visible)
