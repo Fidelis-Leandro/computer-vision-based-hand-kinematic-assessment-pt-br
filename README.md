@@ -18,6 +18,7 @@
 
 - [Sobre o Projeto](#sobre-o-projeto)
 - [Funcionalidades](#funcionalidades)
+- [Fluxo Clínico e Telas](#fluxo-clínico-e-telas)
 - [Arquitetura do Sistema](#arquitetura-do-sistema)
 - [Tecnologias Utilizadas](#tecnologias-utilizadas)
 - [Pré-requisitos](#pré-requisitos)
@@ -25,9 +26,10 @@
 - [Como Executar](#como-executar)
 - [Estrutura do Projeto](#estrutura-do-projeto)
 - [Configuração](#configuração)
-- [Geração de Relatórios](#geração-de-relatórios)
-- [Logs do Sistema](#logs-do-sistema)
+- [Geração de Relatórios e Exportação](#geração-de-relatórios-e-exportação)
+- [Logs e Dados da Sessão](#logs-e-dados-da-sessão)
 - [Contribuição](#contribuição)
+- [Licença](#licença)
 
 ---
 
@@ -52,11 +54,70 @@ A goniometria é o método padrão-ouro para avaliação da amplitude de movimen
 - **Gráficos dinâmicos** com histórico de ângulos por articulação (PyQtGraph)
 - **Painel de métricas clínicas** com amplitude mínima, máxima e média da sessão
 - **Pipeline duplo de suavização** — Média Móvel Exponencial (EMA) + Filtro de Kalman — para eliminar oscilações (jitter) sem introduzir latência
-- **Gravação da sessão em CSV** com registro temporal (timestamp) e valores por articulação
-- **Geração de relatório em PDF** com resumo clínico da sessão
+- **Gravação contínua em CSV** no diretório `logs/` com registro temporal (timestamp) e valores por articulação
+- **Geração de relatório em PDF sob demanda** com resumo clínico da sessão gerado em thread secundária
+- **Fluxo clínico em 3 telas desacopladas** (Configuração → Avaliação → Resultado) via `QStackedWidget`
+- **Barra fixa superior de avaliação** fora da área de rolagem, garantindo encerramento seguro e imediato
+- **Painel de logs recolhível** integrado à interface para inspeção diagnóstica sem poluir a visão clínica
 - **Interface em Modo Escuro (Dark Mode)** profissional e responsiva
-- **Painel de logs em tempo real** integrado à interface
 - **Configuração centralizada** — todos os parâmetros em um único arquivo `config.py`
+
+---
+
+## Fluxo Clínico e Telas
+
+A interface do sistema é organizada em torno de um fluxo clínico intuitivo e seguro composto por três telas gerenciadas por um `QStackedWidget`:
+
+```text
+Tela 1 — Configuração
+       │
+       ▼ [▶ Iniciar Avaliação]
+Tela 2 — Avaliação em Andamento (Gravação contínua em CSV)
+       │
+       ▼ [■ Encerrar Sessão com confirmação modal]
+Tela 3 — Resultado da Sessão
+       │
+       ├─► [📄 Gerar Relatório PDF] (sob demanda via thread dedicada)
+       ├─► [💾 Exportar CSV] (diálogo nativo para salvar em qualquer pasta)
+       ├─► [📁 Abrir Pasta de Sessões] (abre a pasta logs/)
+       ├─► [🔄 Nova Avaliação] (preserva paciente/mão, incrementa sessão → Tela 1)
+       └─► [🗑️ Limpar Dados do Paciente] (reseta formulário clínico → Tela 1)
+```
+
+1. **Tela de Configuração da Sessão (Página 1)**:
+   - Formulário inicial limpo para inserção de:
+     - Nome do paciente;
+     - Mão avaliada (Direita ou Esquerda);
+     - Número da sessão (sequencial);
+   - Ação: botão **"▶ Iniciar Avaliação"** (ou tecla Enter) valida os dados, inicializa as threads de captura e IA e transiciona para a tela de avaliação.
+
+2. **Tela de Avaliação em Andamento (Página 0)**:
+   - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"■ Encerrar Sessão"** sempre visível e acessível.
+   - **Área de rolagem clínica (`QScrollArea`)**:
+     - *SessionHeaderWidget*: dados da sessão, mão avaliada e cronômetro em tempo real;
+     - *VideoWidget*: transmissão da câmera HD com renderização de esqueleto anatômico e vetores goniométricos;
+     - *MetricsWidget*: visualização em modo clínico com ângulos atuais, TAM, ROM e classificação ASSH;
+     - *GoniometryPlotWidget*: gráficos temporais de flexão/extensão por articulação;
+     - *FingerCardsPanel*: cartões de amplitude detalhada por dedo;
+     - *LogWidget recolhível*: painel de eventos do sistema com botão para expandir ou recolher logs técnicos.
+   - **Gravação automática**: todos os quadros processados são gravados continuamente no arquivo CSV da sessão (`logs/`).
+   - **Encerramento seguro**: o clique em "■ Encerrar Sessão" aciona um diálogo modal de confirmação defensiva antes de parar as threads e fechar o arquivo CSV. Durante a avaliação, botões de exportação, nova sessão e relatório PDF permanecem ocultos.
+
+3. **Tela de Resultado da Sessão (Página 2)**:
+   - Apresentada automaticamente após a parada completa dos workers (`STOPPED`) e o fechamento do arquivo CSV.
+   - Apresenta o resumo clínico e operacional da avaliação:
+     - Nome do paciente;
+     - Mão avaliada;
+     - Número da sessão;
+     - Horário de início;
+     - Duração total da coleta;
+     - Caminho completo do arquivo CSV gerado.
+   - **Ações disponíveis**:
+     - **📄 Gerar Relatório PDF**: gera sob demanda o relatório clínico com métricas consolidadas via `_PdfGeneratorWorker` em background, sem travar a interface gráfica.
+     - **💾 Exportar CSV**: abre diálogo nativo do sistema operacional permitindo salvar uma cópia do CSV da sessão em qualquer pasta.
+     - **📁 Abrir Pasta de Sessões**: abre o explorador de arquivos diretamente no diretório `logs/`.
+     - **🔄 Nova Avaliação**: com confirmação defensiva, reutiliza o reset centralizado, preserva paciente e mão, incrementa o número da sessão em +1 e retorna para a Tela 1.
+     - **🗑️ Limpar Dados do Paciente**: com confirmação defensiva única, reseta os dados do paciente (nome em branco, mão Direita, sessão 1) e retorna para a Tela 1.
 
 ---
 
@@ -65,38 +126,49 @@ A goniometria é o método padrão-ouro para avaliação da amplitude de movimen
 O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, garantindo que captura de vídeo, processamento de IA e atualizações de UI sejam completamente desacoplados e não bloqueiem a interface gráfica através de uma API interna de sinais thread-safe.
 
 ```
-+------------------------------------------------------------------+
-|                        app_pyqt.py                               |
-|                  (Ponto de Entrada + Logging)                    |
-+-------------------------+----------------------------------------+
-                          |
-                          v
-+------------------------------------------------------------------+
-|                    ui/main_window.py                             |
-|              (Orquestrador Principal da UI)                      |
-|                                                                  |
-|  +--------------+  +--------------+  +---------------------+     |
-|  | video_widget |  | plot_widget  |  | finger_card_widget  |     |
-|  | (Visualização)  |  (Gráficos)  |  | (Cartões por Dedo)  |     |
-|  +--------------+  +--------------+  +---------------------+     |
-|  +--------------+  +--------------+  +---------------------+     |
-|  |session_header|  |metrics_widget|  |    log_widget       |     |
-|  | (Cabeçalho)  |  |  (Métricas)  |  | (Log em tempo real) |     |
-|  +--------------+  +--------------+  +---------------------+     |
-+---------------------------+--------------------------------------+
-                            | Sinais Qt (thread-safe)
-             +--------------+--------------+
-             v                             v
-+--------------------+         +----------------------+
-|   workers/         |  Queue  |   workers/           |
-|   CameraWorker     +-------->|   ProcessingWorker   |
-| (Thread da Câmera) |  (=1)   | (Thread de IA/Cálc.) |
-+--------------------+         +----------+-----------+
++-------------------------------------------------------------------------------+
+|                                  app_pyqt.py                                  |
+|                         (Ponto de Entrada + Logging)                          |
++---------------------------------------+---------------------------------------+
+                                        |
+                                        v
++-------------------------------------------------------------------------------+
+|                              ui/main_window.py                                |
+|                        (Orquestrador Principal da UI)                         |
+|                                                                               |
+|   +-----------------------------------------------------------------------+   |
+|   | Barra Fixa de Avaliação (Rótulo de Status + Botão ■ Encerrar Sessão)  |   |
+|   +-----------------------------------------------------------------------+   |
+|                                                                               |
+|   +-----------------------------------------------------------------------+   |
+|   | QStackedWidget (Gerenciador de Telas)                                 |   |
+|   |                                                                       |   |
+|   |  [Tela 1: Configuração]  [Tela 2: Avaliação (Scroll)]  [Tela 3: Resultado]  |
+|   |  - Nome do paciente      - SessionHeaderWidget         - Resumo da sessão |   |
+|   |  - Mão avaliada          - VideoWidget (Câmera+Overlay)- Gerar PDF (dem.) |   |
+|   |  - Número da sessão      - MetricsWidget (Clínico)     - Exportar CSV     |   |
+|   |  - ▶ Iniciar Avaliação   - GoniometryPlotWidget        - Abrir Pasta      |   |
+|   |                          - FingerCardsPanel            - Nova Avaliação   |   |
+|   |                          - LogWidget (Recolhível)      - Limpar Dados     |   |
+|   +-----------------------------------------------------------------------+   |
++---------------------------------------+---------------------------------------+
+                                        | Sinais Qt (thread-safe)
+                         +--------------+--------------+
+                         v                             v
+            +--------------------+         +----------------------+
+            |   workers/         |  Queue  |   workers/           |
+            |   CameraWorker     +-------->|   ProcessingWorker   |
+            | (Thread da Câmera) |  (=1)   | (Thread de IA/Cálc.) |
+            +--------------------+         +----------+-----------+
+                                                      |
+                                          +-----+-----+------+
+                                          v     v            v
+                                     goniometry  smoothing  clinical_
+                                        .py        .py      classification.py
                                           |
-                              +-----+-----+------+
-                              v     v            v
-                         goniometry  smoothing  clinical_
-                            .py        .py      classification.py
+                                          v
+                                    goniometry_csv.py (gravação contínua em logs/)
+                                    session_report.py (PDF sob demanda em logs/)
 ```
 
 **Princípios de design:**
@@ -147,8 +219,8 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 ### 1. Clonar o repositório
 
 ```bash
-git clone https://github.com/your-username/computer-vision-based-hand-kinematic-assessment.git
-cd computer-vision-based-hand-kinematic-assessment
+git clone https://github.com/Fidelis-Leandro/computer-vision-based-hand-kinematic-assessment-pt-br.git
+cd computer-vision-based-hand-kinematic-assessment-pt-br
 ```
 
 ### 2. Criar e ativar um ambiente virtual
@@ -168,11 +240,6 @@ source .venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
-
-> **Atenção (Windows):** Caso ocorra um erro de SSL ao instalar o `aiortc`, execute:
-> ```bash
-> pip install aiortc==1.9.0
-> ```
 
 ---
 
@@ -253,25 +320,34 @@ CAMERA_INDEX: int = 1  # 0 = padrão, 1 = câmera externa, etc.
 
 ---
 
-## Geração de Relatórios
+## Geração de Relatórios e Exportação
 
-Ao encerrar uma sessão de avaliação, o sistema gera automaticamente:
+Durante e após a avaliação clínica, o sistema gerencia os dados coletados de forma segura e estruturada no diretório `logs/`:
 
-1. **Arquivo CSV** — contém os valores brutos de todos os ângulos articulares com registro temporal (timestamp), gravados a aproximadamente 10 amostras/segundo.
-2. **Relatório em PDF** — resumo clínico da sessão com amplitude mínima, máxima e média por articulação, gerado via [`session_report.py`](session_report.py) com a biblioteca FPDF2.
+1. **Gravação Contínua em CSV** — Durante a avaliação (na Tela 2), os ângulos articulares de cada dedo, o TAM e os timestamps são gravados continuamente em arquivo CSV com frequência definida em `CSV_LOG_INTERVAL` (padrão a cada 3 quadros, ~10 amostras/s).
+   - Localização: `logs/session_<paciente>_<timestamp>_s<num>.csv`
+   - O arquivo é fechado com segurança antes de qualquer navegação pós-sessão.
 
-Os arquivos são salvos na pasta raiz do projeto com o timestamp da sessão no nome do arquivo.
+2. **Geração de Relatório em PDF sob Demanda** — Ao encerrar a sessão e transicionar para a Tela 3 (Resultado), o profissional pode emitir o relatório clínico completo clicando no botão **"📄 Gerar Relatório PDF"**.
+   - Gerado via [`session_report.py`](session_report.py) com a biblioteca FPDF2 em thread secundária assíncrona (`_PdfGeneratorWorker`), impedindo qualquer congelamento da interface visual.
+   - Contém metadados da sessão, faixas de normalidade ASSH, amplitudes mínimas, máximas e médias por articulação e visualizações gráficas das curvas de flexão/extensão.
+   - Localização: `logs/session_<paciente>_<timestamp>_s<num>_report.pdf`
+
+3. **Exportação e Gestão de Arquivos**:
+   - **Exportar CSV**: botão **"💾 Exportar CSV"** na Tela de Resultado abre uma caixa de diálogo nativa do sistema operacional para copiar o arquivo CSV para diretórios externos (como pendrives, prontuários eletrônicos ou pastas compartilhadas de rede).
+   - **Abrir Pasta de Sessões**: botão **"📁 Abrir Pasta de Sessões"** abre o gerenciador de arquivos nativo diretamente na pasta `logs/`.
 
 ---
 
-## Logs do Sistema
+## Logs e Dados da Sessão
 
-O sistema mantém dois níveis de log:
+O sistema centraliza todos os arquivos gerados no diretório `logs/`:
 
-| Tipo | Localização | Conteúdo |
-|------|------------|----------|
-| **Log da Aplicação** | `logs/app.log` | Eventos do sistema, erros, inicialização |
-| **Log da Sessão (CSV)** | Raiz do projeto | Dados clínicos (ângulos por quadro) |
+| Tipo | Localização | Conteúdo | Momento da Criação |
+|------|------------|----------|--------------------|
+| **Log da Aplicação** | `logs/app.log` | Eventos do sistema, diagnósticos e erros de execução | Inicialização e tempo de execução |
+| **Dados da Sessão (CSV)** | `logs/session_*.csv` | Ângulos articulares e timestamps quadro a quadro | Gravação contínua durante a avaliação |
+| **Relatório Clínico (PDF)** | `logs/session_*_report.pdf` | Resumo estatístico, faixas ASSH e gráficos consolidados | Sob demanda na Tela de Resultado |
 
 O log da aplicação utiliza o módulo nativo `logging` do Python, configurado em [`app_pyqt.py`](app_pyqt.py) para registrar simultaneamente no **console** (terminal) e no **arquivo** `logs/app.log`.
 
