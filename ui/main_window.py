@@ -879,6 +879,33 @@ class MainWindow(QMainWindow):
         self._btn_result_next.clicked.connect(self._on_result_new_session)
         card_layout.addWidget(self._btn_result_next)
 
+        card_layout.addSpacing(4)
+
+        # Botão: Limpar Dados do Paciente (Fase 5B-2)
+        self._btn_result_clear = QPushButton("🗑️  Limpar Dados do Paciente")
+        self._btn_result_clear.setMinimumHeight(42)
+        self._btn_result_clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_clear.setToolTip(
+            "Limpa os dados do paciente atual e retorna à tela de configuração para um novo paciente."
+        )
+        self._btn_result_clear.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_PRIMARY};
+                border: 1px solid {COLOR_TEXT_SECONDARY};
+                border-radius: 5px;
+                font-size: 13px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {COLOR_ACCENT};
+            }}
+            """
+        )
+        self._btn_result_clear.clicked.connect(self._on_result_clear_patient)
+        card_layout.addWidget(self._btn_result_clear)
+
         center_row.addWidget(card_frame)
         center_row.addStretch(1)
 
@@ -915,20 +942,57 @@ class MainWindow(QMainWindow):
         Inicia uma nova avaliação a partir da Tela de Resultado,
         reutilizando exclusivamente o fluxo oficial de _new_session().
         """
-        self._new_session()
+        if not self._new_session():
+            return
 
-        if self._state != "STOPPED":
-            patient_name = self.session_header._input_patient.text()
-            hand = self.session_header._combo_hand.currentText()
-            session_number = self.session_header._spin_session.value()
+        patient_name = self.session_header._input_patient.text()
+        hand = self.session_header._combo_hand.currentText()
+        session_number = self.session_header._spin_session.value()
 
-            self._setup_input_patient.setText(patient_name)
-            self._setup_combo_hand.setCurrentText(hand)
-            self._setup_spin_session.setValue(session_number)
+        self._setup_input_patient.setText(patient_name)
+        self._setup_combo_hand.setCurrentText(hand)
+        self._setup_spin_session.setValue(session_number)
 
-            self._setup_btn_start.setEnabled(bool(patient_name.strip()))
+        self._setup_btn_start.setEnabled(bool(patient_name.strip()))
 
-            self._stack.setCurrentIndex(1)
+        self._stack.setCurrentIndex(1)
+
+    def _on_result_clear_patient(self) -> None:
+        """
+        Limpa os dados de identificação do paciente e retorna à Tela de Configuração
+        no estado IDLE, após confirmação única do clínico.
+        """
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Limpar Dados do Paciente?")
+        msg.setText("Deseja limpar todos os dados de identificação do paciente?")
+        msg.setInformativeText(
+            "Os campos da tela serão redefinidos para um novo cadastro.\n"
+            "Os arquivos de relatórios (CSV e PDF) já salvos NÃO serão apagados."
+        )
+        btn_limpar = msg.addButton("Limpar Dados", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_cancelar)
+
+        msg.exec()
+
+        if msg.clickedButton() != btn_limpar:
+            return
+
+        if not self._new_session(confirm=False):
+            return
+
+        self.session_header._input_patient.clear()
+        self.session_header._combo_hand.setCurrentText("Direita")
+        self.session_header._spin_session.setValue(1)
+
+        self._setup_input_patient.clear()
+        self._setup_combo_hand.setCurrentText("Direita")
+        self._setup_spin_session.setValue(1)
+        self._setup_btn_start.setEnabled(False)
+
+        self._set_state("IDLE")
+        self._stack.setCurrentIndex(1)
 
     def _build_button_row(self) -> QHBoxLayout:
         """
@@ -1138,7 +1202,7 @@ class MainWindow(QMainWindow):
     # AÇÕES DOS BOTÕES
     # =========================================================================
 
-    def _new_session(self) -> None:
+    def _new_session(self, confirm: bool = True) -> bool:
         """
         Reinicia completamente o estado do sistema e prepara a interface para um novo paciente.
 
@@ -1152,23 +1216,31 @@ class MainWindow(QMainWindow):
 
             A solução segura é: destruir os workers antigos, criar novos e
             reconectar todos os sinais.
+
+        Parâmetros:
+            confirm: Se True, solicita confirmação via QMessageBox antes do reset.
+                     Se False, executa o reset diretamente sem abrir diálogo.
+
+        Retorna:
+            bool: True se o reset foi executado com sucesso, False se cancelado.
         """
         if self._state == "RUNNING":
             QMessageBox.warning(self, "Aviso", "Por favor, encerre a sessão atual antes de iniciar uma nova.")
-            return
+            return False
 
         # Confirmação do usuário para evitar perda acidental de dados em tela
-        resp = QMessageBox.question(
-            self,
-            "Atenção: Nova Sessão",
-            "Iniciar uma nova sessão limpará todos os gráficos e métricas atuais da tela.\n\n"
-            "Certifique-se de ter exportado o CSV ou gerado o Relatório PDF se precisar desses dados.\n\n"
-            "Tem certeza que deseja começar do zero?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No  # Padrão No para segurança
-        )
-        if resp != QMessageBox.StandardButton.Yes:
-            return
+        if confirm:
+            resp = QMessageBox.question(
+                self,
+                "Atenção: Nova Sessão",
+                "Iniciar uma nova sessão limpará todos os gráficos e métricas atuais da tela.\n\n"
+                "Certifique-se de ter exportado o CSV ou gerado o Relatório PDF se precisar desses dados.\n\n"
+                "Tem certeza que deseja começar do zero?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No  # Padrão No para segurança
+            )
+            if resp != QMessageBox.StandardButton.Yes:
+                return False
 
         # === 1. Garante que os workers antigos estejam completamente parados ===
         if self.camera_worker.isRunning():
@@ -1207,6 +1279,8 @@ class MainWindow(QMainWindow):
             self._set_state("READY")
         else:
             self._set_state("IDLE")
+
+        return True
 
     def _start_session(self) -> None:
         """
