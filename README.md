@@ -26,6 +26,7 @@
 - [Como Executar](#como-executar)
 - [Estrutura do Projeto](#estrutura-do-projeto)
 - [Configuração](#configuração)
+- [Integração com Mão Robótica](#integração-com-mão-robótica)
 - [Geração de Relatórios e Exportação](#geração-de-relatórios-e-exportação)
 - [Logs e Dados da Sessão](#logs-e-dados-da-sessão)
 - [Contribuição](#contribuição)
@@ -283,10 +284,18 @@ computer-vision-based-hand-kinematic-assessment/
 |   +-- camera_worker.py         #   Thread de captura de vídeo (workers/camera_worker.py)
 |   +-- processing_worker.py     #   Thread de processamento de IA + cálculos (workers/processing_worker.py)
 |
-+-- assets/                      # Recursos estáticos (ícones, imagens)
++-- outputs/                     # Integração com a mão robótica (Arduino/pyFirmata)
+|   +-- tam_to_servo.py          #   Mapeamento puro TAM (graus) -> posição de servo
+|   +-- robot_hand_output.py     #   RobotHandWorker (QThread): conexão e envio ao Arduino
+|
 +-- logs/                        # Logs gerados pela aplicação
 +-- tests/                       # Testes automatizados
+|   +-- test_tam_to_servo.py     #   Testes do mapeamento TAM -> servo (sem hardware)
 ```
+
+> Nota: a pasta `assets/` mencionada em versões anteriores deste README não existe
+> no repositório atual — os únicos recursos estáticos hoje são `screenshot.png`
+> (raiz do projeto) e os modelos usados internamente pelo MediaPipe.
 
 ---
 
@@ -317,6 +326,29 @@ Caso o computador possua múltiplas câmeras, altere em `config.py`:
 ```python
 CAMERA_INDEX: int = 1  # 0 = padrão, 1 = câmera externa, etc.
 ```
+
+---
+
+## Integração com Mão Robótica
+
+A goniometria pode, opcionalmente, comandar uma mão robótica de 5 servos conectada
+via Arduino (StandardFirmata + pyFirmata). A câmera e o cálculo de TAM continuam
+pertencendo exclusivamente a este sistema — a mão robótica é apenas um atuador
+externo, ligado/desligado por um único botão na barra fixa superior durante uma
+avaliação em andamento (**● MÃO ROBÓTICA: DESLIGADA / LIGADA**).
+
+Resumo rápido:
+- Fluxo: `angles_smooth[<dedo>]["TAM"]` → `outputs/tam_to_servo.py` (mapeamento
+  linear fixo, sem calibração por usuário nesta versão) → `outputs/robot_hand_output.py`
+  (`RobotHandWorker`, thread dedicada) → pyFirmata → Arduino → servos.
+- A porta COM é autodetectada por descrição (não é fixa em código).
+- Requer StandardFirmata já gravado no Arduino e fonte externa dedicada para os servos.
+- **Nunca execute este sistema e `Mão robo/main.py` ao mesmo tempo apontando para
+  a mesma porta COM** — os dois disputariam o mesmo Arduino.
+
+Para pinagem, valores de calibração inicial, diagnóstico de erros comuns
+("Arduino não conectado"), avisos de segurança elétrica/mecânica e o roteiro de
+teste físico dos servos, consulte **[INTEGRACAO_MAO_ROBOTICA.md](INTEGRACAO_MAO_ROBOTICA.md)**.
 
 ---
 
