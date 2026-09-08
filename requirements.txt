@@ -25,6 +25,14 @@ numpy>=1.24.0,<2.0.0
 fpdf2>=2.7.0
 matplotlib>=3.7.0
 
+# Comunicação com a mão robótica (Arduino via StandardFirmata) — outputs/
+# pyfirmata 1.1.0 chama inspect.getargspec() internamente, removido do
+# Python 3.11+. outputs/__init__.py e outputs/robot_hand_output.py aplicam um
+# polyfill para compensar isso — se esta versão for atualizada para uma que
+# já não dependa de inspect.getargspec, o polyfill pode ser removido.
+pyfirmata==1.1.0
+pyserial>=3.5
+
 # --- Dependências de Teste e Desenvolvimento (não necessárias em produção) ---
 pytest-qt>=4.4.0
 

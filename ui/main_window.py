@@ -28,6 +28,12 @@ Responsabilidades do MainWindow:
     5. Controlar o ciclo de vida dos workers (iniciar, parar, aguardar).
     6. Gerar o relatório PDF sob demanda sem congelar a interface (thread separada).
     7. Encerrar a aplicação de forma limpa ao fechar a janela.
+    8. Controlar a mão robótica (Arduino) através de um único botão liga/desliga
+       (btn_robot_hand, visível apenas durante RUNNING, na _assessment_bar):
+       instancia e encerra o RobotHandWorker, e em cada ProcessingResult recebido
+       encaminha angles_smooth convertido em posições de servo (via
+       outputs.tam_to_servo.map_all) para o worker — sem nunca escrever na porta
+       serial diretamente. Ver INTEGRACAO_MAO_ROBOTICA.md para o fluxo completo.
 
 Máquina de estados:
     IDLE    → Estado inicial na Tela de Configuração. Câmera desligada.
@@ -40,6 +46,8 @@ Fluxo de dados (thread-safe via pyqtSignal):
     ProcessingWorker ──result_ready──► MainWindow._on_result()
     MainWindow._on_result() ──distribui──► VideoWidget, MetricsWidget,
                                            PlotWidget, FingerCardsPanel
+    MainWindow._on_result() ──(se mão robótica LIGADA)──► outputs.tam_to_servo.map_all()
+                                           ──► RobotHandWorker.update_targets()
 """
 
 import logging
@@ -82,6 +90,11 @@ from themes import (
 # Importa os workers.
 from workers.camera_worker import CameraWorker
 from workers.processing_worker import ProcessingResult, ProcessingWorker
+
+# Importa o worker e o mapeamento da mão robótica (Arduino).
+# Módulo independente: não importa nada do projeto "Mão robo".
+from outputs.robot_hand_output import RobotHandWorker
+from outputs.tam_to_servo import map_all as robot_hand_map_all
 
 # Importa os widgets de interface.
 from ui.finger_card_widget import FingerCardsPanel
@@ -244,6 +257,14 @@ class MainWindow(QMainWindow):
         # Controle de visibilidade da gaveta de logs (Fase 4B)
         self._logs_visible: bool = False
 
+        # --- Estado do worker da mão robótica (Arduino) ---
+        # None enquanto desligada. Instanciado somente ao clicar no botão.
+        self._robot_hand_worker: Optional[RobotHandWorker] = None
+        # "off" | "connecting" | "on" | "error"
+        self._robot_hand_state: str = "off"
+        # True se algum error_signal chegou durante a tentativa/sessão atual.
+        self._robot_hand_had_error: bool = False
+
         # === CRIAÇÃO DOS COMPONENTES ===
         self._create_widgets()
 
@@ -264,6 +285,10 @@ class MainWindow(QMainWindow):
         # === ESTADO INICIAL ===
         # Inicia em IDLE na Tela de Configuração (Página 1), aguardando dados do paciente.
         self._set_state("IDLE")
+
+        # Mão robótica começa sempre desligada; nenhum comando é enviado
+        # ao Arduino antes do primeiro clique no botão.
+        self._set_robot_hand_state("off")
 
         logger.info("MainWindow inicializado com sucesso.")
 
@@ -338,6 +363,17 @@ class MainWindow(QMainWindow):
         self.btn_end.setStyleSheet(BUTTON_DANGER_STYLE)
         self.btn_end.setMinimumHeight(42)
         self.btn_end.setToolTip("Encerra a captura e finaliza o arquivo CSV.")
+
+        # Botão único de liga/desliga da mão robótica (Arduino).
+        # Não é setCheckable(True): o estado visual é controlado explicitamente
+        # por _set_robot_hand_state(), pois a transição "conectando" é
+        # assíncrona e pode falhar — um QPushButton checkable exigiria reverter
+        # o estado 'checked' manualmente no mesmo cenário, o que é mais frágil.
+        self.btn_robot_hand = QPushButton()
+        self.btn_robot_hand.setMinimumHeight(42)
+        self.btn_robot_hand.setToolTip(
+            "Liga ou desliga a replicação de movimento na mão robótica (Arduino)."
+        )
 
         # Botões de pós-processamento — estilos padrão do tema.
         self.btn_pdf = QPushButton("📄  Gerar Relatório PDF")
@@ -418,6 +454,7 @@ class MainWindow(QMainWindow):
         self.btn_new_session.clicked.connect(self._new_session)
         self.btn_start.clicked.connect(self._start_session)
         self.btn_end.clicked.connect(self._confirm_end_session)
+        self.btn_robot_hand.clicked.connect(self._on_robot_hand_clicked)
         self.btn_pdf.clicked.connect(self._gerar_relatorio)
         self.btn_csv.clicked.connect(self._exportar_csv)
         self.btn_historico.clicked.connect(self._abrir_historico)
@@ -532,6 +569,7 @@ class MainWindow(QMainWindow):
         )
         bar_layout.addWidget(self._assessment_bar_label)
         bar_layout.addStretch()
+        bar_layout.addWidget(self.btn_robot_hand)
         bar_layout.addWidget(self.btn_end)
 
         # =========================================================
@@ -1224,6 +1262,13 @@ class MainWindow(QMainWindow):
             tam_buffers_per_finger=r.tam_buffers_snapshot,
         )
 
+        # Mão robótica: só envia alvos se estiver LIGADA e conectada.
+        # update_targets() é barato (grava sob lock, sem I/O) — não há risco
+        # de atrasar a distribuição do resultado para os demais widgets.
+        if self._robot_hand_worker is not None and self._robot_hand_state == "on":
+            servo_positions = robot_hand_map_all(r.angles_smooth)
+            self._robot_hand_worker.update_targets(servo_positions, r.hand_detected)
+
     def _on_camera_error(self, message: str) -> None:
         """
         Trata erros fatais de câmera emitidos pelo CameraWorker.
@@ -1247,6 +1292,159 @@ class MainWindow(QMainWindow):
         # Continuar gravando sem quadros cria um CSV corrompido.
         if was_running:
             self._end_session()
+
+    # =========================================================================
+    # MÃO ROBÓTICA (ARDUINO) — botão único liga/desliga
+    # =========================================================================
+
+    def _on_robot_hand_clicked(self) -> None:
+        """
+        Slot do clique único em btn_robot_hand.
+
+        Comportamento depende do estado atual:
+            "off"/"error" -> inicia tentativa de conexão.
+            "on"          -> inicia desligamento seguro.
+            "connecting"  -> ignorado (botão fica desabilitado nesse estado,
+                              mas o guard aqui é defensivo).
+        """
+        if self._robot_hand_state in ("off", "error"):
+            self._start_robot_hand()
+        elif self._robot_hand_state == "on":
+            self._stop_robot_hand()
+        # "connecting": nenhuma ação — o botão já está desabilitado.
+
+    def _start_robot_hand(self) -> None:
+        """
+        Cria e inicia o RobotHandWorker. Não bloqueia a UI: a conexão real
+        acontece dentro da QThread (RobotHandWorker.run()).
+        """
+        if self._robot_hand_worker is not None:
+            return  # já existe uma tentativa/conexão em andamento.
+
+        self._robot_hand_had_error = False
+        self._set_robot_hand_state("connecting")
+
+        self._robot_hand_worker = RobotHandWorker(parent=self)
+        self._robot_hand_worker.connected_signal.connect(self._on_robot_hand_connected)
+        self._robot_hand_worker.error_signal.connect(self._on_robot_hand_error)
+        self._robot_hand_worker.finished.connect(self._on_robot_hand_finished)
+        self._robot_hand_worker.start()
+
+    def _stop_robot_hand(self) -> None:
+        """
+        Solicita o desligamento seguro (posição aberta + liberação da porta).
+
+        Não bloqueia: o botão é desabilitado até _on_robot_hand_finished()
+        confirmar que o worker terminou por completo.
+        """
+        if self._robot_hand_worker is None:
+            return
+        self.btn_robot_hand.setEnabled(False)
+        self._status_bar.showMessage("Desligando mão robótica...")
+        self._robot_hand_worker.request_stop()
+
+    def _on_robot_hand_connected(self, success: bool) -> None:
+        """
+        Recebe o resultado da tentativa de conexão inicial (connected_signal).
+
+        Em caso de sucesso, habilita a replicação (estado "on") imediatamente.
+        Em caso de falha, não faz nada aqui — o estado final ("error") é
+        decidido em _on_robot_hand_finished(), quando a thread já tiver
+        retornado por completo (garante que nunca fica em estado intermediário).
+        """
+        if success:
+            self._set_robot_hand_state("on")
+            self._status_bar.showMessage("Mão robótica conectada e replicando.")
+
+    def _on_robot_hand_error(self, message: str) -> None:
+        """
+        Recebe mensagens de erro do worker (error_signal): falha de conexão,
+        falha ao configurar pinos ou perda de comunicação durante o uso.
+        """
+        self._robot_hand_had_error = True
+        self._status_bar.showMessage(f"Mão robótica: {message}")
+        self.log_widget.log_error(f"Mão robótica: {message}")
+        logger.error("Mão robótica: %s", message)
+
+    def _on_robot_hand_finished(self) -> None:
+        """
+        Chamado quando RobotHandWorker.run() retorna por completo (sinal
+        nativo 'finished' da QThread) — seja por desligamento pedido pelo
+        usuário, seja por falha de conexão, seja por perda de comunicação.
+
+        Neste ponto a porta serial já foi liberada (run() garante isso em seu
+        bloco finally). É seguro permitir uma nova tentativa de conexão.
+        """
+        had_error = self._robot_hand_had_error
+        self._robot_hand_worker = None
+        self.btn_robot_hand.setEnabled(True)
+
+        if had_error:
+            self._set_robot_hand_state("error")
+        else:
+            self._set_robot_hand_state("off")
+            self._status_bar.showMessage("Mão robótica desligada.")
+
+    def _set_robot_hand_state(self, state: str) -> None:
+        """
+        Atualiza texto, cor e habilitação de btn_robot_hand para um dos 4
+        estados: "off", "connecting", "on", "error".
+
+        Centralizado aqui para que nunca haja divergência entre o texto e a
+        cor exibidos (ex.: nunca fica verde com o texto de erro).
+        """
+        self._robot_hand_state = state
+
+        style_off = (
+            "QPushButton {"
+            " background-color: #7f1d1d;"
+            " border: 1px solid #ef4444;"
+            " color: #ffffff;"
+            " padding: 8px 16px;"
+            " border-radius: 8px;"
+            " font-weight: bold;"
+            " }"
+            " QPushButton:hover { border-color: #f87171; }"
+            " QPushButton:disabled { color: #d1a3a3; }"
+        )
+        style_connecting = (
+            "QPushButton {"
+            " background-color: #78350f;"
+            " border: 1px solid #f59e0b;"
+            " color: #ffffff;"
+            " padding: 8px 16px;"
+            " border-radius: 8px;"
+            " font-weight: bold;"
+            " }"
+        )
+        style_on = (
+            "QPushButton {"
+            " background-color: #14532d;"
+            " border: 1px solid #22c55e;"
+            " color: #ffffff;"
+            " padding: 8px 16px;"
+            " border-radius: 8px;"
+            " font-weight: bold;"
+            " }"
+            " QPushButton:hover { border-color: #4ade80; }"
+        )
+
+        if state == "off":
+            self.btn_robot_hand.setText("●  MÃO ROBÓTICA: DESLIGADA")
+            self.btn_robot_hand.setStyleSheet(style_off)
+            self.btn_robot_hand.setEnabled(True)
+        elif state == "connecting":
+            self.btn_robot_hand.setText("●  CONECTANDO...")
+            self.btn_robot_hand.setStyleSheet(style_connecting)
+            self.btn_robot_hand.setEnabled(False)
+        elif state == "on":
+            self.btn_robot_hand.setText("●  MÃO ROBÓTICA: LIGADA")
+            self.btn_robot_hand.setStyleSheet(style_on)
+            self.btn_robot_hand.setEnabled(True)
+        elif state == "error":
+            self.btn_robot_hand.setText("●  ERRO: ARDUINO NÃO CONECTADO")
+            self.btn_robot_hand.setStyleSheet(style_off)
+            self.btn_robot_hand.setEnabled(True)
 
     def _on_patient_name_changed(self, text: str) -> None:
         """
@@ -1477,6 +1675,22 @@ class MainWindow(QMainWindow):
         Nota: wait() não é usado aqui para evitar bloquear a thread principal.
         closeEvent() usa wait() com timeout ao fechar a janela.
         """
+        # Se a mão robótica estiver ligada, desliga com segurança (posição
+        # aberta + liberação da porta) antes de encerrar a sessão. Assíncrono
+        # (não bloqueia a thread principal) — mesmo motivo já documentado
+        # acima para não usar wait() aqui: a janela continua visível e
+        # responsiva durante _end_session(), então travar por até ~1,5s
+        # (SHUTDOWN_MAX_STEPS * SEND_INTERVAL_S, ver robot_hand_output.py)
+        # esperando o Arduino desligar seria perceptível ao usuário. A
+        # confirmação de que o worker terminou por completo chega depois,
+        # de forma assíncrona, em _on_robot_hand_finished() (via o sinal
+        # nativo 'finished' da QThread) — não neste ponto do código.
+        # Em closeEvent() (mais abaixo), o mesmo desligamento É aguardado
+        # com wait() bloqueante, porque ali a janela já está fechando de
+        # qualquer forma e não há problema de responsividade a preservar.
+        if self._robot_hand_worker is not None:
+            self._stop_robot_hand()
+
         # Fecha a gravação CSV com segurança (flush + close).
         self.processing_worker.stop_session()
 
@@ -1704,6 +1918,18 @@ class MainWindow(QMainWindow):
             event: QCloseEvent fornecido pelo Qt com o evento de fechamento.
         """
         logger.info("closeEvent: encerrando workers antes de fechar.")
+
+        # Se a mão robótica estiver ligada, desliga com segurança (posição
+        # aberta + liberação da porta) ANTES de fechar a janela. Diferente de
+        # _end_session() (que só chama request_stop() e retorna, sem esperar
+        # — ver comentário lá), aqui é aceitável bloquear com wait(3000): a
+        # janela já está fechando de qualquer forma, então não há
+        # responsividade a preservar, e queremos garantir que a porta serial
+        # seja liberada antes do processo terminar (mesmo raciocínio já usado
+        # para camera/processing worker abaixo).
+        if self._robot_hand_worker is not None:
+            self._robot_hand_worker.request_stop()
+            self._robot_hand_worker.wait(3000)
 
         # Encerra sessão ativa se houver uma.
         if self._state == "RUNNING":
