@@ -1,3 +1,19 @@
+"""
+tests/test_kinematic_assessment.py — Suíte de testes do motor de cálculo goniométrico
+========================================================================================
+
+Testa o pipeline científico puro (sem UI, sem câmera, sem threads):
+  - DigitalGoniometer.compute_all() e classify_tam() (goniometry.py) — cálculo
+    de ângulos e classificação clínica do TAM a partir de landmarks sintéticos.
+  - assh_classify() / assh_classify_thumb() / classify_hand_state()
+    (dashboard_utils.py) — classificação ASSH usada pelo painel em tempo real.
+  - GoniometryCSVLogger (goniometry_csv.py) — gravação e formato do CSV de sessão.
+
+Landmarks de teste são construídos manualmente via MockLandmark (não vêm do
+MediaPipe), permitindo validar casos anatômicos conhecidos (mão reta, mão
+fechada) sem depender de captura de vídeo real.
+"""
+
 import pytest
 import numpy as np
 from goniometry import DigitalGoniometer, TAM_CLASSIFICATION_THUMB
