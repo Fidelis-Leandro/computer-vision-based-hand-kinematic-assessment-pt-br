@@ -15,3 +15,16 @@ logs/
 venv/
 env/
 
+# Segredos e credenciais (regra preventiva — nenhum arquivo deste tipo
+# existe no projeto hoje, mas evita que algum seja commitado por engano)
+.env
+*.key
+*.pem
+credentials*
+
+# Artefatos de build/empacotamento (regra preventiva)
+build/
+dist/
+
+# Configurações locais de editor (regra preventiva)
+.vscode/
