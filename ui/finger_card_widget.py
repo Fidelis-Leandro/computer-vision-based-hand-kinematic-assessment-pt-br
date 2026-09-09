@@ -33,6 +33,7 @@ Por que um card por dedo?
     em uma linha permite comparação visual instantânea sem navegar por menus.
 """
 
+import math
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt
@@ -344,8 +345,24 @@ class FingerCardWidget(QGroupBox):
             tam_buffer: Lista dos últimos N valores de TAM para o minigráfico.
         """
         # --- TAM primário ---
-        tam: float = float(state.get("TAM", 0.0))
-        self._lbl_tam_value.setText(f"{tam:.1f}°")
+        # state["TAM"] pode ser None quando a série não tem histórico válido
+        # (classify_hand_state() já não converte isso em 0.0) — exibe "—"
+        # em vez de formatar um número falso. rotulo_assh/cor_assh já vêm
+        # corretos de classify_hand_state() ("Sem dado"/cinza) sem precisar
+        # de nenhum ajuste adicional aqui.
+        tam_raw = state.get("TAM")
+        tam: Optional[float]
+        try:
+            tam = float(tam_raw) if tam_raw is not None else None
+        except (TypeError, ValueError):
+            tam = None
+        if tam is not None and not math.isfinite(tam):
+            tam = None
+
+        if tam is None:
+            self._lbl_tam_value.setText("—")
+        else:
+            self._lbl_tam_value.setText(f"{tam:.1f}°")
 
         # --- Classificação ASSH com cor dinâmica ---
         assh_label: str = state.get("rotulo_assh", "—")

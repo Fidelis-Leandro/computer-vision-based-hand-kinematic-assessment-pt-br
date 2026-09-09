@@ -170,6 +170,50 @@ def test_csv_contains_thumb_tam():
             assert len(rows) == 1
             assert float(rows[0]["THUMB_TAM"]) == angles["THUMB"]["TAM"]
 
+def test_csv_writes_empty_cell_for_none_value():
+    # 5b. Valor None em uma articulação deve gravar célula vazia no CSV,
+    # nunca a string literal "None" — e não deve levantar exceção.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_none.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+        angles["INDEX"]["MCP"] = None
+
+        logger.log(1, angles)
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            assert rows[0]["INDEX_MCP"] == ""
+
+def test_csv_writes_empty_cell_for_nan_and_inf_values():
+    # 5c. NaN e infinito também devem virar célula vazia, nunca "nan"/"inf".
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_naninf.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+        angles["INDEX"]["MCP"] = float("nan")
+        angles["INDEX"]["PIP"] = float("inf")
+        angles["MIDDLE"]["MCP"] = float("-inf")
+
+        logger.log(1, angles)
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            assert rows[0]["INDEX_MCP"] == ""
+            assert rows[0]["INDEX_PIP"] == ""
+            assert rows[0]["MIDDLE_MCP"] == ""
+            # Garantia extra: nenhuma célula desta linha contém as strings proibidas.
+            for value in rows[0].values():
+                assert value.lower() not in ("none", "nan", "inf", "-inf")
+
 def test_thumb_classification_logic():
     # 6. Classificação do polegar não utiliza a escala dos outros dedos
     label_thumb, _ = assh_classify_thumb(100.0)

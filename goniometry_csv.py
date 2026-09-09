@@ -9,9 +9,30 @@ Este módulo grava uma linha por quadro contendo:
 """
 
 import csv
+import math
 import os
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+
+def _safe_round(value: Optional[float], ndigits: int = 2) -> Any:
+    """
+    Arredonda um valor válido; devolve "" (célula vazia no CSV) para
+    None/NaN/+inf/-inf.
+
+    Nunca grava as strings "None"/"nan"/"inf"/"-inf" — célula vazia é o
+    marcador de "sem dado válido neste quadro", nunca 0.0 (0.0 é uma
+    extensão real de articulação).
+    """
+    if value is None:
+        return ""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(value):
+        return ""
+    return round(value, ndigits)
 
 # =============================================================================
 # CABEÇALHO CANÔNICO DO CSV
@@ -78,16 +99,16 @@ class GoniometryCSVLogger:
 
         for finger in ("INDEX", "MIDDLE", "RING", "PINKY"):
             data = angles.get(finger, {})
-            row[f"{finger}_MCP"] = round(data.get("MCP", 0.0), 2)
-            row[f"{finger}_PIP"] = round(data.get("PIP", 0.0), 2)
-            row[f"{finger}_DIP"] = round(data.get("DIP", 0.0), 2)
-            row[f"{finger}_ABD"] = round(data.get("ABD", 0.0), 2)
-            row[f"{finger}_TAM"] = round(data.get("TAM", 0.0), 2)
+            row[f"{finger}_MCP"] = _safe_round(data.get("MCP"))
+            row[f"{finger}_PIP"] = _safe_round(data.get("PIP"))
+            row[f"{finger}_DIP"] = _safe_round(data.get("DIP"))
+            row[f"{finger}_ABD"] = _safe_round(data.get("ABD"))
+            row[f"{finger}_TAM"] = _safe_round(data.get("TAM"))
 
         thumb = angles.get("THUMB", {})
-        row["THUMB_MCP"] = round(thumb.get("MCP", 0.0), 2)
-        row["THUMB_IP"]  = round(thumb.get("IP",  0.0), 2)
-        row["THUMB_TAM"] = round(thumb.get("TAM", 0.0), 2)
+        row["THUMB_MCP"] = _safe_round(thumb.get("MCP"))
+        row["THUMB_IP"]  = _safe_round(thumb.get("IP"))
+        row["THUMB_TAM"] = _safe_round(thumb.get("TAM"))
 
         self._writer.writerow(row)
 

@@ -33,6 +33,7 @@ Regras seguidas:
     - Todos os parâmetros numéricos provêm de config.py.
 """
 
+import math
 import queue
 import threading
 import time
@@ -628,7 +629,20 @@ class ProcessingWorker(QThread):
             # Extrai o TAM (Total Active Motion) para o dedo.
             # O TAM é a métrica clínica mais importante: representa o ROM total
             # de movimento ativo de todas as articulações de um dedo combinadas.
-            tam_value: float = float(finger_data.get("TAM", 0.0))
+            #
+            # angles_smooth[finger]["TAM"] pode ser None quando a série ainda
+            # não tem histórico válido (smoothing.py, política de valores
+            # inválidos) — nesse caso, pulamos o quadro sem adicionar amostra
+            # ao buffer, sem inserir 0.0 e sem limpar o que já existia.
+            tam_raw = finger_data.get("TAM")
+            if tam_raw is None:
+                continue
+            try:
+                tam_value: float = float(tam_raw)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(tam_value):
+                continue
 
             # Só adiciona ao buffer se o valor for válido (> 0).
             # TAM = 0.0 geralmente indica um quadro sem detecção ou articulação ausente,

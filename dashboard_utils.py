@@ -25,6 +25,11 @@ import statistics
 FINGERS = ["INDEX", "MIDDLE", "RING", "PINKY", "THUMB"]
 JOINTS = ["MCP", "PIP", "DIP", "ABD", "TAM"]
 
+# Cor neutra para articulações/TAM sem dado válido — mesma cor já usada como
+# fallback padrão em ui/finger_card_widget.py, reaproveitada aqui de propósito
+# para não introduzir uma cor nova ao projeto.
+COLOR_NO_DATA = "#94a3b8"
+
 # Articulações válidas por dedo — fonte centralizada de verdade.
 # O polegar possui anatomia diferenciada: apenas MCP e IP.
 # Demais dedos: MCP, PIP, DIP, ABD, TAM.
@@ -88,6 +93,22 @@ def assh_classify_thumb(tam: float) -> Tuple[str, str]:
     return "Ruim", "#ef4444"
 
 
+def _safe_angle(value: Optional[float]) -> Optional[float]:
+    """
+    Converte para float se for uma medida válida; None caso contrário.
+
+    None, NaN e infinito nunca são convertidos em 0.0 — 0.0 é uma extensão
+    real de articulação, não um marcador de "sem dado".
+    """
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
 def tam_progress(tam: float, max_tam: float = 270.0) -> float:
     """
     Normaliza o TAM para um valor de barra de progresso entre 0 e 1.
@@ -144,14 +165,23 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
         finger_data = angles_smooth.get(finger, {})
 
         if finger == "THUMB":
-            mcp = float(finger_data.get("MCP", 0.0))
-            ip  = float(finger_data.get("IP", 0.0))
-            tam = float(finger_data.get("TAM", 0.0))
-            # Limiar de fechamento proporcional ao TAM máximo do polegar (~120°).
-            closed = tam >= 85.0
-            if closed:
-                closed_count += 1
-            assh_label, assh_color = assh_classify_thumb(tam)
+            mcp = _safe_angle(finger_data.get("MCP"))
+            ip  = _safe_angle(finger_data.get("IP"))
+            tam = _safe_angle(finger_data.get("TAM"))
+
+            if tam is None:
+                # Sem histórico válido para este dedo neste quadro: não
+                # classificar como "Ruim" (isso exigiria fingir TAM=0.0) —
+                # estado neutro explícito, e não contabiliza como fechado.
+                closed = False
+                assh_label, assh_color = "Sem dado", COLOR_NO_DATA
+            else:
+                # Limiar de fechamento proporcional ao TAM máximo do polegar (~120°).
+                closed = tam >= 85.0
+                if closed:
+                    closed_count += 1
+                assh_label, assh_color = assh_classify_thumb(tam)
+
             finger_states[finger] = {
                 "MCP": mcp,
                 "IP": ip,
@@ -161,17 +191,20 @@ def classify_hand_state(angles_smooth: Dict[str, Dict[str, float]]) -> Dict:
                 "cor_assh": assh_color,
             }
         else:
-            mcp = float(finger_data.get("MCP", 0.0))
-            pip = float(finger_data.get("PIP", 0.0))
-            dip = float(finger_data.get("DIP", 0.0))
-            abd = float(finger_data.get("ABD", 0.0))
-            tam = float(finger_data.get("TAM", 0.0))
+            mcp = _safe_angle(finger_data.get("MCP"))
+            pip = _safe_angle(finger_data.get("PIP"))
+            dip = _safe_angle(finger_data.get("DIP"))
+            abd = _safe_angle(finger_data.get("ABD"))
+            tam = _safe_angle(finger_data.get("TAM"))
 
-            closed = tam >= 130.0
-            if closed:
-                closed_count += 1
-
-            assh_label, assh_color = assh_classify(tam)
+            if tam is None:
+                closed = False
+                assh_label, assh_color = "Sem dado", COLOR_NO_DATA
+            else:
+                closed = tam >= 130.0
+                if closed:
+                    closed_count += 1
+                assh_label, assh_color = assh_classify(tam)
 
             finger_states[finger] = {
                 "MCP": mcp,

@@ -68,3 +68,52 @@ class TestProcessingWorkerFilterMode:
         assert set(angles_smooth.keys()) == set(angles_raw.keys())
         assert set(angles_smooth["INDEX"].keys()) == set(angles_raw["INDEX"].keys())
         assert set(angles_smooth["THUMB"].keys()) == set(angles_raw["THUMB"].keys())
+
+
+class TestUpdateBuffersInvalidValues:
+    """
+    Fase 4b: _update_buffers() deve ignorar TAM inválido (None/NaN/inf) sem
+    levantar exceção, sem inserir 0.0 no lugar, e sem apagar o histórico
+    válido já acumulado no buffer.
+    """
+
+    def test_valid_tam_is_appended_to_the_buffer(self):
+        worker = ProcessingWorker()
+        worker._update_buffers({"INDEX": {"TAM": 45.0}}, timestamp=1.0)
+
+        assert list(worker._tam_buffers["INDEX"]) == [45.0]
+        assert list(worker._time_buffers["INDEX"]) == [1.0]
+
+    @pytest.mark.parametrize("invalid", [None, float("nan"), float("inf"), float("-inf")])
+    def test_invalid_tam_does_not_raise_and_is_not_appended(self, invalid):
+        worker = ProcessingWorker()
+
+        worker._update_buffers({"INDEX": {"TAM": invalid}}, timestamp=1.0)
+
+        assert list(worker._tam_buffers["INDEX"]) == []
+        assert list(worker._time_buffers["INDEX"]) == []
+
+    def test_none_tam_is_never_recorded_as_zero(self):
+        worker = ProcessingWorker()
+        worker._update_buffers({"INDEX": {"TAM": None}}, timestamp=1.0)
+
+        assert 0.0 not in worker._tam_buffers["INDEX"]
+
+    def test_invalid_value_preserves_existing_valid_history(self):
+        worker = ProcessingWorker()
+        worker._update_buffers({"INDEX": {"TAM": 45.0}}, timestamp=1.0)
+        worker._update_buffers({"INDEX": {"TAM": 50.0}}, timestamp=2.0)
+
+        worker._update_buffers({"INDEX": {"TAM": float("nan")}}, timestamp=3.0)
+
+        assert list(worker._tam_buffers["INDEX"]) == [45.0, 50.0]
+        assert list(worker._time_buffers["INDEX"]) == [1.0, 2.0]
+
+    def test_valid_samples_continue_being_processed_after_an_invalid_one(self):
+        worker = ProcessingWorker()
+        worker._update_buffers({"INDEX": {"TAM": 45.0}}, timestamp=1.0)
+        worker._update_buffers({"INDEX": {"TAM": None}}, timestamp=2.0)
+        worker._update_buffers({"INDEX": {"TAM": 60.0}}, timestamp=3.0)
+
+        assert list(worker._tam_buffers["INDEX"]) == [45.0, 60.0]
+        assert list(worker._time_buffers["INDEX"]) == [1.0, 3.0]

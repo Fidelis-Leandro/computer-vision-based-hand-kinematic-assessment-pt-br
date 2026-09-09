@@ -19,6 +19,8 @@ ou interface PyQt6 — SeriesFilter e GoniometryFilterBank são puramente
 numéricos.
 """
 
+import logging
+
 import pytest
 
 import config
@@ -647,3 +649,190 @@ class TestGoniometryFilterBankModes:
 
         assert first == pytest.approx(10.0)
         assert second == pytest.approx(10.0)
+
+
+# =============================================================================
+# Fase 4a — testes de regressão para robustez de None / NaN / infinito
+# =============================================================================
+#
+# Estes testes descrevem o comportamento AINDA NÃO IMPLEMENTADO (Fase 4b) e
+# devem falhar hoje: smoothing.py não valida a entrada de update() ainda.
+# Servem como a rede de segurança que prova que a implementação futura fez
+# exatamente o que foi decidido, nem mais nem menos.
+#
+# Política aprovada (não implementada nesta fase):
+#   - None/NaN/+inf/-inf nunca atualizam _ema_value, _x, _p ou _k_gain;
+#   - em EMA/KALMAN/EMA_KALMAN, com histórico válido: retorna o último valor
+#     válido; sem histórico: retorna None;
+#   - em RAW: sempre retorna None para entrada inválida, nunca "lembra" nada;
+#   - valores inválidos nunca são convertidos para 0.0 (0.0 é uma medida
+#     clínica real de extensão/abertura, não um marcador de ausência de dado).
+
+INVALID_VALUES = [None, float("nan"), float("inf"), float("-inf")]
+STATEFUL_MODES = [FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN]
+ALL_MODES = [FILTER_MODE_RAW, FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN]
+
+
+class TestInvalidValueRejection:
+    @pytest.mark.parametrize("invalid", INVALID_VALUES)
+    @pytest.mark.parametrize("mode", ALL_MODES)
+    def test_first_sample_invalid_returns_none_without_raising(self, mode, invalid):
+        """Uma série sem nenhum histórico válido, recebendo um valor
+        inválido como primeira amostra, deve devolver None — nunca inventar
+        um ângulo (0.0 seria uma medida clínica falsa) e nunca levantar
+        exceção não tratada."""
+        f = SeriesFilter(mode=mode)
+
+        result = f.update(invalid)
+
+        assert result is None
+
+    @pytest.mark.parametrize("invalid", INVALID_VALUES)
+    @pytest.mark.parametrize("mode", STATEFUL_MODES)
+    def test_valid_then_invalid_returns_last_valid_value(self, mode, invalid):
+        """Nos modos com estado (EMA, KALMAN, EMA_KALMAN), um valor
+        inválido depois de uma amostra válida deve devolver o último valor
+        filtrado válido — não None, não o valor inválido."""
+        f = SeriesFilter(mode=mode)
+        first_valid = f.update(20.0)
+
+        result = f.update(invalid)
+
+        assert result == pytest.approx(first_valid, abs=1e-9)
+
+    @pytest.mark.parametrize("invalid", INVALID_VALUES)
+    def test_raw_never_remembers_a_previous_value(self, invalid):
+        """RAW é definido por não ter memória: mesmo depois de uma amostra
+        válida, um valor inválido deve devolver None, nunca o valor
+        anterior — reaproveitar um valor aqui contradiria a própria
+        definição do modo."""
+        f = SeriesFilter(mode=FILTER_MODE_RAW)
+        f.update(20.0)
+
+        result = f.update(invalid)
+
+        assert result is None
+
+    @pytest.mark.parametrize("mode", STATEFUL_MODES)
+    def test_invalid_value_does_not_touch_internal_state(self, mode):
+        """Nenhum dos quatro campos de estado interno pode ser alterado por
+        um valor inválido — a contaminação (o problema original que esta
+        fase resolve) significa exatamente algum desses campos mudando."""
+        f = SeriesFilter(mode=mode)
+        f.update(20.0)
+        f.update(50.0)
+
+        ema_before = f._ema_value
+        x_before = f._x
+        p_before = f._p
+        gain_before = f._k_gain
+
+        f.update(float("nan"))
+
+        assert f._ema_value == ema_before
+        assert f._x == x_before
+        assert f._p == p_before
+        assert f._k_gain == gain_before
+
+    @pytest.mark.parametrize("mode", STATEFUL_MODES)
+    def test_recovers_normally_after_an_invalid_value(self, mode):
+        """Depois de um valor inválido, a série deve continuar exatamente
+        como se aquele valor nunca tivesse existido — comparado com uma
+        série de referência sem nenhum valor inválido no meio."""
+        reference = SeriesFilter(mode=mode)
+        reference.update(20.0)
+        reference_next = reference.update(80.0)
+
+        f = SeriesFilter(mode=mode)
+        f.update(20.0)
+        f.update(float("nan"))  # deve ser completamente ignorado
+        recovered = f.update(80.0)
+
+        assert recovered == pytest.approx(reference_next, abs=1e-9)
+
+    @pytest.mark.parametrize("mode", ALL_MODES)
+    def test_reset_after_invalid_value_behaves_like_a_fresh_series(self, mode):
+        """reset() continua funcionando normalmente mesmo depois de um
+        valor inválido ter sido rejeitado."""
+        f = SeriesFilter(mode=mode)
+        f.update(20.0)
+        f.update(float("nan"))
+
+        f.reset()
+
+        assert f.is_initialized in (False, True)  # RAW é sempre True; os demais, False
+        if mode != FILTER_MODE_RAW:
+            assert f.is_initialized is False
+        assert f.update(99.0) == pytest.approx(99.0)
+
+
+class TestGoniometryFilterBankInvalidValues:
+    @pytest.mark.parametrize("mode", STATEFUL_MODES)
+    def test_invalid_value_in_one_series_does_not_affect_sibling_series(self, mode):
+        """Um valor inválido em INDEX_MCP não pode influenciar MIDDLE_MCP —
+        mesma garantia de independência já validada para entradas válidas,
+        agora também sob entrada inválida."""
+        bank = GoniometryFilterBank(mode=mode)
+        bank.update("INDEX", "MCP", 20.0)
+        bank.update("INDEX", "MCP", float("nan"))
+
+        first = bank.update("MIDDLE", "MCP", 10.0)
+        second = bank.update("MIDDLE", "MCP", 10.0)
+
+        assert first == pytest.approx(10.0)
+        assert second == pytest.approx(10.0)
+
+    @pytest.mark.parametrize("mode", STATEFUL_MODES)
+    def test_smooth_all_keeps_last_valid_value_for_joint_with_history(self, mode):
+        """Com histórico válido prévio, smooth_all() preserva o último
+        valor válido daquela articulação quando a entrada for inválida —
+        nunca 0.0, nunca a chave removida."""
+        bank = GoniometryFilterBank(mode=mode)
+        bank.update("INDEX", "MCP", 20.0)
+
+        result = bank.smooth_all({"INDEX": {"MCP": float("nan")}})
+
+        assert "MCP" in result["INDEX"]
+        assert result["INDEX"]["MCP"] == pytest.approx(20.0, abs=1e-9)
+
+    @pytest.mark.parametrize("mode", ALL_MODES)
+    def test_smooth_all_returns_none_for_joint_without_valid_history(self, mode):
+        """Sem nenhum histórico válido, smooth_all() deve devolver None
+        para a articulação — a chave continua presente (estrutura
+        preservada), só o valor é None."""
+        bank = GoniometryFilterBank(mode=mode)
+
+        result = bank.smooth_all({"INDEX": {"MCP": float("nan")}})
+
+        assert "MCP" in result["INDEX"]
+        assert result["INDEX"]["MCP"] is None
+
+
+class TestInvalidValueLogging:
+    def test_logs_a_single_warning_across_consecutive_invalid_updates(self, caplog):
+        """Vários quadros inválidos consecutivos devem gerar UM aviso na
+        transição válido -> inválido, não um aviso por quadro (evita spam
+        de log a ~30 quadros/segundo)."""
+        f = SeriesFilter(mode=FILTER_MODE_EMA_KALMAN)
+        f.update(20.0)
+
+        with caplog.at_level(logging.WARNING):
+            for _ in range(5):
+                f.update(float("nan"))
+
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(warnings) == 1
+
+    def test_logs_recovery_when_value_becomes_valid_again(self, caplog):
+        """Quando a série volta a receber um valor válido depois de um
+        período inválido, isso deve ser registrado de forma limitada
+        (uma vez), não silenciosamente."""
+        f = SeriesFilter(mode=FILTER_MODE_EMA_KALMAN)
+        f.update(20.0)
+
+        with caplog.at_level(logging.INFO):
+            f.update(float("nan"))
+            caplog.clear()
+            f.update(80.0)
+
+        assert len(caplog.records) >= 1

@@ -34,6 +34,7 @@ Estrutura de dados:
     índice da amostra (0 a N-1) — não representa tempo absoluto.
 """
 
+import math
 from collections import deque
 from typing import Deque, Dict, Optional
 
@@ -251,14 +252,25 @@ class GoniometryPlotWidget(QWidget):
             #   2. É a métrica clínica oficial da ASSH para avaliação funcional.
             #   3. É suficientemente estável para visualização em tempo real (não oscila
             #      como valores individuais de MCP ou PIP durante o movimento).
-            # .get(finger, {}).get("TAM", 0.0): acesso seguro com fallback 0.0
-            # caso o dicionário não contenha este dedo (ex.: oclusão parcial).
-            tam: float = float(angles_smooth.get(finger, {}).get("TAM", 0.0))
+            # angles_smooth[finger]["TAM"] pode ser None quando a série de
+            # smoothing.py ainda não tem histórico válido (política de
+            # valores inválidos) — trata como "sem amostra neste quadro",
+            # nunca como 0.0.
+            tam_raw = angles_smooth.get(finger, {}).get("TAM")
+            tam: Optional[float]
+            try:
+                tam = float(tam_raw) if tam_raw is not None else None
+            except (TypeError, ValueError):
+                tam = None
+            if tam is not None and not math.isfinite(tam):
+                tam = None
 
             # Adiciona ao buffer somente se o valor for positivo.
-            # TAM = 0.0 indica ausência de dados, não um ângulo real.
-            # Incluir zeros distorceria a escala e a visualização do gráfico.
-            if tam > 0.0:
+            # TAM = 0.0 (ou None/NaN/inf) indica ausência de dados, não um
+            # ângulo real. Incluir zeros ou dados inválidos distorceria a
+            # escala e a visualização do gráfico — o ponto é simplesmente
+            # omitido, criando a pausa visual esperada na curva.
+            if tam is not None and tam > 0.0:
                 self._buffers[finger].append(tam)
 
             # Converte o deque para list() para passar ao PyQtGraph.

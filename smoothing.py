@@ -46,7 +46,11 @@ Modos de filtro (introduzidos nesta fase, ainda não conectados à produção):
     qualquer fluxo real.
 """
 
+import logging
+import math
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # MODOS DE FILTRO
@@ -67,6 +71,24 @@ VALID_FILTER_MODES = (
     FILTER_MODE_KALMAN,
     FILTER_MODE_EMA_KALMAN,
 )
+
+
+def _is_valid_measurement(value: object) -> bool:
+    """
+    True se `value` for um número finito usável pelo filtro.
+
+    None, NaN, +inf e -inf são inválidos. Uma medida inválida nunca deve
+    virar 0.0 — 0.0 é uma extensão/abertura real da articulação, não um
+    marcador de "sem dado". Quem chama update() com um valor inválido
+    recebe o último valor filtrado válido (ou None, se nunca houve um).
+    """
+    if value is None:
+        return False
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(value)
 
 
 # =============================================================================
@@ -117,25 +139,40 @@ class SeriesFilter:
         self._k_gain: float = 1.0
         self._n_updates: int = 0
 
-    def update(self, raw: float) -> float:
+        # True enquanto a série estiver recebendo valores inválidos em
+        # sequência. Usado só para limitar o logging por transição
+        # (um aviso ao entrar, um registro ao sair) — nunca um por quadro.
+        self._last_invalid: bool = False
+
+    def update(self, raw: float) -> Optional[float]:
         """
         Processa um novo valor bruto e retorna o valor suavizado de acordo
         com self.mode.
 
-        FILTER_MODE_RAW:
+        Valor inválido (None, NaN, +inf ou -inf):
+            Nenhum estado interno é tocado (nem EMA, nem Kalman) — a
+            entrada é descartada sem contaminar nada. Nos modos com estado
+            (EMA, KALMAN, EMA_KALMAN), devolve o último valor filtrado
+            válido, se houver, ou None se a série ainda não tiver nenhum
+            histórico válido. Em RAW, devolve sempre None — o modo é
+            definido por não ter memória, então "lembrar" um valor aqui
+            contradiria sua própria definição. Nunca inventa 0.0: 0.0 é uma
+            extensão real de articulação, não um marcador de ausência de dado.
+
+        FILTER_MODE_RAW (entrada válida):
             Devolve o valor bruto convertido para float, sem tocar em nenhum
             estado interno (nem EMA, nem Kalman) e sem nenhum atraso.
 
-        FILTER_MODE_EMA:
+        FILTER_MODE_EMA (entrada válida):
             Aplica somente a etapa EMA (reduz jitter entre quadros) e
             atualiza somente o estado de EMA. O estado de Kalman nunca é
             tocado neste modo.
 
-        FILTER_MODE_KALMAN:
+        FILTER_MODE_KALMAN (entrada válida):
             Aplica o filtro de Kalman diretamente sobre o valor bruto (sem
             passar por EMA antes) e atualiza somente o estado de Kalman.
 
-        FILTER_MODE_EMA_KALMAN (default, comportamento histórico):
+        FILTER_MODE_EMA_KALMAN (default, entrada válida, comportamento histórico):
             Etapa 1 — EMA:
                 Reduz oscilações rápidas (jitter) entre quadros.
             Etapa 2 — Kalman:
@@ -146,6 +183,33 @@ class SeriesFilter:
             reescrita, só isolada dentro do `elif` correspondente.
         """
         self._n_updates += 1
+
+        if not _is_valid_measurement(raw):
+            if not self._last_invalid:
+                logger.warning(
+                    "SeriesFilter (mode=%s): valor inválido recebido (None/NaN/"
+                    "inf) — estado preservado, devolvendo último valor válido "
+                    "(ou None).",
+                    self.mode,
+                )
+                self._last_invalid = True
+
+            if self.mode == FILTER_MODE_RAW:
+                return None
+            if self.mode == FILTER_MODE_EMA:
+                return self._ema_value
+            # KALMAN e EMA_KALMAN: o último valor filtrado válido é _x.
+            return self._x
+
+        if self._last_invalid:
+            logger.info(
+                "SeriesFilter (mode=%s): valor válido recebido novamente — "
+                "retomando atualização normal.",
+                self.mode,
+            )
+            self._last_invalid = False
+
+        raw = float(raw)
 
         if self.mode == FILTER_MODE_RAW:
             return float(raw)
@@ -258,6 +322,9 @@ class SeriesFilter:
         self._p = 1.0
         self._k_gain = 1.0 if seed_value is None else 0.5
         self._n_updates = 0
+        # reset() é um recomeço legítimo, não uma "recuperação" de valor
+        # inválido — evita um log de recuperação espúrio na próxima amostra.
+        self._last_invalid = False
 
 
 # =============================================================================
@@ -339,7 +406,11 @@ class GoniometryFilterBank:
         for finger, metrics in angles.items():
             filtered[finger] = {}
             for joint, raw in metrics.items():
-                filtered[finger][joint] = round(self.update(finger, joint, raw), 2)
+                value = self.update(finger, joint, raw)
+                # value é None quando a série não tem nenhum histórico
+                # válido ainda (ou está em modo RAW e a amostra é inválida).
+                # round(None, 2) levantaria TypeError — preserva None.
+                filtered[finger][joint] = round(value, 2) if value is not None else None
 
         return filtered
 

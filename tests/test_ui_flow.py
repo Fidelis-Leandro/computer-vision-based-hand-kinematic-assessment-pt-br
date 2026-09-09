@@ -250,3 +250,92 @@ def test_toggle_logs_drawer(app_window: MainWindow, qtbot):
     assert app_window.log_widget.isVisible() is False
     assert "Exibir Logs" in app_window.btn_toggle_logs.text()
 
+
+# =============================================================================
+# Fase 4b — robustez de None/NaN/infinito nos widgets (plot_widget, finger_card_widget)
+# =============================================================================
+#
+# Reutiliza o mesmo app_window (MainWindow real, com plot_widget e
+# finger_cards já instanciados) em vez de criar widgets isolados — mesmo
+# padrão de fixture já usado no restante deste arquivo.
+
+
+@pytest.mark.parametrize("invalid_tam", [None, float("nan"), float("inf"), float("-inf")])
+def test_plot_widget_handles_invalid_tam_without_raising(app_window, qtbot, invalid_tam):
+    """9. TAM None/NaN/infinito não deve gerar exceção em update_data() nem
+    ser inserido no buffer da curva como 0.0."""
+    plot = app_window.plot_widget
+
+    plot.update_data({"INDEX": {"TAM": invalid_tam}}, hand_detected=True)
+
+    assert list(plot._buffers["INDEX"]) == []
+
+
+def test_plot_widget_valid_tam_still_appended_after_invalid_ones(app_window, qtbot):
+    """10. Um TAM válido continua sendo desenhado normalmente mesmo depois
+    de quadros com valor inválido."""
+    plot = app_window.plot_widget
+
+    plot.update_data({"INDEX": {"TAM": float("nan")}}, hand_detected=True)
+    plot.update_data({"INDEX": {"TAM": 42.0}}, hand_detected=True)
+
+    assert list(plot._buffers["INDEX"]) == [42.0]
+
+
+def test_finger_card_widget_shows_dash_for_none_tam(app_window, qtbot):
+    """11. TAM None deve exibir "—" no card, nunca um número (nem 0.0) e sem
+    lançar exceção."""
+    panel = app_window.finger_cards
+    finger_states = {
+        "INDEX": {"TAM": None, "fechado": False, "rotulo_assh": "Sem dado", "cor_assh": "#94a3b8"},
+    }
+    metrics = {"rom": 0.0, "vel_media": 0.0, "vel_pico": 0.0, "freq_hz": 0.0, "cv": 0.0, "regularidade": "-", "n_picos": 0}
+
+    panel.update_all(
+        finger_states=finger_states,
+        metrics_per_finger={"INDEX": metrics},
+        tam_buffers_per_finger={"INDEX": []},
+    )
+
+    assert panel._cards["INDEX"]._lbl_tam_value.text() == "—"
+
+
+def test_finger_card_widget_does_not_label_missing_data_as_ruim(app_window, qtbot):
+    """12. Ausência de dado (TAM None) deve exibir "Sem dado", nunca
+    "Ruim" — dashboard_utils.classify_hand_state() já decide isso, o card
+    só precisa exibir o rótulo recebido sem substituí-lo."""
+    panel = app_window.finger_cards
+    finger_states = {
+        "INDEX": {"TAM": None, "fechado": False, "rotulo_assh": "Sem dado", "cor_assh": "#94a3b8"},
+    }
+    metrics = {"rom": 0.0, "vel_media": 0.0, "vel_pico": 0.0, "freq_hz": 0.0, "cv": 0.0, "regularidade": "-", "n_picos": 0}
+
+    panel.update_all(
+        finger_states=finger_states,
+        metrics_per_finger={"INDEX": metrics},
+        tam_buffers_per_finger={"INDEX": []},
+    )
+
+    label = panel._cards["INDEX"]._lbl_assh.text()
+    assert label == "Sem dado"
+    assert label != "Ruim"
+
+
+def test_finger_card_widget_valid_data_still_displayed_normally(app_window, qtbot):
+    """13. Dados válidos continuam sendo exibidos exatamente como antes —
+    nenhuma regressão introduzida pela proteção contra valores inválidos."""
+    panel = app_window.finger_cards
+    finger_states = {
+        "INDEX": {"TAM": 90.5, "fechado": False, "rotulo_assh": "Razoável", "cor_assh": "#f97316"},
+    }
+    metrics = {"rom": 0.0, "vel_media": 0.0, "vel_pico": 0.0, "freq_hz": 0.0, "cv": 0.0, "regularidade": "-", "n_picos": 0}
+
+    panel.update_all(
+        finger_states=finger_states,
+        metrics_per_finger={"INDEX": metrics},
+        tam_buffers_per_finger={"INDEX": [90.5]},
+    )
+
+    assert panel._cards["INDEX"]._lbl_tam_value.text() == "90.5°"
+    assert panel._cards["INDEX"]._lbl_assh.text() == "Razoável"
+
