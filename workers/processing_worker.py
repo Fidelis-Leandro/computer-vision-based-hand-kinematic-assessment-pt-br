@@ -219,12 +219,15 @@ class ProcessingWorker(QThread):
         # Goniômetro digital — calcula os ângulos articulares brutos.
         self._gonio: DigitalGoniometer = DigitalGoniometer()
 
-        # Banco de filtros EMA -> Kalman — suaviza os ângulos brutos.
-        # Uma instância de SeriesFilter por série (ex.: "INDEX_MCP", "THUMB_IP").
+        # Banco de filtros — modo definido explicitamente por
+        # config.FILTER_MODE_DEFAULT (hoje "EMA_KALMAN", preservando o
+        # pipeline clínico validado: EMA -> Kalman). Uma instância de
+        # SeriesFilter por série (ex.: "INDEX_MCP", "THUMB_IP").
         self._filter_bank: GoniometryFilterBank = GoniometryFilterBank(
             ema_alpha=config.EMA_ALPHA,
             kalman_q=config.KALMAN_Q,
             kalman_r=config.KALMAN_R,
+            mode=config.FILTER_MODE_DEFAULT,
         )
 
         # --- Buffers circulares temporais ---
