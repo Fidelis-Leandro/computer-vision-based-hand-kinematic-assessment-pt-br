@@ -69,6 +69,16 @@ KALMAN_Q: float = 0.01
 # na estimativa anterior.
 KALMAN_R: float = 0.10
 
+# Modo de filtro padrão para SeriesFilter/GoniometryFilterBank (smoothing.py).
+# "EMA_KALMAN" é o único modo já usado em produção — mantém o comportamento
+# clínico validado (EMA seguido de Kalman). "RAW", "EMA" e "KALMAN" existem
+# como opção em smoothing.py, mas nenhum outro módulo do sistema lê ou usa
+# esta constante ainda: workers/processing_worker.py continua instanciando
+# GoniometryFilterBank() sem informar modo, o que já produz EMA_KALMAN por
+# ser o default da própria classe. Alterar este valor NÃO tem nenhum efeito
+# no pipeline em produção até que uma fase futura conecte essa seleção.
+FILTER_MODE_DEFAULT: str = "EMA_KALMAN"
+
 # =============================================================================
 # 3. DETECÇÃO DE MÃO (MEDIAPIPE HANDS)
 # =============================================================================
