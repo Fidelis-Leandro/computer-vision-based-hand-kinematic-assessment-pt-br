@@ -55,6 +55,7 @@ A goniometria é o método padrão-ouro para avaliação da amplitude de movimen
 - **Gráficos dinâmicos** com histórico de ângulos por articulação (PyQtGraph)
 - **Painel de métricas clínicas** com amplitude mínima, máxima e média da sessão
 - **Pipeline duplo de suavização** — Média Móvel Exponencial (EMA) + Filtro de Kalman — para eliminar oscilações (jitter) sem introduzir latência
+- **Modo de filtro selecionável na interface** — EMA + Kalman (padrão), EMA, Kalman ou dados brutos (RAW), escolhido antes de iniciar a sessão e registrado no CSV e no relatório PDF
 - **Gravação contínua em CSV** no diretório `logs/` com registro temporal (timestamp) e valores por articulação
 - **Geração de relatório em PDF sob demanda** com resumo clínico da sessão gerado em thread secundária
 - **Fluxo clínico em 3 telas desacopladas** (Configuração → Avaliação → Resultado) via `QStackedWidget`
@@ -81,8 +82,7 @@ Tela 3 — Resultado da Sessão
        ├─► [📄 Gerar Relatório PDF] (sob demanda via thread dedicada)
        ├─► [💾 Exportar CSV] (diálogo nativo para salvar em qualquer pasta)
        ├─► [📁 Abrir Pasta de Sessões] (abre a pasta logs/)
-       ├─► [🔄 Nova Avaliação] (preserva paciente/mão, incrementa sessão → Tela 1)
-       └─► [🗑️ Limpar Dados do Paciente] (reseta formulário clínico → Tela 1)
+       └─► [🔄 Nova Avaliação] (reset completo com confirmação → Tela 1 em IDLE)
 ```
 
 1. **Tela de Configuração da Sessão (Página 1)**:
@@ -90,6 +90,7 @@ Tela 3 — Resultado da Sessão
      - Nome do paciente;
      - Mão avaliada (Direita ou Esquerda);
      - Número da sessão (sequencial);
+     - **Modo de filtro** aplicado à sessão (ver [Modo de filtro](#modo-de-filtro));
    - Ação: botão **"▶ Iniciar Avaliação"** (ou tecla Enter) valida os dados, inicializa as threads de captura e IA e transiciona para a tela de avaliação.
 
 2. **Tela de Avaliação em Andamento (Página 0)**:
@@ -117,8 +118,7 @@ Tela 3 — Resultado da Sessão
      - **📄 Gerar Relatório PDF**: gera sob demanda o relatório clínico com métricas consolidadas via `_PdfGeneratorWorker` em background, sem travar a interface gráfica.
      - **💾 Exportar CSV**: abre diálogo nativo do sistema operacional permitindo salvar uma cópia do CSV da sessão em qualquer pasta.
      - **📁 Abrir Pasta de Sessões**: abre o explorador de arquivos diretamente no diretório `logs/`.
-     - **🔄 Nova Avaliação**: com confirmação defensiva, reutiliza o reset centralizado, preserva paciente e mão, incrementa o número da sessão em +1 e retorna para a Tela 1.
-     - **🗑️ Limpar Dados do Paciente**: com confirmação defensiva única, reseta os dados do paciente (nome em branco, mão Direita, sessão 1) e retorna para a Tela 1.
+     - **🔄 Nova Avaliação**: único caminho de reset do sistema. Com confirmação defensiva (botão padrão *Cancelar*), para e recria os workers, limpa gráficos, métricas, widgets e log, apaga a identificação do paciente (nome em branco, mão Direita, sessão 1), devolve o modo de filtro ao padrão (EMA + Kalman) e retorna à Tela 1 no estado `IDLE`. Os arquivos CSV e PDF já salvos **não** são apagados.
 
 ---
 
@@ -148,9 +148,9 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 |   |  - Nome do paciente      - SessionHeaderWidget         - Resumo da sessão |   |
 |   |  - Mão avaliada          - VideoWidget (Câmera+Overlay)- Gerar PDF (dem.) |   |
 |   |  - Número da sessão      - MetricsWidget (Clínico)     - Exportar CSV     |   |
-|   |  - ▶ Iniciar Avaliação   - GoniometryPlotWidget        - Abrir Pasta      |   |
-|   |                          - FingerCardsPanel            - Nova Avaliação   |   |
-|   |                          - LogWidget (Recolhível)      - Limpar Dados     |   |
+|   |  - Modo de filtro        - GoniometryPlotWidget        - Abrir Pasta      |   |
+|   |  - ▶ Iniciar Avaliação   - FingerCardsPanel            - Nova Avaliação   |   |
+|   |                          - LogWidget (Recolhível)                         |   |
 |   +-----------------------------------------------------------------------+   |
 +---------------------------------------+---------------------------------------+
                                         | Sinais Qt (thread-safe)
@@ -303,6 +303,8 @@ computer-vision-based-hand-kinematic-assessment/
 
 Todos os parâmetros do sistema estão centralizados em [`config.py`](config.py). Não é necessário alterar nenhum outro arquivo para ajustar o comportamento do sistema.
 
+> O **modo de filtro** é a exceção: ele é escolhido diretamente na interface, a cada sessão. `config.py` define apenas qual modo vem pré-selecionado. Ver [Modo de filtro](#modo-de-filtro).
+
 ### Principais parâmetros
 
 | Parâmetro | Valor Padrão | Descrição |
@@ -326,6 +328,36 @@ Caso o computador possua múltiplas câmeras, altere em `config.py`:
 ```python
 CAMERA_INDEX: int = 1  # 0 = padrão, 1 = câmera externa, etc.
 ```
+
+### Modo de filtro
+
+O modo de suavização aplicado aos ângulos é escolhido **na própria interface**, no
+seletor **Modo de Filtro** da Tela de Configuração — não é necessário editar
+`config.py` para trocá-lo.
+
+| Opção no seletor | Valor gravado no CSV | Quando usar |
+|------------------|----------------------|-------------|
+| EMA + Kalman — recomendado | `EMA_KALMAN` | **Padrão.** Pipeline clínico validado. Use em avaliações reais. |
+| EMA — suavização exponencial | `EMA` | Suavização simples, levemente mais responsiva, com mais oscilação residual. |
+| Kalman — filtro preditivo | `KALMAN` | Filtro preditivo. Bom para movimento contínuo. |
+| Dados brutos (RAW) — sem suavização | `RAW` | Demonstração, comparação ou diagnóstico técnico. Os valores oscilam visivelmente. |
+
+Regras de uso:
+
+- **EMA + Kalman é o padrão**, definido por `FILTER_MODE_DEFAULT` em `config.py`. Quem
+  nunca tocar no seletor obtém exatamente o pipeline clínico de sempre.
+- A escolha é feita **antes de iniciar a sessão**. Durante a avaliação (`RUNNING`) o
+  seletor fica desabilitado, e o modo não muda no meio da coleta.
+- O modo escolhido **vale para toda a sessão** e é aplicado a um banco de filtros novo,
+  sem nenhum resíduo do modo anterior.
+- O modo fica **registrado na coluna `filter_mode`** de cada linha do CSV da sessão e
+  **aparece no rodapé técnico do relatório PDF**, para que qualquer medição possa ser
+  interpretada sabendo como foi processada.
+- **RAW pode ser usado com a mão robótica**, sem bloqueio nem confirmação adicional. As
+  proteções contra valores inválidos (`None`, `NaN`, infinito) continuam ativas em todos
+  os modos — ver [INTEGRACAO_MAO_ROBOTICA.md](INTEGRACAO_MAO_ROBOTICA.md).
+- Sessões gravadas em modos diferentes não são diretamente comparáveis entre si; o
+  registro no CSV e no PDF existe justamente para tornar essa diferença visível.
 
 ---
 

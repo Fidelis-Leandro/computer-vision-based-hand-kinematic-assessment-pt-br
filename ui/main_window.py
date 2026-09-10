@@ -83,8 +83,10 @@ from themes import (
     COLOR_ACCENT,
     COLOR_BG_DARK,
     COLOR_BG_MEDIUM,
+    COLOR_DANGER,
     COLOR_TEXT_PRIMARY,
     COLOR_TEXT_SECONDARY,
+    COLOR_WARNING,
 )
 
 # Importa os workers.
@@ -106,6 +108,46 @@ from ui.video_widget import VideoWidget
 
 # Logger específico do módulo — facilita o rastreamento de eventos da janela.
 logger = logging.getLogger(__name__)
+
+
+# Modos de filtro oferecidos na tela de configuração, na ordem em que aparecem
+# no seletor: o recomendado primeiro e RAW por último, para afastar o modo sem
+# suavização do clique acidental de quem abre a lista com pressa.
+#
+# Cada entrada é (modo interno, rótulo visível, tooltip, linha de ajuda). O modo
+# interno é a mesma string que smoothing.py e a coluna filter_mode do CSV usam —
+# ela viaja como userData do QComboBox, sem nenhum dicionário de tradução
+# paralelo na interface.
+FILTER_MODE_OPTIONS = (
+    (
+        "EMA_KALMAN",
+        "EMA + Kalman — recomendado",
+        "Pipeline clínico validado (EMA seguido de Kalman). "
+        "Elimina oscilação sem atraso perceptível.",
+        "Pipeline clínico validado. Use este modo para avaliações reais.",
+    ),
+    (
+        "EMA",
+        "EMA — suavização exponencial",
+        "Só média móvel exponencial. Mais simples e levemente mais responsivo, "
+        "com mais oscilação residual.",
+        "Suavização simples. Levemente mais responsivo, com mais oscilação residual.",
+    ),
+    (
+        "KALMAN",
+        "Kalman — filtro preditivo",
+        "Só filtro preditivo. Bom para movimento contínuo; pode oscilar mais "
+        "em movimentos bruscos.",
+        "Filtro preditivo. Bom para movimento contínuo.",
+    ),
+    (
+        "RAW",
+        "Dados brutos (RAW) — sem suavização",
+        "Sem nenhuma suavização. Uso para demonstração, comparação ou "
+        "diagnóstico técnico — não recomendado para avaliação clínica.",
+        "⚠ Sem suavização — os valores oscilam. Uso técnico/demonstração.",
+    ),
+)
 
 
 # =============================================================================
@@ -708,6 +750,58 @@ class MainWindow(QMainWindow):
         )
         card_layout.addWidget(self._setup_spin_session)
 
+        # Campo: Modo de Filtro
+        # Fica por último, colado ao botão Iniciar: é a última coisa que o
+        # operador vê antes de começar, reforçando que a escolha vale para a
+        # sessão que está prestes a iniciar — e não para a que acabou.
+        lbl_filtro = QLabel("Modo de Filtro")
+        lbl_filtro.setStyleSheet(
+            f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 11px; font-weight: bold; text-transform: uppercase; border: none; }}"
+        )
+        card_layout.addWidget(lbl_filtro)
+
+        self._setup_combo_filter = QComboBox()
+        for mode, label, tooltip, _help_text in FILTER_MODE_OPTIONS:
+            self._setup_combo_filter.addItem(label, mode)
+            self._setup_combo_filter.setItemData(
+                self._setup_combo_filter.count() - 1,
+                tooltip,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self._setup_combo_filter.setToolTip(
+            "Define como os ângulos são suavizados antes de aparecerem na tela, "
+            "serem gravados no CSV e usados no relatório PDF. O modo escolhido "
+            "vale a partir da próxima sessão iniciada."
+        )
+        self._setup_combo_filter.setStyleSheet(
+            f"QComboBox {{ color: {COLOR_TEXT_PRIMARY}; padding: 8px 12px; "
+            f"border: 1px solid #334155; border-radius: 5px; "
+            f"background: #0f172a; font-size: 14px; }}"
+            f"QComboBox:focus {{ border-color: {COLOR_ACCENT}; }}"
+            f"QComboBox QAbstractItemView {{ background: #0f172a; color: {COLOR_TEXT_PRIMARY}; selection-background-color: {COLOR_ACCENT}; }}"
+        )
+        card_layout.addWidget(self._setup_combo_filter)
+
+        # Linha de ajuda: descreve o modo selecionado sem exigir que o operador
+        # abra a lista ou espere o tooltip. É o que dá a um QComboBox a clareza
+        # que botões de rádio teriam, sem gastar o espaço vertical deles.
+        self._setup_lbl_filter_help = QLabel()
+        self._setup_lbl_filter_help.setWordWrap(True)
+        card_layout.addWidget(self._setup_lbl_filter_help)
+
+        self._setup_combo_filter.currentIndexChanged.connect(
+            self._on_filter_mode_changed
+        )
+        # O padrão vem só de config.FILTER_MODE_DEFAULT: nenhuma segunda cópia
+        # do modo padrão vive na interface.
+        self._setup_combo_filter.setCurrentIndex(
+            self._setup_combo_filter.findData(config.FILTER_MODE_DEFAULT)
+        )
+        # setCurrentIndex() não emite currentIndexChanged quando o índice pedido
+        # já é o atual — e o padrão é justamente o primeiro item. Sem esta
+        # chamada explícita, a linha de ajuda nasceria vazia.
+        self._on_filter_mode_changed(self._setup_combo_filter.currentIndex())
+
         card_layout.addSpacing(8)
 
         # Botão: Iniciar Avaliação
@@ -732,6 +826,28 @@ class MainWindow(QMainWindow):
         Habilita o botão Iniciar na Tela de Configuração se o nome não for vazio.
         """
         self._setup_btn_start.setEnabled(bool(text.strip()))
+
+    def _on_filter_mode_changed(self, index: int) -> None:
+        """
+        Atualiza a linha de ajuda com a descrição do modo de filtro selecionado.
+
+        O índice indexa FILTER_MODE_OPTIONS diretamente porque o combo é
+        preenchido a partir dessa mesma tupla, na mesma ordem — as duas não
+        têm como divergir.
+
+        RAW recebe cor âmbar porque é o único modo que entrega ângulos sem
+        nenhuma suavização: os valores oscilam de forma visível e ele não
+        deve ser usado em avaliação clínica. Os demais modos compartilham a
+        cor neutra do formulário — se o destaque valesse para todos, deixaria
+        de comunicar qualquer coisa.
+        """
+        mode, _label, _tooltip, help_text = FILTER_MODE_OPTIONS[index]
+        color = COLOR_WARNING if mode == "RAW" else COLOR_TEXT_SECONDARY
+
+        self._setup_lbl_filter_help.setText(help_text)
+        self._setup_lbl_filter_help.setStyleSheet(
+            f"QLabel {{ color: {color}; font-size: 11px; border: none; }}"
+        )
 
     def _on_setup_start_clicked(self) -> None:
         """
@@ -933,12 +1049,17 @@ class MainWindow(QMainWindow):
 
         card_layout.addSpacing(6)
 
-        # Botão: Nova Avaliação (Fase 5B-1)
+        # Botão: Nova Avaliação — único caminho de reset da aplicação.
+        # Hover em COLOR_DANGER porque a ação é sempre destrutiva para os dados
+        # em tela; no estado normal permanece neutro, para não competir com os
+        # botões de exportação logo acima. A proteção real continua sendo o
+        # diálogo de confirmação, não a cor.
         self._btn_result_next = QPushButton("🔄  Nova Avaliação")
         self._btn_result_next.setMinimumHeight(42)
         self._btn_result_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_result_next.setToolTip(
-            "Reinicia o sistema e retorna à tela de configuração para uma nova avaliação."
+            "Reinicia o sistema por completo e apaga a identificação do paciente, "
+            "retornando à tela de configuração para uma nova avaliação."
         )
         self._btn_result_next.setStyleSheet(
             f"""
@@ -951,39 +1072,12 @@ class MainWindow(QMainWindow):
                 padding: 6px 14px;
             }}
             QPushButton:hover {{
-                border-color: {COLOR_ACCENT};
+                border-color: {COLOR_DANGER};
             }}
             """
         )
         self._btn_result_next.clicked.connect(self._on_result_new_session)
         card_layout.addWidget(self._btn_result_next)
-
-        card_layout.addSpacing(4)
-
-        # Botão: Limpar Dados do Paciente (Fase 5B-2)
-        self._btn_result_clear = QPushButton("🗑️  Limpar Dados do Paciente")
-        self._btn_result_clear.setMinimumHeight(42)
-        self._btn_result_clear.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_result_clear.setToolTip(
-            "Limpa os dados do paciente atual e retorna à tela de configuração para um novo paciente."
-        )
-        self._btn_result_clear.setStyleSheet(
-            f"""
-            QPushButton {{
-                background-color: {COLOR_BG_MEDIUM};
-                color: {COLOR_TEXT_PRIMARY};
-                border: 1px solid {COLOR_TEXT_SECONDARY};
-                border-radius: 5px;
-                font-size: 13px;
-                padding: 6px 14px;
-            }}
-            QPushButton:hover {{
-                border-color: {COLOR_ACCENT};
-            }}
-            """
-        )
-        self._btn_result_clear.clicked.connect(self._on_result_clear_patient)
-        card_layout.addWidget(self._btn_result_clear)
 
         center_row.addWidget(card_frame)
         center_row.addStretch(1)
@@ -1018,50 +1112,35 @@ class MainWindow(QMainWindow):
 
     def _on_result_new_session(self) -> None:
         """
-        Inicia uma nova avaliação a partir da Tela de Resultado,
-        reutilizando exclusivamente o fluxo oficial de _new_session().
+        Reinicia o sistema por completo e retorna à Tela de Configuração em IDLE.
+
+        Este é o único caminho de reset da aplicação. Antes existiam dois
+        botões na Tela de Resultado — "Nova Avaliação" e "Limpar Dados do
+        Paciente" — visualmente idênticos e ambos executando o mesmo reset
+        completo de workers, gráficos e métricas. A única diferença entre eles
+        era preservar ou apagar a identificação do paciente, distinção
+        invisível para quem olhava a tela. Consolidar em um botão que sempre
+        limpa tudo elimina a ambiguidade na raiz: o resultado é sempre o mesmo,
+        e o diálogo de confirmação enuncia esse alcance antes de qualquer dano.
+
+        A ordem das etapas abaixo é obrigatória e não deve ser simplificada:
+        session_header.reset(), chamado dentro de _new_session(), deliberadamente
+        NÃO limpa o nome do paciente (ver o docstring dele). Por isso
+        _new_session() sozinho termina em READY, não em IDLE — quem apaga a
+        identificação e leva o estado a IDLE é a limpeza explícita dos campos
+        feita aqui.
         """
-        if not self._new_session():
+        if not self._confirm_new_session():
             return
 
-        patient_name = self.session_header._input_patient.text()
-        hand = self.session_header._combo_hand.currentText()
-        session_number = self.session_header._spin_session.value()
-
-        self._setup_input_patient.setText(patient_name)
-        self._setup_combo_hand.setCurrentText(hand)
-        self._setup_spin_session.setValue(session_number)
-
-        self._setup_btn_start.setEnabled(bool(patient_name.strip()))
-
-        self._stack.setCurrentIndex(1)
-        self._update_navigation_chrome()
-
-    def _on_result_clear_patient(self) -> None:
-        """
-        Limpa os dados de identificação do paciente e retorna à Tela de Configuração
-        no estado IDLE, após confirmação única do clínico.
-        """
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setWindowTitle("Limpar Dados do Paciente?")
-        msg.setText("Deseja limpar todos os dados de identificação do paciente?")
-        msg.setInformativeText(
-            "Os campos da tela serão redefinidos para um novo cadastro.\n"
-            "Os arquivos de relatórios (CSV e PDF) já salvos NÃO serão apagados."
-        )
-        btn_limpar = msg.addButton("Limpar Dados", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
-        msg.setDefaultButton(btn_cancelar)
-
-        msg.exec()
-
-        if msg.clickedButton() != btn_limpar:
-            return
-
+        # 1. Reset do motor: para os workers, recria as threads do zero e
+        #    limpa gráficos, métricas, widgets e log.
+        #    confirm=False porque a confirmação já foi obtida acima, com o
+        #    texto que descreve este fluxo.
         if not self._new_session(confirm=False):
             return
 
+        # 2. Identificação do paciente — o que _new_session() não apaga.
         self.session_header._input_patient.clear()
         self.session_header._combo_hand.setCurrentText("Direita")
         self.session_header._spin_session.setValue(1)
@@ -1071,9 +1150,42 @@ class MainWindow(QMainWindow):
         self._setup_spin_session.setValue(1)
         self._setup_btn_start.setEnabled(False)
 
+        # 3. Modo de filtro de volta ao padrão: uma avaliação nova começa
+        #    sempre no pipeline clínico validado, a menos que o operador
+        #    escolha outro explicitamente.
+        self._setup_combo_filter.setCurrentIndex(
+            self._setup_combo_filter.findData(config.FILTER_MODE_DEFAULT)
+        )
+
+        # 4. Estado final.
         self._set_state("IDLE")
         self._stack.setCurrentIndex(1)
         self._update_navigation_chrome()
+
+    def _confirm_new_session(self) -> bool:
+        """
+        Pede confirmação para o reset completo. Retorna True se autorizado.
+
+        Cancelar é o botão padrão: o reset é sempre destrutivo para os dados
+        em tela, e a confirmação é a única proteção contra o clique acidental.
+        """
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Iniciar Nova Avaliação?")
+        msg.setText("Deseja iniciar uma nova avaliação?")
+        msg.setInformativeText(
+            "Todos os gráficos, métricas e dados da sessão atual serão limpos.\n"
+            "A identificação do paciente — nome, mão e número da sessão — será apagada.\n"
+            "O modo de filtro voltará ao padrão: EMA + Kalman.\n\n"
+            "Os arquivos de relatórios (CSV e PDF) já salvos NÃO serão apagados."
+        )
+        btn_nova = msg.addButton("Nova Avaliação", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_cancelar)
+
+        msg.exec()
+
+        return msg.clickedButton() == btn_nova
 
     def _update_navigation_chrome(self) -> None:
         """
@@ -1209,6 +1321,13 @@ class MainWindow(QMainWindow):
         # Bloqueados durante RUNNING para evitar alteração acidental dos
         # dados de identificação enquanto a sessão está gravando.
         self.session_header.set_fields_enabled(state != "RUNNING")
+
+        # Seletor de filtro: bloqueado durante RUNNING pelo mesmo motivo, com
+        # um agravante — o modo já foi aplicado ao banco de filtros no início
+        # da sessão e está sendo gravado em cada linha do CSV. Deixá-lo
+        # editável sugeriria que trocar de modo agora surtiria algum efeito,
+        # quando na verdade a troca só valeria para a próxima sessão.
+        self._setup_combo_filter.setEnabled(state != "RUNNING")
 
         # --- Mensagem da barra de status ---
         status_messages = {
@@ -1592,6 +1711,14 @@ class MainWindow(QMainWindow):
         csv_filename: str = f"session_{safe_name}_{timestamp_str}_s{session_number}.csv"
         self._csv_path = os.path.join(config.LOG_DIR, csv_filename)
 
+        # Aplica o modo de filtro escolhido ANTES de abrir o CSV. A ordem
+        # importa: start_session() abre o arquivo e, a partir daí, cada linha
+        # gravada carrega o modo do banco atualmente instalado. Trocar o banco
+        # depois faria as primeiras linhas saírem com o modo anterior — um erro
+        # silencioso, que só apareceria no rodapé de um PDF já entregue.
+        selected_mode = self._setup_combo_filter.currentData()
+        self.processing_worker.set_filter_mode(selected_mode)
+
         # Inicia a sessão CSV no worker ANTES de iniciar as threads.
         # Isso garante que o logger esteja pronto quando os primeiros quadros chegarem.
         self.processing_worker.start_session(self._csv_path)
@@ -1615,14 +1742,15 @@ class MainWindow(QMainWindow):
 
         # Registra início no log e transita para RUNNING.
         self.log_widget.log_success(
-            f"Sessão {session_number} iniciada — {patient_name} | Mão {hand} | {csv_filename}"
+            f"Sessão {session_number} iniciada — {patient_name} | Mão {hand} | "
+            f"Filtro {selected_mode} | {csv_filename}"
         )
 
         self._set_state("RUNNING")
         self._set_logs_visible(False)
         logger.info(
-            "Sessão iniciada: paciente=%s, mão=%s, sessão=%d, csv=%s",
-            patient_name, hand, session_number, self._csv_path,
+            "Sessão iniciada: paciente=%s, mão=%s, sessão=%d, filtro=%s, csv=%s",
+            patient_name, hand, session_number, selected_mode, self._csv_path,
         )
 
         # Transição autorizada para a Página 0 (avaliação em tempo real)

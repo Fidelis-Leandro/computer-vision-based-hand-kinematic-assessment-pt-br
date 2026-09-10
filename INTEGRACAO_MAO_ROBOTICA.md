@@ -35,7 +35,7 @@ projeto histórico `Mão robo/`, mas não fazem parte desta integração.
 ## Visão geral e fluxo de dados
 
 ```
-angles_smooth["INDEX"]["TAM"]   (graus, já suavizado por EMA -> Kalman)
+angles_smooth["INDEX"]["TAM"]   (graus, já processados pelo modo de filtro da sessão)
       │
       ▼
 outputs/tam_to_servo.map_all()
@@ -98,6 +98,25 @@ independente:
 - `TAM` inválido (`None`, `NaN`, infinito, ou tipo não numérico) → retorna `None`;
   o dedo correspondente **mantém a última posição válida conhecida** (não é
   puxado para 0 nem para o valor anterior de outro dedo).
+
+### Modo de filtro e a mão robótica
+
+O `TAM` que chega aqui vem do modo de filtro escolhido na Tela de Configuração —
+`EMA_KALMAN` (padrão), `EMA`, `KALMAN` ou `RAW`. Ver
+[README.md → Modo de filtro](README.md#modo-de-filtro).
+
+- **RAW pode acionar a mão robótica normalmente.** Não há bloqueio, aviso ou
+  confirmação adicional para esse modo, e nada em `outputs/`, no Arduino, nos pinos,
+  nos servos ou no firmware muda em função do modo escolhido.
+- As proteções descritas acima **valem para todos os modos**. `RAW` apenas produz
+  `None` com mais frequência (por não ter valor anterior para onde recuar quando uma
+  medição é inválida), e esse caso já é tratado: o dedo mantém a última posição válida.
+- Efeito prático a considerar: sem suavização, os alvos de servo oscilam mais, e o
+  movimento da mão robótica fica visivelmente mais trêmulo. Isso é uma consequência
+  mecânica esperada do modo, não uma falha — o `_step_towards(..., MAX_STEP_PER_UPDATE)`
+  continua limitando a velocidade de cada passo.
+- O modo usado em cada sessão fica registrado na coluna `filter_mode` do CSV, o que
+  permite reinterpretar depois qualquer comportamento observado na mão robótica.
 
 Não há calibração por usuário, por sessão ou por tamanho de mão nesta versão — os
 limites são constantes fixas no código. Qualquer ajuste futuro desses números deve

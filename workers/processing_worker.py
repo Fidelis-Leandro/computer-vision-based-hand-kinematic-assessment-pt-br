@@ -20,7 +20,7 @@ Pipeline de dados por quadro:
     frame_bgr (np.ndarray)
         -> MediaPipe Hands                    [detecção 3D de landmarks]
         -> DigitalGoniometer.compute_all()    [ângulos brutos por articulação]
-        -> GoniometryFilterBank.smooth_all()  [EMA -> Kalman, remove instabilidade/jitter]
+        -> GoniometryFilterBank.smooth_all()  [aplica o modo de filtro da sessão]
         -> _build_skeleton()                  [sobreposição visual BGR]
         -> classify_hand_state()              [mão aberta/fechada, ASSH]
         -> compute_realtime_metrics()         [velocidade, frequência, regularidade]
@@ -224,11 +224,10 @@ class ProcessingWorker(QThread):
         # config.FILTER_MODE_DEFAULT (hoje "EMA_KALMAN", preservando o
         # pipeline clínico validado: EMA -> Kalman). Uma instância de
         # SeriesFilter por série (ex.: "INDEX_MCP", "THUMB_IP").
-        self._filter_bank: GoniometryFilterBank = GoniometryFilterBank(
-            ema_alpha=config.EMA_ALPHA,
-            kalman_q=config.KALMAN_Q,
-            kalman_r=config.KALMAN_R,
-            mode=config.FILTER_MODE_DEFAULT,
+        # A interface pode substituir esse banco antes de cada sessão,
+        # via set_filter_mode().
+        self._filter_bank: GoniometryFilterBank = self._make_filter_bank(
+            config.FILTER_MODE_DEFAULT
         )
 
         # --- Buffers circulares temporais ---
@@ -275,6 +274,49 @@ class ProcessingWorker(QThread):
         self.current_hand_side: str = "Direita"
         self.previous_hand_side: str = "Direita"
         self._hand_side_lock: threading.Lock = threading.Lock()
+
+    def _make_filter_bank(self, mode: str) -> GoniometryFilterBank:
+        """
+        Cria um banco de filtros no modo indicado, com os parâmetros de config.
+
+        Existe para que os parâmetros do banco (alpha do EMA, Q e R do Kalman)
+        fiquem escritos em um único lugar: tanto a construção inicial quanto a
+        troca de modo passam por aqui. Sem isso, um ajuste em config.EMA_ALPHA
+        valeria para a primeira sessão e seria esquecido na troca de modo.
+        """
+        return GoniometryFilterBank(
+            ema_alpha=config.EMA_ALPHA,
+            kalman_q=config.KALMAN_Q,
+            kalman_r=config.KALMAN_R,
+            mode=mode,
+        )
+
+    def set_filter_mode(self, mode: str) -> None:
+        """
+        Define o modo de filtro da próxima sessão, instalando um banco novo.
+
+        Substitui o banco inteiro em vez de reconfigurar o existente por dois
+        motivos:
+
+          1. GoniometryFilterBank.mode é somente leitura — trocar o modo no
+             lugar exigiria alterar smoothing.py, o módulo científico validado.
+          2. Um banco novo nasce sem nenhuma série criada, então nenhum estado
+             do modo anterior (média do EMA, covariância do Kalman) sobrevive
+             para contaminar as primeiras amostras do modo novo. reset_all()
+             não serviria: ele zera as séries existentes, mas preserva o modo
+             de cada uma.
+
+        Um modo inválido faz o construtor levantar ValueError ANTES da
+        atribuição, então o banco anterior continua instalado e operante —
+        o worker nunca fica sem banco.
+
+        Deve ser chamado com a thread parada, antes de start_session(): o
+        loop de run() lê self._filter_bank a cada quadro, e trocar o banco
+        com a sessão em andamento gravaria linhas com modos diferentes no
+        mesmo CSV. Quem chama é MainWindow._start_session(), que roda antes
+        de start().
+        """
+        self._filter_bank = self._make_filter_bank(mode)
 
     def set_evaluated_hand(self, side: str) -> None:
         """Atualiza o lado da mão avaliada ('Direita' ou 'Esquerda') de forma segura a partir da UI."""
@@ -461,8 +503,11 @@ class ProcessingWorker(QThread):
         landmarks = results.multi_hand_landmarks[0].landmark
         angles_raw: dict = self._gonio.compute_all(landmarks, eh_mao_direita=eh_mao_direita)
 
-        # --- Passo 4: Suavização EMA -> Kalman ---
-        # Por que a ordem EMA ANTES de Kalman importa?
+        # --- Passo 4: Suavização conforme o modo de filtro da sessão ---
+        # O banco aplica o modo instalado por set_filter_mode() no início da
+        # sessão: RAW (sem suavização), EMA, KALMAN ou EMA_KALMAN (padrão).
+        #
+        # Por que a ordem EMA ANTES de Kalman importa em EMA_KALMAN?
         #   EMA remove ruído de ALTA FREQUÊNCIA (jitter/instabilidade quadro a quadro do MediaPipe).
         #   Kalman remove ruído de BAIXA FREQUÊNCIA (deriva lenta, tremor fino).
         #   Se invertêssemos a ordem (Kalman -> EMA), o Kalman receberia o ruído
@@ -770,10 +815,16 @@ class ProcessingWorker(QThread):
 
         Parâmetros:
             angles_smooth: Dicionário de ângulos suavizados para o quadro atual.
+
+        filter_mode (self._filter_bank.mode) é registrado em toda linha do
+        CSV desta sessão, para que seja possível saber depois qual modo de
+        smoothing.py gerou os dados (Fase 5).
         """
         with self._session_lock:
             if self._session_active and self._csv_logger is not None:
-                self._csv_logger.log(self._frame_id, angles_smooth)
+                self._csv_logger.log(
+                    self._frame_id, angles_smooth, filter_mode=self._filter_bank.mode
+                )
 
                 # Executa flush a cada 60 quadros para reduzir E/S sem risco de perda de dados.
                 if self._frame_id % 60 == 0:
