@@ -1,11 +1,22 @@
 """
-smoothing.py — Pipeline obrigatório de suavização EMA -> Kalman
+smoothing.py — Camada de suavização com quatro modos de filtro
 ===============================================================
 
 Este módulo implementa a camada de suavização do sistema.
 
-Pipeline por série temporal:
-    raw_angle -> EMA -> Kalman -> smoothed_angle
+Cada série temporal (um ângulo de uma articulação) passa por um dos quatro
+modos abaixo. O modo é escolhido uma vez, antes de a sessão começar, e vale
+para a sessão inteira:
+
+    RAW         raw_angle -> raw_angle              (sem suavização)
+    EMA         raw_angle -> EMA                    (só média exponencial)
+    KALMAN      raw_angle -> Kalman                 (só filtro preditivo)
+    EMA_KALMAN  raw_angle -> EMA -> Kalman          (padrão do sistema)
+
+EMA_KALMAN é o modo padrão e corresponde ao pipeline clínico validado: EMA
+primeiro (remove o jitter de alta frequência do MediaPipe), Kalman depois
+(estima o valor real a partir da saída do EMA, não do valor bruto). Quem não
+mexer no seletor da interface obtém exatamente esse caminho.
 
 As classes aqui presentes são independentes de OpenCV e MediaPipe.
 Operam exclusivamente sobre valores numéricos, o que simplifica testes e reutilização.
@@ -27,23 +38,30 @@ proposta futura):
     ele — que chega ao overlay de vídeo, aos gráficos, aos cards da UI, ao
     CSV, ao PDF (via CSV) e à mão robótica.
 
-    Em outras palavras: apesar do nome da etapa 1 (EMA) e da etapa 2 (Kalman)
-    sugerirem estágios independentes, o código atual não oferece nenhuma
-    forma de obter "só EMA" ou "só Kalman" — SeriesFilter.update() sempre
-    executa as duas etapas em sequência, incondicionalmente. O modo de
-    operação efetivo do sistema hoje é sempre "EMA seguido de Kalman"
-    (equivalente ao que uma futura seleção de modo chamaria de EMA_KALMAN),
-    ainda que esse nome não exista formalmente como enum ou constante no
-    código atual.
+    Isso vale para os quatro modos: o que muda entre eles é apenas como
+    `angles_smooth` é calculado, nunca por onde ele passa depois.
 
-Modos de filtro (introduzidos nesta fase, ainda não conectados à produção):
-    RAW, EMA, KALMAN e EMA_KALMAN existem agora como opção explícita em
-    SeriesFilter e GoniometryFilterBank, mas workers/processing_worker.py
-    continua instanciando essas classes sem informar o modo — o que significa
-    que o pipeline de produção continua usando EMA_KALMAN, exatamente como
-    antes desta fase. Nenhum outro arquivo (config.py à parte, que só define
-    a constante de modo padrão) foi alterado para conectar esses modos a
-    qualquer fluxo real.
+Como o modo chega até aqui:
+    1. O operador escolhe o modo no seletor da tela de configuração
+       (ui/main_window.py), que já vem pré-selecionado com
+       config.FILTER_MODE_DEFAULT.
+    2. Ao iniciar a sessão, MainWindow._start_session() chama
+       ProcessingWorker.set_filter_mode(), que instala um GoniometryFilterBank
+       novo — sem nenhum resíduo do modo anterior.
+    3. Isso acontece ANTES de o arquivo CSV ser aberto, para que todas as
+       linhas da sessão registrem o mesmo modo na coluna `filter_mode`.
+    4. Durante a sessão o seletor fica bloqueado: o modo não muda no meio da
+       coleta.
+
+    O modo usado fica gravado no CSV e aparece no rodapé técnico do PDF, de
+    forma que qualquer medição possa ser interpretada sabendo como foi
+    processada.
+
+O que não deve ser alterado sem validação experimental:
+    As fórmulas de EMA e de Kalman, a ordem EMA -> Kalman em EMA_KALMAN e os
+    parâmetros de config.py (EMA_ALPHA, KALMAN_Q, KALMAN_R). Eles definem os
+    ângulos que o sistema apresenta como medição clínica; mudá-los altera os
+    valores gravados no CSV, exibidos no PDF e enviados à mão robótica.
 """
 
 import logging
@@ -274,12 +292,40 @@ class SeriesFilter:
     @property
     def stability(self) -> str:
         """
-        Classifica a estabilidade atual do filtro com base no ganho de Kalman.
+        Rótulo qualitativo do estado do filtro, consumido pelo overlay de vídeo.
 
-        Só é significativo nos modos KALMAN e EMA_KALMAN — em RAW e EMA, o
-        ganho de Kalman nunca é atualizado, então este valor não reflete a
-        estabilidade real da série nesses dois modos.
+        O valor descreve o que é verdade para o modo em uso:
+
+            RAW         -> "sem_filtro"
+            EMA         -> "suavizacao_ema"
+            KALMAN      -> "estavel" / "convergindo" / "instavel" (pelo ganho)
+            EMA_KALMAN  -> "estavel" / "convergindo" / "instavel" (pelo ganho)
+
+        RAW e EMA precisam de um rótulo próprio porque não executam a etapa
+        Kalman: nesses modos `_k_gain` nunca é recalculado e permanece no 1.0
+        definido em __init__. Classificá-los pela faixa de ganho fazia toda
+        articulação aparecer como "instavel" durante a sessão inteira, mesmo
+        com a mão parada e os dados perfeitos — o overlay acusava defeito de
+        medição onde só havia ausência de filtro de Kalman.
+
+        Isto é rotulagem, não medição: a property é somente de leitura e não
+        toca nenhum estado interno. O valor filtrado, o EMA, o Kalman, o TAM,
+        a classificação ASSH, o CSV, o PDF e os alvos de servo são exatamente
+        os mesmos com ou sem esta property.
+
+        Os limiares 0.15 / 0.40 permanecem inalterados de propósito. Com
+        Q=0.01 e R=0.10 o ganho converge para ~0.27016 e nunca cruza 0.15, o
+        que torna "estavel" inalcançável na prática — fato registrado em
+        TestStableStateReachability (tests/test_smoothing.py). Recalibrar
+        esse limiar mexeria em como o sistema declara a qualidade de uma
+        medição clínica, então depende de validação experimental e ficou
+        fora desta mudança, que é apenas semântica.
         """
+        if self.mode == FILTER_MODE_RAW:
+            return "sem_filtro"
+        if self.mode == FILTER_MODE_EMA:
+            return "suavizacao_ema"
+
         if self._k_gain < 0.15:
             return "estavel"
         elif self._k_gain < 0.40:

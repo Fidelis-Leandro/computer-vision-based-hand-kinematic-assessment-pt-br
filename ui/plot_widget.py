@@ -223,12 +223,13 @@ class GoniometryPlotWidget(QWidget):
         setData() na curva — sem cálculos, sem acesso a disco.
 
         Por que não adicionar um ponto se hand_detected for False?
-            Quando a mão não está visível (fora de quadro, encoberta), o pipeline
-            retorna ângulos zerados ou aqueles da última detecção válida. Adicionar
-            zeros ao gráfico criaria quedas abruptas para 0 que não representam
-            movimento real — são artefatos de ausência de detecção. Ao manter
-            o histórico estático, o gráfico "pausa" aguardando a mão
-            retornar ao campo de visão.
+            Quando a mão não está visível (fora de quadro, encoberta), o
+            ProcessingWorker emite um resultado com hand_detected=False e
+            angles_smooth={} — um dicionário vazio, sem nenhum ângulo. Não há
+            valor a desenhar, e inventar um zero criaria uma queda abrupta no
+            gráfico que não representa movimento real: seria um artefato da
+            ausência de detecção, não uma medição. Ao não adicionar ponto, o
+            histórico fica pausado aguardando a mão voltar ao campo de visão.
 
         Parâmetros:
             angles_smooth: Dicionário {finger: {joint: angle}} retornado por

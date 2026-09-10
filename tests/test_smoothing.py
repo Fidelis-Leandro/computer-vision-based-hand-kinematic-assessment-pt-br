@@ -836,3 +836,361 @@ class TestInvalidValueLogging:
             f.update(80.0)
 
         assert len(caplog.records) >= 1
+
+
+# =============================================================================
+# Fase 7A — semântica do indicador de estabilidade por modo
+# =============================================================================
+#
+# PROBLEMA QUE ESTES TESTES DESCREVEM (correção ainda NÃO implementada):
+#
+# `SeriesFilter.stability` classifica a série a partir de `self._k_gain`, o
+# ganho do filtro de Kalman. Só que RAW e EMA nunca executam a etapa Kalman,
+# então nesses dois modos o ganho permanece no valor de __init__ (1.0) para
+# sempre. Como o limiar de "instavel" é >= 0.40, a consequência é que RAW e
+# EMA reportam "instavel" durante a sessão inteira, mesmo com a mão parada e
+# os dados perfeitos.
+#
+# Isso não é falha de RAW nem de EMA: é o indicador visual usando uma métrica
+# que não existe nesses modos. Quem vê a tela conclui que a medição está ruim.
+#
+# A correção pretendida é APENAS SEMÂNTICA. Cada modo passa a reportar o que é
+# verdade sobre ele:
+#
+#     RAW         -> "sem_filtro"        (não há filtragem a avaliar)
+#     EMA         -> "suavizacao_ema"    (há suavização, mas não há Kalman)
+#     KALMAN      -> lógica de ganho atual, INALTERADA
+#     EMA_KALMAN  -> lógica de ganho atual, INALTERADA
+#
+# NADA de matemática muda: `stability` é uma property somente de leitura, sem
+# efeito sobre o valor filtrado, EMA, Kalman, TAM, ASSH, CSV, PDF ou servos.
+#
+# Os testes comparam contra as strings literais ("sem_filtro" etc.) e não
+# contra constantes importadas, porque a string É o contrato: ela atravessa
+# processing_worker.stability_map até goniometry_overlay._stability_color().
+#
+# NOTA SOBRE O ESTADO VERDE: o limiar de "estavel" (< 0.15) é inalcançável com
+# Q=0.01 e R=0.10 (o ganho converge para ~0.2702). Isso está documentado no
+# teste de caracterização ao final desta seção, mas NÃO é corrigido aqui:
+# recalibrar limiar é decisão científica, reservada para uma fase própria.
+
+
+class TestStabilityInRawMode:
+    """RAW não executa nenhuma etapa de filtragem — não há estabilidade de
+    filtro a reportar, e fingir que há é o que gera a tela enganosa."""
+
+    def test_raw_reports_sem_filtro(self):
+        f = SeriesFilter(mode=FILTER_MODE_RAW)
+        f.update(45.0)
+
+        assert f.stability == "sem_filtro"
+
+    @pytest.mark.parametrize("n_amostras", [1, 10, 1000])
+    def test_raw_reports_sem_filtro_regardless_of_sample_count(self, n_amostras):
+        """O status não depende de quantas amostras passaram: em RAW ele
+        descreve o modo, não um estado de convergência que não existe."""
+        f = SeriesFilter(mode=FILTER_MODE_RAW)
+        for _ in range(n_amostras):
+            f.update(45.0)
+
+        assert f.stability == "sem_filtro"
+
+    def test_raw_never_reports_instavel(self):
+        """Regressão central da Fase 7A: é exatamente este 'instavel'
+        permanente que hoje pinta todas as articulações de vermelho no
+        overlay durante uma sessão RAW inteira."""
+        f = SeriesFilter(mode=FILTER_MODE_RAW)
+
+        estados = set()
+        for i in range(500):
+            f.update(30.0 + (i % 11) * 4.0)
+            estados.add(f.stability)
+
+        assert "instavel" not in estados
+
+    def test_raw_stability_is_stable_even_with_oscillating_input(self):
+        """Entrada oscilando muito não deve mudar o status em RAW: o valor
+        descreve o modo de operação, não a qualidade do sinal."""
+        f = SeriesFilter(mode=FILTER_MODE_RAW)
+        for valor in (0.0, 180.0, 5.0, 200.0, 1.0):
+            f.update(valor)
+
+        assert f.stability == "sem_filtro"
+
+
+class TestStabilityInEmaMode:
+    """EMA suaviza, mas não roda Kalman — então tem estabilidade real, só
+    não uma que o ganho de Kalman consiga medir."""
+
+    def test_ema_reports_suavizacao_ema(self):
+        f = SeriesFilter(mode=FILTER_MODE_EMA)
+        f.update(45.0)
+
+        assert f.stability == "suavizacao_ema"
+
+    @pytest.mark.parametrize("n_amostras", [1, 10, 1000])
+    def test_ema_reports_suavizacao_ema_regardless_of_sample_count(self, n_amostras):
+        f = SeriesFilter(mode=FILTER_MODE_EMA)
+        for _ in range(n_amostras):
+            f.update(45.0)
+
+        assert f.stability == "suavizacao_ema"
+
+    def test_ema_never_reports_instavel(self):
+        f = SeriesFilter(mode=FILTER_MODE_EMA)
+
+        estados = set()
+        for i in range(500):
+            f.update(30.0 + (i % 11) * 4.0)
+            estados.add(f.stability)
+
+        assert "instavel" not in estados
+
+
+class TestStabilityInKalmanModesUnchanged:
+    """
+    KALMAN e EMA_KALMAN devem sair da Fase 7A EXATAMENTE como entraram.
+
+    A correção é restrita a RAW e EMA; se algum destes testes falhar depois
+    da implementação, a mudança vazou para os modos com Kalman — que são os
+    únicos onde o ganho realmente significa alguma coisa.
+    """
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_first_sample_is_instavel(self, mode):
+        """O ganho só é calculado a partir da segunda amostra; a primeira
+        apenas inicializa o estado, e o ganho continua no 1.0 de __init__."""
+        f = SeriesFilter(mode=mode)
+        f.update(10.0)
+
+        assert f.kalman_gain == pytest.approx(1.0)
+        assert f.stability == "instavel"
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_converged_series_reports_convergindo(self, mode):
+        f = SeriesFilter(mode=mode)
+        for _ in range(500):
+            f.update(45.0)
+
+        assert f.stability == "convergindo"
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_kalman_gain_converges_to_the_current_steady_state(self, mode):
+        """Fotografia do regime permanente atual (Q=0.01, R=0.10). Se este
+        número mudar, algum parâmetro do filtro foi alterado — o que a
+        Fase 7A proíbe explicitamente."""
+        f = SeriesFilter(mode=mode)
+        for _ in range(500):
+            f.update(45.0)
+
+        assert f.kalman_gain == pytest.approx(0.27015621, abs=1e-8)
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_reset_returns_to_instavel(self, mode):
+        f = SeriesFilter(mode=mode)
+        for _ in range(500):
+            f.update(45.0)
+
+        f.reset()
+
+        assert f.kalman_gain == pytest.approx(1.0)
+        assert f.stability == "instavel"
+
+
+class TestStabilityDoesNotAffectFilterMath:
+    """
+    O status é somente leitura. Consultá-lo não pode mover o filtro.
+
+    Esta é a garantia que separa "correção visual" de "alteração científica":
+    se ler `stability` alterasse qualquer estado interno, a Fase 7A deixaria
+    de ser apenas visual.
+    """
+
+    @pytest.mark.parametrize(
+        "mode",
+        [FILTER_MODE_RAW, FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN],
+    )
+    def test_reading_stability_does_not_change_the_filtered_output(self, mode):
+        entrada = [10.0, 25.0, 18.0, 40.0, 33.0, 51.0, 47.0]
+
+        sem_leitura = SeriesFilter(mode=mode)
+        saida_sem_leitura = [sem_leitura.update(v) for v in entrada]
+
+        com_leitura = SeriesFilter(mode=mode)
+        saida_com_leitura = []
+        for v in entrada:
+            com_leitura.stability          # leitura antes
+            saida_com_leitura.append(com_leitura.update(v))
+            com_leitura.stability          # leitura depois
+
+        assert saida_com_leitura == saida_sem_leitura
+
+    @pytest.mark.parametrize(
+        "mode",
+        [FILTER_MODE_RAW, FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN],
+    )
+    def test_reading_stability_does_not_change_internal_state(self, mode):
+        f = SeriesFilter(mode=mode)
+        f.update(45.0)
+        f.update(60.0)
+        antes = (f._ema_value, f._x, f._p, f._k_gain, f._n_updates)
+
+        for _ in range(10):
+            f.stability
+
+        assert (f._ema_value, f._x, f._p, f._k_gain, f._n_updates) == antes
+
+    def test_filter_parameters_still_come_from_config(self):
+        """Trava os parâmetros que a Fase 7A não pode encostar."""
+        f = SeriesFilter()
+
+        assert f.ema_alpha == pytest.approx(config.EMA_ALPHA)
+        assert f.q == pytest.approx(config.KALMAN_Q)
+        assert f.r == pytest.approx(config.KALMAN_R)
+
+    @pytest.mark.parametrize(
+        "mode,esperado",
+        [
+            (FILTER_MODE_RAW, [10.0, 25.0, 18.0]),
+            (FILTER_MODE_EMA, [10.0, 14.5, 15.55]),
+        ],
+    )
+    def test_numeric_output_snapshot_for_stateless_and_ema_modes(self, mode, esperado):
+        """Fotografia numérica: a saída dos filtros precisa ser idêntica
+        antes e depois da Fase 7A."""
+        f = SeriesFilter(mode=mode)
+        saida = [f.update(v) for v in (10.0, 25.0, 18.0)]
+
+        assert saida == pytest.approx(esperado)
+
+
+class TestStabilityInvalidValuesUnchanged:
+    """
+    Valores inválidos continuam sendo tratados exatamente como antes: o
+    estado interno não é tocado, nada vira 0.0, e agora também o status de
+    estabilidade não pode ser corrompido por eles.
+    """
+
+    @pytest.mark.parametrize(
+        "invalido", [None, float("nan"), float("inf"), float("-inf"), "abc"]
+    )
+    def test_raw_keeps_sem_filtro_after_invalid_values(self, invalido):
+        f = SeriesFilter(mode=FILTER_MODE_RAW)
+        f.update(45.0)
+
+        assert f.update(invalido) is None
+        assert f.stability == "sem_filtro"
+
+    @pytest.mark.parametrize(
+        "invalido", [None, float("nan"), float("inf"), float("-inf"), "abc"]
+    )
+    def test_ema_keeps_suavizacao_ema_after_invalid_values(self, invalido):
+        f = SeriesFilter(mode=FILTER_MODE_EMA)
+        f.update(45.0)
+
+        assert f.update(invalido) == pytest.approx(45.0)
+        assert f.stability == "suavizacao_ema"
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_kalman_modes_keep_their_status_after_invalid_values(self, mode):
+        f = SeriesFilter(mode=mode)
+        for _ in range(500):
+            f.update(45.0)
+        status_antes = f.stability
+
+        f.update(float("nan"))
+
+        assert f.stability == status_antes
+
+    @pytest.mark.parametrize(
+        "mode",
+        [FILTER_MODE_RAW, FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN],
+    )
+    def test_invalid_value_never_becomes_zero_in_any_mode(self, mode):
+        f = SeriesFilter(mode=mode)
+        f.update(45.0)
+
+        assert f.update(None) != 0.0
+
+
+class TestFilterBankStabilityPerMode:
+    """
+    O worker não lê SeriesFilter diretamente: ele monta `stability_map` a
+    partir de GoniometryFilterBank.get_stability(). É por esse caminho que o
+    status chega ao overlay, então ele também precisa estar correto.
+    """
+
+    @pytest.mark.parametrize(
+        "mode,esperado",
+        [
+            (FILTER_MODE_RAW, "sem_filtro"),
+            (FILTER_MODE_EMA, "suavizacao_ema"),
+        ],
+    )
+    def test_bank_reports_the_mode_status_for_stateless_modes(self, mode, esperado):
+        bank = GoniometryFilterBank(mode=mode)
+        bank.update("INDEX", "MCP", 45.0)
+
+        assert bank.get_stability("INDEX", "MCP") == esperado
+
+    @pytest.mark.parametrize(
+        "mode",
+        [FILTER_MODE_RAW, FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN],
+    )
+    def test_unknown_series_is_still_nao_inicializado(self, mode):
+        """Série que nunca recebeu amostra continua distinguível de uma que
+        recebeu — isso não muda em nenhum modo."""
+        bank = GoniometryFilterBank(mode=mode)
+
+        assert bank.get_stability("INDEX", "MCP") == "nao_inicializado"
+
+    @pytest.mark.parametrize(
+        "mode",
+        [FILTER_MODE_RAW, FILTER_MODE_EMA, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN],
+    )
+    def test_every_mode_reports_a_non_empty_status(self, mode):
+        """Nenhum modo pode devolver string vazia ou None: o overlay usa
+        esse valor como chave de cor."""
+        bank = GoniometryFilterBank(mode=mode)
+        bank.update("INDEX", "MCP", 45.0)
+        status = bank.get_stability("INDEX", "MCP")
+
+        assert isinstance(status, str) and status.strip()
+
+
+class TestStableStateReachability:
+    """
+    Teste de CARACTERIZAÇÃO, não de requisito.
+
+    Documenta que o estado "estavel" (ganho < 0.15) é inalcançável com os
+    parâmetros atuais: o ganho de Kalman converge monotonicamente para
+    ~0.27016 e nunca desce abaixo disso. Esta é a evidência que sustenta a
+    fase científica futura sobre recalibrar o limiar.
+
+    A Fase 7A NÃO corrige isso — mexer em limiar, Q ou R exige validação
+    experimental. O teste existe para que o fato fique registrado e para
+    detectar se alguém alterar Q/R sem perceber a consequência.
+    """
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_gain_never_drops_below_the_stable_threshold(self, mode):
+        f = SeriesFilter(mode=mode)
+
+        menor_ganho = f.kalman_gain
+        for _ in range(2000):
+            f.update(45.0)
+            menor_ganho = min(menor_ganho, f.kalman_gain)
+
+        assert menor_ganho > 0.15
+        assert menor_ganho == pytest.approx(0.27015621, abs=1e-8)
+
+    @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
+    def test_estavel_is_never_reported_in_practice(self, mode):
+        f = SeriesFilter(mode=mode)
+
+        estados = set()
+        for _ in range(2000):
+            f.update(45.0)
+            estados.add(f.stability)
+
+        assert "estavel" not in estados

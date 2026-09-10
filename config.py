@@ -69,14 +69,21 @@ KALMAN_Q: float = 0.01
 # na estimativa anterior.
 KALMAN_R: float = 0.10
 
-# Modo de filtro padrão para SeriesFilter/GoniometryFilterBank (smoothing.py).
-# "EMA_KALMAN" é o único modo já usado em produção — mantém o comportamento
-# clínico validado (EMA seguido de Kalman). "RAW", "EMA" e "KALMAN" existem
-# como opção em smoothing.py, mas nenhum outro módulo do sistema lê ou usa
-# esta constante ainda: workers/processing_worker.py continua instanciando
-# GoniometryFilterBank() sem informar modo, o que já produz EMA_KALMAN por
-# ser o default da própria classe. Alterar este valor NÃO tem nenhum efeito
-# no pipeline em produção até que uma fase futura conecte essa seleção.
+# Modo de filtro inicial do sistema (ver smoothing.py para os quatro modos:
+# RAW, EMA, KALMAN e EMA_KALMAN). "EMA_KALMAN" mantém o comportamento clínico
+# validado — EMA seguido de Kalman.
+#
+# Esta constante é a fonte única do padrão e tem dois consumidores:
+#   - workers/processing_worker.py usa este valor ao criar o banco de filtros
+#     no construtor, antes de qualquer sessão existir;
+#   - ui/main_window.py usa este valor para pré-selecionar o seletor "Modo de
+#     Filtro" na tela de configuração, e para restaurá-lo em Nova Avaliação.
+#
+# O operador pode escolher outro modo antes de iniciar a sessão. A escolha é
+# aplicada ao worker antes de o CSV ser aberto, então vale para a sessão
+# inteira e fica registrada na coluna filter_mode de cada linha. Alterar o
+# valor aqui muda apenas qual modo vem pré-selecionado — não impede nem força
+# nenhuma escolha na interface.
 FILTER_MODE_DEFAULT: str = "EMA_KALMAN"
 
 # =============================================================================

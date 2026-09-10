@@ -54,6 +54,13 @@ STAB_CONV = (40, 200, 255)
 STAB_UNSTAB = (60, 60, 255)
 STAB_UNINIT = (80, 80, 80)
 
+# Modos sem etapa Kalman (RAW e EMA). Cinza claro: neutro de propósito —
+# vermelho acusaria um defeito que não existe, e verde afirmaria uma
+# convergência de Kalman que esses modos nem chegam a calcular. Cor própria,
+# e não STAB_UNINIT, para continuar distinguindo uma série que está medindo
+# de uma que ainda não recebeu nenhuma amostra.
+STAB_NO_KALMAN = (150, 150, 150)
+
 ARM_LEN = 55
 ARC_RAD = 28
 ARC_TICK = 3
@@ -105,11 +112,23 @@ GONIO_JOINTS = [
 # =============================================================================
 
 def _stability_color(status: str) -> Tuple[int, int, int]:
+    """
+    Cor do ponto de estabilidade, a partir do status de SeriesFilter.stability.
+
+    "sem_filtro" (RAW) e "suavizacao_ema" (EMA) são estados normais de
+    operação, não avarias — por isso recebem cinza neutro em vez das cores de
+    qualidade de convergência, que só fazem sentido onde o Kalman roda.
+
+    Um status desconhecido cai em STAB_UNINIT: preferimos um ponto neutro a
+    uma exceção no meio do desenho do quadro.
+    """
     return {
         "estavel": STAB_STABLE,
         "convergindo": STAB_CONV,
         "instavel": STAB_UNSTAB,
         "nao_inicializado": STAB_UNINIT,
+        "sem_filtro": STAB_NO_KALMAN,
+        "suavizacao_ema": STAB_NO_KALMAN,
     }.get(status, STAB_UNINIT)
 
 
