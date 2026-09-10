@@ -237,3 +237,87 @@ def test_dashboard_utils_classify_hand_state():
     assert state["estados_dedos"]["THUMB"]["TAM"] == 90.0
     assert state["estados_dedos"]["THUMB"]["fechado"] == True
     assert state["estados_dedos"]["THUMB"]["rotulo_assh"] == "Bom"
+
+
+# =============================================================================
+# Fase 5 — testes de regressão para filter_mode no CSV
+# =============================================================================
+#
+# GoniometryCSVLogger.log() aceita filter_mode (default "EMA_KALMAN" para
+# preservar chamadas antigas sem esse parâmetro) e grava a coluna sempre
+# como a última do cabeçalho.
+
+@pytest.mark.parametrize("mode", ["RAW", "EMA", "KALMAN", "EMA_KALMAN"])
+def test_csv_logger_writes_filter_mode_as_last_column(mode):
+    # A. filter_mode deve aparecer como a ÚLTIMA coluna do cabeçalho, com o
+    # valor exato do modo informado, sem afetar nenhuma coluna existente.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_filter_mode.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+
+        logger.log(1, angles, filter_mode=mode)
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            assert reader.fieldnames[-1] == "filter_mode"
+            # As 24 colunas atuais continuam presentes, na mesma ordem.
+            assert reader.fieldnames[:-1] == [
+                "timestamp", "frame_id",
+                "INDEX_MCP", "INDEX_PIP", "INDEX_DIP", "INDEX_ABD", "INDEX_TAM",
+                "MIDDLE_MCP", "MIDDLE_PIP", "MIDDLE_DIP", "MIDDLE_ABD", "MIDDLE_TAM",
+                "RING_MCP", "RING_PIP", "RING_DIP", "RING_ABD", "RING_TAM",
+                "PINKY_MCP", "PINKY_PIP", "PINKY_DIP", "PINKY_ABD", "PINKY_TAM",
+                "THUMB_MCP", "THUMB_IP", "THUMB_TAM",
+            ]
+
+            row = list(reader)[0]
+            assert row["filter_mode"] == mode
+            # Continua sendo o mesmo valor clínico de sempre, sem mudança de precisão.
+            assert float(row["THUMB_TAM"]) == angles["THUMB"]["TAM"]
+
+
+def test_csv_logger_filter_mode_is_not_written_as_numeric_data():
+    # A. filter_mode é um rótulo textual, não deve ser interpretável como
+    # número — protege contra alguém tratar essa coluna como dado clínico.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_filter_mode_text.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+        logger.log(1, angles, filter_mode="EMA_KALMAN")
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            row = list(reader)[0]
+            with pytest.raises(ValueError):
+                float(row["filter_mode"])
+
+
+def test_csv_logger_without_filter_mode_defaults_to_ema_kalman():
+    # B. Retrocompatibilidade da API Python: chamar log() sem informar
+    # filter_mode (como todo o código anterior à Fase 5 já faz) deve
+    # continuar funcionando, e a coluna nova deve assumir "EMA_KALMAN" —
+    # o modo padrão seguro. Isto testa o DEFAULT DO MÉTODO, não uma
+    # afirmação sobre como CSVs já gravados no passado devem ser lidos
+    # (isso é responsabilidade de load_session_csv(), testado em
+    # tests/test_session_report.py).
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_no_mode_arg.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+
+        logger.log(1, angles)  # chamada antiga, sem filter_mode
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            row = list(reader)[0]
+            assert row.get("filter_mode") == "EMA_KALMAN"

@@ -123,10 +123,48 @@ ASSH_COLORS_RGB: Dict[str, Tuple[int, int, int]] = {
 
 REPORT_TITLE = "Goniometria Digital da Mão — Relatório de Sessão"
 
-FOOTER_METHOD = (
-    "Método: webcam + rastreamento de marcos anatômicos (MediaPipe Hands) "
-    "+ suavização EMA/Kalman."
-)
+# Rótulo legível de cada modo de filtro (smoothing.py) para o rodapé do PDF.
+# Dicionário simples em vez de Enum/classe — são só 4 rótulos fixos.
+_FILTER_MODE_LABELS = {
+    "RAW": "RAW",
+    "EMA": "EMA",
+    "KALMAN": "Kalman",
+    "EMA_KALMAN": "EMA + Kalman",
+}
+
+
+def build_footer_method_text(filter_mode: Optional[str], assumed: bool) -> str:
+    """
+    Monta a frase de método do rodapé técnico do PDF.
+
+    Antes da Fase 5, o sistema só usava EMA_KALMAN, então um texto fixo
+    ("... + suavização EMA/Kalman.") era sempre verdade. Agora que RAW,
+    EMA, KALMAN e EMA_KALMAN existem, um texto fixo mentiria sobre
+    qualquer sessão que tenha usado um modo diferente — por isso o texto
+    precisa ser montado a partir do modo real gravado no CSV da sessão.
+
+    `assumed=True` (CSV gravado antes da Fase 5, sem a coluna filter_mode)
+    é tratado à parte: sabemos que só existia EMA_KALMAN até aqui, mas
+    isso é uma suposição sobre o passado, não um dado medido — o relatório
+    nunca pode apresentar essa suposição como se fosse um fato confirmado.
+    """
+    base = "Método: webcam + rastreamento de marcos anatômicos (MediaPipe Hands)"
+
+    if assumed:
+        return (
+            f"{base}. Modo de filtragem: EMA + Kalman "
+            "(assumido para sessão antiga sem registro de modo)."
+        )
+
+    label = _FILTER_MODE_LABELS.get(filter_mode)
+    if label is None:
+        # Modo ausente/desconhecido sem ser um CSV antigo (ex.: valor
+        # corrompido) — texto transparente, nunca afirma EMA + Kalman.
+        return f"{base}. Modo de filtragem: não identificado ({filter_mode!r})."
+
+    return f"{base}. Modo de filtragem: {label}."
+
+
 FOOTER_DISCLAIMER = (
     "Este relatório destina-se a uso acadêmico e suporte à documentação funcional. "
     "Não substitui validação clínica formal."
@@ -163,10 +201,19 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
         "session_start": float,   # primeiro timestamp
         "session_end":   float,   # último timestamp
         "n_frames":      int,
+        "filter_mode": str | None,      # modo lido do CSV, ou None se ausente
+        "filter_mode_assumed": bool,    # True = CSV antigo, sem essa coluna
     }
+
+    filter_mode vem da coluna "filter_mode" (Fase 5), a mesma em toda linha
+    da sessão — basta ler uma vez. CSVs gravados antes da Fase 5 não têm
+    essa coluna; nesse caso, filter_mode fica None e filter_mode_assumed
+    fica True, para que quem gera o relatório saiba que o modo não foi
+    registrado e não pode ser afirmado como fato.
     """
     timestamps: List[float] = []
     frame_ids: List[int] = []
+    filter_mode_from_csv: Optional[str] = None
 
     fingers_data: Dict[str, Dict[str, List[float]]] = {}
     for finger in FINGERS:
@@ -185,6 +232,13 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
 
             timestamps.append(ts)
             frame_ids.append(fid)
+
+            # filter_mode é o mesmo em toda linha da sessão — sobrescrever
+            # a cada linha é inofensivo e mais simples do que só ler na
+            # primeira. row.get() devolve None se a coluna não existir
+            # (CSV antigo) ou "" se existir mas vier vazia; os dois casos
+            # devem virar None aqui.
+            filter_mode_from_csv = row.get("filter_mode") or None
 
             # Dedos longos
             for finger in ("INDEX", "MIDDLE", "RING", "PINKY"):
@@ -230,6 +284,8 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
         "session_start": session_start,
         "session_end": session_end,
         "n_frames": len(timestamps),
+        "filter_mode": filter_mode_from_csv,
+        "filter_mode_assumed": filter_mode_from_csv is None,
     }
 
 
@@ -956,8 +1012,10 @@ def _add_legend(pdf: _ReportPDF) -> None:
     pdf.ln(3)
 
 
-def _add_footer_technical(pdf: _ReportPDF) -> None:
-    """Adiciona o rodapé técnico."""
+def _add_footer_technical(
+    pdf: _ReportPDF, filter_mode: Optional[str], filter_mode_assumed: bool
+) -> None:
+    """Adiciona o rodapé técnico, incluindo o modo de filtragem real da sessão."""
     pdf.set_draw_color(180, 180, 190)
     pdf.set_line_width(0.3)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -965,7 +1023,8 @@ def _add_footer_technical(pdf: _ReportPDF) -> None:
 
     pdf.set_font("Helvetica", "I", 7)
     pdf.set_text_color(100, 100, 110)
-    _multi_cell(pdf, 0, 4, FOOTER_METHOD)
+    footer_method = build_footer_method_text(filter_mode, filter_mode_assumed)
+    _multi_cell(pdf, 0, 4, footer_method)
     pdf.ln(1)
     pdf.set_font("Helvetica", "B", 7)
     pdf.set_text_color(180, 80, 80)
@@ -1109,7 +1168,7 @@ def generate_pdf_report(
     # Rodapé técnico
     if pdf.get_y() > 250:
         pdf.add_page()
-    _add_footer_technical(pdf)
+    _add_footer_technical(pdf, data["filter_mode"], data["filter_mode_assumed"])
 
     # Salva o PDF
     pdf.output(output_path)

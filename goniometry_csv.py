@@ -64,7 +64,16 @@ CSV_FIELDS = [
     "THUMB_MCP",
     "THUMB_IP",
     "THUMB_TAM",
+    # filter_mode fica por último, nunca no meio: assim, qualquer ferramenta
+    # externa que leia as colunas antigas por posição continua funcionando
+    # sem mudança — só quem já espera a coluna nova precisa procurá-la.
+    "filter_mode",
 ]
+
+# Os únicos modos que smoothing.py implementa hoje. Mantido aqui como uma
+# tupla simples (não um Enum importado de smoothing.py) para este arquivo
+# não depender de outro módulo só para validar uma string.
+CSV_VALID_FILTER_MODES = ("RAW", "EMA", "KALMAN", "EMA_KALMAN")
 
 
 class GoniometryCSVLogger:
@@ -85,13 +94,30 @@ class GoniometryCSVLogger:
             self._writer.writeheader()
             self._file.flush()
 
-    def log(self, frame_id: int, angles: Dict[str, Dict[str, float]]) -> None:
+    def log(
+        self,
+        frame_id: int,
+        angles: Dict[str, Dict[str, float]],
+        filter_mode: str = "EMA_KALMAN",
+    ) -> None:
         """
         Grava uma linha correspondente a um quadro processado.
 
         Espera o dicionário de ângulos no mesmo formato retornado por:
         DigitalGoniometer.compute_all() / GoniometryFilterBank.smooth_all()
+
+        filter_mode identifica qual modo de smoothing.py produziu os
+        ângulos desta linha. O default "EMA_KALMAN" existe para que
+        chamadas antigas a log(frame_id, angles) — de antes da Fase 5 —
+        continuem funcionando sem alteração, gravando o único modo que
+        o sistema já usava.
         """
+        if filter_mode not in CSV_VALID_FILTER_MODES:
+            raise ValueError(
+                f"filter_mode inválido: {filter_mode!r}. "
+                f"Use um de {CSV_VALID_FILTER_MODES}."
+            )
+
         row: Dict[str, Any] = {
             "timestamp": time.time(),
             "frame_id": frame_id,
@@ -109,6 +135,8 @@ class GoniometryCSVLogger:
         row["THUMB_MCP"] = _safe_round(thumb.get("MCP"))
         row["THUMB_IP"]  = _safe_round(thumb.get("IP"))
         row["THUMB_TAM"] = _safe_round(thumb.get("TAM"))
+
+        row["filter_mode"] = filter_mode
 
         self._writer.writerow(row)
 

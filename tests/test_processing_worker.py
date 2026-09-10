@@ -13,6 +13,8 @@ inevitável — o construtor cria um mp.solutions.hands.Hands), mas nenhuma
 câmera é aberta e nenhuma thread é iniciada (nunca chamamos .start()).
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
 import config
@@ -117,3 +119,54 @@ class TestUpdateBuffersInvalidValues:
 
         assert list(worker._tam_buffers["INDEX"]) == [45.0, 60.0]
         assert list(worker._time_buffers["INDEX"]) == [1.0, 3.0]
+
+
+class TestProcessingWorkerForwardsFilterModeToCsvLogger:
+    """
+    Fase 5: ProcessingWorker encaminha self._filter_bank.mode ao
+    GoniometryCSVLogger em cada linha registrada. Usa um logger fake
+    (MagicMock) — nenhum arquivo CSV real é criado, nenhuma
+    câmera/Arduino/interface é usada.
+    """
+
+    def _worker_with_fake_logger(self) -> tuple:
+        worker = ProcessingWorker()
+        fake_logger = MagicMock()
+        worker._csv_logger = fake_logger
+        worker._session_active = True
+        worker._frame_id = 7
+        return worker, fake_logger
+
+    def test_try_log_csv_forwards_current_filter_bank_mode(self):
+        worker, fake_logger = self._worker_with_fake_logger()
+
+        worker._try_log_csv({"INDEX": {"MCP": 10.0}})
+
+        fake_logger.log.assert_called_once()
+        _, kwargs = fake_logger.log.call_args
+        assert kwargs.get("filter_mode") == worker._filter_bank.mode
+
+    def test_try_log_csv_forwards_ema_kalman_when_that_is_the_configured_default(self):
+        assert config.FILTER_MODE_DEFAULT == FILTER_MODE_EMA_KALMAN
+        worker, fake_logger = self._worker_with_fake_logger()
+
+        worker._try_log_csv({"INDEX": {"MCP": 10.0}})
+
+        _, kwargs = fake_logger.log.call_args
+        assert kwargs.get("filter_mode") == FILTER_MODE_EMA_KALMAN
+
+    def test_try_log_csv_forwards_a_non_default_mode_too(self, monkeypatch):
+        # monkeypatch restaura config.FILTER_MODE_DEFAULT automaticamente
+        # ao final do teste — nenhuma limpeza manual necessária.
+        monkeypatch.setattr(config, "FILTER_MODE_DEFAULT", FILTER_MODE_RAW)
+
+        worker = ProcessingWorker()  # criado DEPOIS do monkeypatch: usa RAW
+        fake_logger = MagicMock()
+        worker._csv_logger = fake_logger
+        worker._session_active = True
+        worker._frame_id = 1
+
+        worker._try_log_csv({"INDEX": {"MCP": 10.0}})
+
+        _, kwargs = fake_logger.log.call_args
+        assert kwargs.get("filter_mode") == FILTER_MODE_RAW
