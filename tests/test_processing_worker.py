@@ -170,3 +170,39 @@ class TestProcessingWorkerForwardsFilterModeToCsvLogger:
 
         _, kwargs = fake_logger.log.call_args
         assert kwargs.get("filter_mode") == FILTER_MODE_RAW
+
+
+# =============================================================================
+# Fase 7D-a — transição para a remoção de reset_state()
+# =============================================================================
+
+
+class TestResetStateRemovedInPhase7Db:
+    """
+    reset_state() foi escrito para reaproveitar o worker entre sessões, mas o
+    sistema seguiu outro caminho: MainWindow._new_session() destrói e recria
+    os workers do zero, porque um QThread não reinicia depois que run()
+    retorna. O worker recriado já nasce com fila vazia, banco de filtros novo,
+    buffers zerados e contadores em zero — tudo o que reset_state() faria, e
+    ainda com um MediaPipe novo.
+
+    Resultado: o método nunca chegou a ser chamado. Uma busca no repositório
+    inteiro encontra uma única ocorrência, a própria linha `def`. A docstring
+    dele afirma "Chamado quando uma nova sessão é iniciada", o que nunca foi
+    verdade.
+
+    O método foi removido na Fase 7D-b. O teste abaixo permanece como guarda
+    permanente contra sua reintrodução acidental.
+
+    Não instancia ProcessingWorker — hasattr na classe basta, e assim nenhum
+    MediaPipe é carregado neste teste.
+    """
+
+    def test_reset_state_no_longer_exists(self):
+        """Método removido. Este teste impede sua reintrodução acidental."""
+        assert not hasattr(ProcessingWorker, "reset_state")
+
+    def test_reset_for_hand_change_still_exists(self):
+        """Guarda contra remoção excessiva: _reset_for_hand_change() tem nome
+        parecido, mas é chamado de verdade quando a mão avaliada muda."""
+        assert hasattr(ProcessingWorker, "_reset_for_hand_change")

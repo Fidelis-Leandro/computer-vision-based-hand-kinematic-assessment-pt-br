@@ -334,31 +334,6 @@ class ProcessingWorker(QThread):
         self.hand_side_reset.emit()
         logging.info("Mão avaliada alterada. Filtros e histórico redefinidos.")
 
-    def reset_state(self) -> None:
-        """
-        Redefine o estado interno do worker. Chamado quando uma nova sessão é iniciada.
-        Esvazia a fila de quadros, redefine os filtros e zera todos os buffers numéricos.
-        """
-        # Esvazia a fila pendente sem bloquear
-        while not self._frame_queue.empty():
-            try:
-                self._frame_queue.get_nowait()
-            except queue.Empty:
-                break
-
-        # Redefine o estado científico
-        self._filter_bank.reset_all()
-
-        # Limpa medições históricas de todos os dedos
-        for finger in FINGERS:
-            self._tam_buffers[finger].clear()
-            self._time_buffers[finger].clear()
-
-        # Redefine contadores de quadros
-        self._no_hand_frames = 0
-        self._frame_id = 0
-        self._fps_ema = 0.0
-
     # =========================================================================
     # INTERFACE COM CameraWorker
     # =========================================================================

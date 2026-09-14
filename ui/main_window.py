@@ -384,23 +384,9 @@ class MainWindow(QMainWindow):
             """
         )
 
-        # --- Botões de controle de sessão (Compatibilidade / Transição) ---
-        # NOTA DE COMPATIBILIDADE: Os botões abaixo são mantidos instanciados em memória
-        # para preservar compatibilidade com a máquina de estados (_set_state) e signals.
-        # A interface visual ativa migrou as ações pós-sessão para a Tela 3 (Página 2,
-        # Fases 5A e 5B) e o botão Iniciar para a Tela 1 (Página 1, Fase 2).
-        # Apenas self.btn_end é posicionado visualmente na barra fixa superior (_assessment_bar).
-
-        # Botão Nova Sessão — para resetar o sistema a qualquer momento
-        self.btn_new_session = QPushButton("🔄  Nova Sessão")
-        self.btn_new_session.setToolTip("Limpa todos os dados em tela para registrar um novo paciente ou teste limpo.")
-
-        # Botão principal Iniciar — estilo verde destacado.
-        self.btn_start = QPushButton("▶  Iniciar Sessão")
-        self.btn_start.setStyleSheet(BUTTON_PRIMARY_STYLE)
-        self.btn_start.setToolTip("Inicia a captura de vídeo e o processamento goniométrico.")
-
+        # --- Botões de controle de sessão ---
         # Botão Encerrar Sessão — estilo vermelho para ação destrutiva/final.
+        # Fica na barra fixa superior (_assessment_bar), visível durante RUNNING.
         self.btn_end = QPushButton("■  Encerrar Sessão")
         self.btn_end.setStyleSheet(BUTTON_DANGER_STYLE)
         self.btn_end.setMinimumHeight(42)
@@ -416,16 +402,6 @@ class MainWindow(QMainWindow):
         self.btn_robot_hand.setToolTip(
             "Liga ou desliga a replicação de movimento na mão robótica (Arduino)."
         )
-
-        # Botões de pós-processamento — estilos padrão do tema.
-        self.btn_pdf = QPushButton("📄  Gerar Relatório PDF")
-        self.btn_pdf.setToolTip("Gera o relatório clínico em PDF a partir do CSV da sessão encerrada.")
-
-        self.btn_csv = QPushButton("💾  Exportar CSV")
-        self.btn_csv.setToolTip("Copia o arquivo CSV da sessão para um local escolhido.")
-
-        self.btn_historico = QPushButton("📁  Abrir Pasta de Sessões")
-        self.btn_historico.setToolTip("Abre a pasta onde os arquivos de sessão são salvos.")
 
     def _create_workers(self) -> None:
         """
@@ -493,13 +469,8 @@ class MainWindow(QMainWindow):
 
         # --- Botões → ações ---
         self.btn_toggle_logs.clicked.connect(self._toggle_logs)
-        self.btn_new_session.clicked.connect(self._new_session)
-        self.btn_start.clicked.connect(self._start_session)
         self.btn_end.clicked.connect(self._confirm_end_session)
         self.btn_robot_hand.clicked.connect(self._on_robot_hand_clicked)
-        self.btn_pdf.clicked.connect(self._gerar_relatorio)
-        self.btn_csv.clicked.connect(self._exportar_csv)
-        self.btn_historico.clicked.connect(self._abrir_historico)
 
     # =========================================================================
     # MONTAGEM DO LAYOUT
@@ -1204,46 +1175,6 @@ class MainWindow(QMainWindow):
         )
         self._assessment_bar.setVisible(is_eval_active)
 
-    def _build_button_row(self) -> QHBoxLayout:
-        """
-        Constrói a linha horizontal legada com os botões de controle de sessão.
-
-        Status de compatibilidade:
-            Método mantido por compatibilidade de API interna. Não é inserido
-            em nenhum layout visível da interface desde a Fase 6 do redesign.
-
-        Comportamento dos componentes:
-            - Os botões retornados continuam instanciados em self._create_widgets()
-              e conectados aos seus respectivos slots em self._connect_signals().
-            - self.btn_end ('Encerrar Sessão') é o único botão reaproveitado
-              visualmente na interface, sendo inserido na barra fixa superior
-              (_assessment_bar), externa à área de rolagem.
-            - Os demais botões legados (self.btn_new_session, self.btn_start,
-              self.btn_pdf, self.btn_csv, self.btn_historico) permanecem em memória
-              e gerenciados por self._set_state(), mas não são exibidos na Página 0
-              (a experiência clínica pós-sessão foi migrada para a Tela 3 / Página 2).
-
-        Retorna:
-            QHBoxLayout estruturado com os controles legados.
-        """
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        # Grupo esquerdo: controle de sessão.
-        btn_row.addWidget(self.btn_new_session)
-        btn_row.addWidget(self.btn_start)
-        btn_row.addWidget(self.btn_end)
-
-        # Separador elástico entre grupos de botões.
-        btn_row.addStretch()
-
-        # Grupo direito: exportação e navegação.
-        btn_row.addWidget(self.btn_pdf)
-        btn_row.addWidget(self.btn_csv)
-        btn_row.addWidget(self.btn_historico)
-
-        return btn_row
-
     # =========================================================================
     # CONTROLE DA GAVETA DE LOGS (FASE 4B)
     # =========================================================================
@@ -1301,21 +1232,13 @@ class MainWindow(QMainWindow):
         self._state = state
 
         # --- Botões de controle de sessão ---
-        # Nova Sessão: disponível apenas após encerrar uma sessão.
-        self.btn_new_session.setEnabled(state == "STOPPED")
-
-        # Iniciar: habilitado apenas quando há dados para iniciar (READY).
-        self.btn_start.setEnabled(state == "READY")
-
         # Encerrar: habilitado apenas durante gravação ativa (RUNNING).
         self.btn_end.setEnabled(state == "RUNNING")
 
-        # --- Botões de exportação ---
-        # Habilitados apenas após encerramento formal da sessão (STOPPED).
-        # Em RUNNING, o CSV ainda está sendo escrito — exportar seria inconsistente.
-        self.btn_pdf.setEnabled(state == "STOPPED")
-        self.btn_csv.setEnabled(state == "STOPPED")
-        self.btn_historico.setEnabled(state in ("IDLE", "READY", "STOPPED"))
+        # Os botões de exportação (PDF, CSV, pasta de sessões) não aparecem
+        # aqui: vivem na Tela de Resultado, que só é alcançada depois de
+        # _end_session(). O próprio fluxo de navegação já garante que não
+        # sejam usados com uma sessão em andamento.
 
         # --- Campos do formulário ---
         # Bloqueados durante RUNNING para evitar alteração acidental dos
@@ -1681,7 +1604,8 @@ class MainWindow(QMainWindow):
             6. Atualiza o cronômetro e o log.
             7. Transita para o estado RUNNING.
 
-        Chamado pelo botão "Iniciar Sessão" (btn_start).
+        Chamado por _on_setup_start_clicked(), a partir do botão "Iniciar
+        Avaliação" da Tela de Configuração (_setup_btn_start).
         """
         # Validação de pré-condição — linha extra de defesa além do estado READY.
         if not self.session_header.is_ready():
@@ -1852,7 +1776,8 @@ class MainWindow(QMainWindow):
             - Ao concluir, _on_pdf_finished() exibe diálogo de sucesso.
             - Em falha, _on_pdf_error() exibe diálogo de erro.
 
-        Chamado pelo botão "Gerar Relatório PDF" (btn_pdf).
+        Chamado pelo botão "Gerar Relatório PDF" da Tela de Resultado
+        (_btn_result_pdf).
         """
         if not self._csv_path or not os.path.exists(self._csv_path):
             QMessageBox.warning(
@@ -1866,11 +1791,8 @@ class MainWindow(QMainWindow):
         session_info = self.session_header.get_session_info()
 
         # Desabilita o botão durante a geração para evitar duplos cliques.
-        self.btn_pdf.setEnabled(False)
-        self.btn_pdf.setText("⏳  Gerando PDF...")
-        if hasattr(self, "_btn_result_pdf"):
-            self._btn_result_pdf.setEnabled(False)
-            self._btn_result_pdf.setText("⏳  Gerando PDF...")
+        self._btn_result_pdf.setEnabled(False)
+        self._btn_result_pdf.setText("⏳  Gerando PDF...")
         self._status_bar.showMessage("Gerando relatório PDF... Aguarde.")
         self.log_widget.log("Iniciando geração do relatório PDF...")
 
@@ -1901,11 +1823,8 @@ class MainWindow(QMainWindow):
             pdf_path: Caminho absoluto para o arquivo PDF gerado.
         """
         # Restaura o botão ao estado original.
-        self.btn_pdf.setEnabled(True)
-        self.btn_pdf.setText("📄  Gerar Relatório PDF")
-        if hasattr(self, "_btn_result_pdf"):
-            self._btn_result_pdf.setEnabled(True)
-            self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
+        self._btn_result_pdf.setEnabled(True)
+        self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
         self._status_bar.showMessage(f"PDF gerado: {pdf_path}")
         self.log_widget.log_success(f"Relatório PDF gerado: {pdf_path}")
 
@@ -1927,12 +1846,10 @@ class MainWindow(QMainWindow):
         Parâmetros:
             error_message: Descrição do erro retornada pela exceção.
         """
-        # Restaura o botão e reporta o erro.
-        self.btn_pdf.setEnabled(True)
-        self.btn_pdf.setText("📄  Gerar Relatório PDF")
-        if hasattr(self, "_btn_result_pdf"):
-            self._btn_result_pdf.setEnabled(True)
-            self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
+        # Restaura o botão e reporta o erro: sem isso a interface ficaria
+        # presa em "Gerando PDF..." e o operador não teria como tentar de novo.
+        self._btn_result_pdf.setEnabled(True)
+        self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
         self._status_bar.showMessage("Falha ao gerar relatório PDF.")
         self.log_widget.log_error(f"Falha ao gerar PDF: {error_message}")
 
@@ -1950,7 +1867,7 @@ class MainWindow(QMainWindow):
         uma cópia do CSV. Usa shutil.copy() para preservar os dados originais.
         O arquivo original em config.LOG_DIR não é movido ou excluído.
 
-        Chamado pelo botão "Exportar CSV" (btn_csv).
+        Chamado pelo botão "Exportar CSV" da Tela de Resultado (_btn_result_csv).
         """
         if not self._csv_path or not os.path.exists(self._csv_path):
             QMessageBox.warning(
@@ -2002,7 +1919,8 @@ class MainWindow(QMainWindow):
         Usa os.startfile() no Windows para abrir a pasta no Explorador de Arquivos.
         A pasta é criada se não existir antes de tentar abrir.
 
-        Chamado pelo botão "Abrir Pasta de Sessões" (btn_historico).
+        Chamado pelo botão "Abrir Pasta de Sessões" da Tela de Resultado
+        (_btn_result_history).
         """
         # Garante que a pasta exista antes de tentar abrir.
         os.makedirs(config.LOG_DIR, exist_ok=True)

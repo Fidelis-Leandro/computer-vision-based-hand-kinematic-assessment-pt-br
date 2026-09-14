@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import QMessageBox
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config
+import ui.main_window as main_window_module
 from themes import COLOR_WARNING
 from ui.main_window import MainWindow
 
@@ -647,4 +648,171 @@ def test_new_evaluation_cancelled_changes_nothing(
     assert app_window._state == "STOPPED"
     assert app_window._stack.currentIndex() == 2
     assert app_window.session_header._input_patient.text() == "Paciente Teste"
+
+
+# =============================================================================
+# Fase 7D-a — rede de segurança para a remoção de código morto
+# =============================================================================
+#
+# A Fase 7D-b vai remover cinco botões que existem em memória mas nunca são
+# inseridos em nenhum layout visível: btn_new_session, btn_start, btn_pdf,
+# btn_csv e btn_historico (criados em _create_widgets(), conectados em
+# _connect_signals(), geridos por _set_state(), e reunidos apenas em
+# _build_button_row(), método que ninguém chama).
+#
+# Todos foram removidos na Fase 7D-b. Os testes ao final desta seção são as
+# guardas que impedem a reintrodução acidental deles.
+#
+# O caso que exige rede de verdade é o btn_pdf. Ele não é código morto puro:
+# _gerar_relatorio(), _on_pdf_finished() e _on_pdf_error() escrevem nele
+# ("⏳  Gerando PDF..." e a restauração). Só que o botão VISÍVEL da Tela de
+# Resultado — _btn_result_pdf — já recebe exatamente o mesmo tratamento nas
+# linhas seguintes de cada um desses três métodos. Os testes abaixo travam o
+# comportamento do botão visível, que é o que o operador enxerga: se a
+# remoção do btn_pdf quebrar o feedback de progresso, eles acusam.
+#
+# Nada aqui gera PDF de verdade: _PdfGeneratorWorker.start é substituído por
+# um no-op, então nenhuma thread roda e nenhum arquivo é escrito. Os diálogos
+# modais também são interceptados, nas duas formas usadas pelo projeto
+# (QMessageBox construído com .exec() e os estáticos .critical/.question).
+
+
+def _prepare_pdf_session(app_window, tmp_path, monkeypatch) -> None:
+    """
+    Deixa a janela pronta para _gerar_relatorio() sem gerar PDF de verdade.
+
+    _gerar_relatorio() sai cedo se _csv_path não apontar para um arquivo
+    existente, então um CSV mínimo é criado em tmp_path. O conteúdo não
+    importa: o worker que o leria nunca chega a rodar.
+    """
+    csv_path = tmp_path / "sessao_para_pdf.csv"
+    csv_path.write_text("timestamp,frame_id\n", encoding="utf-8")
+    app_window._csv_path = str(csv_path)
+
+    monkeypatch.setattr(
+        main_window_module._PdfGeneratorWorker, "start", lambda self: None
+    )
+    monkeypatch.setattr(QMessageBox, "exec", lambda msg_self: 0)
+    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: 0))
+
+
+# --- Fluxo do PDF: o botão visível é a referência ----------------------------
+
+
+def test_generating_pdf_disables_the_visible_button(
+    app_window: MainWindow, qtbot, tmp_path, monkeypatch
+):
+    """30. Durante a geração, o botão visível fica desabilitado e anuncia o
+    progresso — proteção contra duplo clique e sinal de que algo acontece."""
+    _prepare_pdf_session(app_window, tmp_path, monkeypatch)
+
+    app_window._gerar_relatorio()
+
+    assert app_window._btn_result_pdf.isEnabled() is False
+    assert "Gerando PDF" in app_window._btn_result_pdf.text()
+
+
+def test_pdf_success_restores_the_visible_button(
+    app_window: MainWindow, qtbot, tmp_path, monkeypatch
+):
+    """31. Concluída a geração, o botão visível volta ao estado normal."""
+    _prepare_pdf_session(app_window, tmp_path, monkeypatch)
+    app_window._gerar_relatorio()
+
+    app_window._on_pdf_finished(str(tmp_path / "relatorio.pdf"))
+
+    assert app_window._btn_result_pdf.isEnabled() is True
+    assert "Gerar Relatório PDF" in app_window._btn_result_pdf.text()
+    assert "Gerando PDF" not in app_window._btn_result_pdf.text()
+
+
+def test_pdf_error_restores_the_visible_button(
+    app_window: MainWindow, qtbot, tmp_path, monkeypatch
+):
+    """32. Em caso de falha o botão também precisa voltar — senão a interface
+    fica travada em "Gerando PDF..." para sempre, sem forma de tentar de novo."""
+    _prepare_pdf_session(app_window, tmp_path, monkeypatch)
+    app_window._gerar_relatorio()
+
+    app_window._on_pdf_error("falha simulada de geração")
+
+    assert app_window._btn_result_pdf.isEnabled() is True
+    assert "Gerar Relatório PDF" in app_window._btn_result_pdf.text()
+    assert "Gerando PDF" not in app_window._btn_result_pdf.text()
+
+
+# --- Máquina de estados e componentes visíveis -------------------------------
+
+
+@pytest.mark.parametrize("state", ["IDLE", "READY", "RUNNING", "STOPPED"])
+def test_set_state_runs_for_every_state_without_error(
+    app_window: MainWindow, qtbot, state
+):
+    """33. _set_state() referencia cada botão que gere. Se a remoção deixar
+    uma referência pendurada, isto estoura com AttributeError."""
+    app_window._set_state(state)
+
+    assert app_window._state == state
+
+
+@pytest.mark.parametrize(
+    "widget_name",
+    [
+        "btn_end",
+        "btn_toggle_logs",
+        "_btn_result_pdf",
+        "_btn_result_csv",
+        "_btn_result_history",
+        "_btn_result_next",
+    ],
+)
+def test_visible_widgets_still_exist(app_window: MainWindow, qtbot, widget_name):
+    """34. Guarda contra remoção excessiva: estes seis são os controles que o
+    operador realmente vê e usa. Nenhum deles pode sair na Fase 7D-b."""
+    assert hasattr(app_window, widget_name)
+
+
+def test_new_session_recreates_both_workers(app_window: MainWindow, qtbot):
+    """35. _new_session() destrói e recria os workers, em vez de reaproveitá-los.
+
+    É essa recriação que torna ProcessingWorker.reset_state() dispensável: o
+    worker novo já nasce com fila vazia, banco de filtros novo e buffers
+    zerados. Se algum dia o reset passar a reaproveitar o worker, este teste
+    falha e o reset_state volta a fazer falta.
+
+    confirm=False evita o diálogo; nenhuma thread é iniciada depois do reset.
+    """
+    camera_antes = app_window.camera_worker
+    processing_antes = app_window.processing_worker
+
+    assert app_window._new_session(confirm=False) is True
+
+    assert app_window.camera_worker is not camera_antes
+    assert app_window.processing_worker is not processing_antes
+
+
+# --- Guardas de limpeza: símbolos removidos na Fase 7D-b --------------------
+
+
+@pytest.mark.parametrize(
+    "legacy_button",
+    ["btn_new_session", "btn_start", "btn_pdf", "btn_csv", "btn_historico"],
+)
+def test_legacy_invisible_button_no_longer_exists(
+    app_window: MainWindow, qtbot, legacy_button
+):
+    """36. Botões removidos. Este teste impede sua reintrodução acidental.
+
+    Nenhum deles aparecia em qualquer layout. Note que `btn_start` era
+    distinto de `_setup_btn_start`, que é visível e permanece."""
+    assert not hasattr(app_window, legacy_button)
+
+
+def test_build_button_row_no_longer_exists(app_window: MainWindow, qtbot):
+    """37. Método removido. Este teste impede sua reintrodução acidental.
+
+    _build_button_row() montava a linha de botões legados e não era chamado
+    por ninguém — a própria docstring admitia que não entrava em nenhum
+    layout visível."""
+    assert not hasattr(app_window, "_build_button_row")
 
