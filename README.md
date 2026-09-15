@@ -1,7 +1,7 @@
 # Avaliação Cinemática da Mão Baseada em Visão Computacional
 
 <div align="center">
-  <img src="screenshot.png" alt="Interface de Avaliação Cinemática da Mão Baseada em Visão Computacional" width="800"/>
+  <img src="assets/screenshots/tela-avaliacao.jpg" alt="Interface de Avaliação Cinemática da Mão Baseada em Visão Computacional" width="800"/>
 </div>
 
 > **Avaliação cinemática de dedos sem marcadores em tempo real com emissão automatizada de relatórios clínicos — webcam RGB comum, sem necessidade de hardware especializado.**
@@ -299,9 +299,9 @@ computer-vision-based-hand-kinematic-assessment/
 |   +-- test_tam_to_servo.py     #   Testes do mapeamento TAM -> servo (sem hardware)
 ```
 
-> Nota: a pasta `assets/` mencionada em versões anteriores deste README não existe
-> no repositório atual — os únicos recursos estáticos hoje são `screenshot.png`
-> (raiz do projeto) e os modelos usados internamente pelo MediaPipe.
+> Nota: os recursos estáticos do projeto ficam em `assets/screenshots/`
+> (capturas de tela das três telas do fluxo clínico, referenciadas ao longo
+> deste README) e nos modelos usados internamente pelo MediaPipe.
 
 ---
 
