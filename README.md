@@ -86,6 +86,8 @@ Tela 3 — Resultado da Sessão
 ```
 
 1. **Tela de Configuração da Sessão (Página 1)**:
+
+   ![Tela de Configuração da Sessão](assets/screenshots/tela-configuracao.jpg)
    - Formulário inicial limpo para inserção de:
      - Nome do paciente;
      - Mão avaliada (Direita ou Esquerda);
@@ -94,6 +96,8 @@ Tela 3 — Resultado da Sessão
    - Ação: botão **"▶ Iniciar Avaliação"** (ou tecla Enter) valida os dados, inicializa as threads de captura e IA e transiciona para a tela de avaliação.
 
 2. **Tela de Avaliação em Andamento (Página 0)**:
+
+   ![Tela de Avaliação em Andamento](assets/screenshots/tela-avaliacao.jpg)
    - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"■ Encerrar Sessão"** sempre visível e acessível.
    - **Área de rolagem clínica (`QScrollArea`)**:
      - *SessionHeaderWidget*: dados da sessão, mão avaliada e cronômetro em tempo real;
@@ -106,6 +110,8 @@ Tela 3 — Resultado da Sessão
    - **Encerramento seguro**: o clique em "■ Encerrar Sessão" aciona um diálogo modal de confirmação defensiva antes de parar as threads e fechar o arquivo CSV. Durante a avaliação, botões de exportação, nova sessão e relatório PDF permanecem ocultos.
 
 3. **Tela de Resultado da Sessão (Página 2)**:
+
+   ![Tela de Resultado da Sessão](assets/screenshots/tela-resultado.jpg)
    - Apresentada automaticamente após a parada completa dos workers (`STOPPED`) e o fechamento do arquivo CSV.
    - Apresenta o resumo clínico e operacional da avaliação:
      - Nome do paciente;
