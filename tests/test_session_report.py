@@ -238,3 +238,105 @@ class TestGeneratePdfReportToleratesFutureCsvFormat:
         )
 
         assert os.path.isfile(output_path)
+
+
+# =============================================================================
+# Fase 7E-a — coluna demo_mode e aviso de demonstração no PDF (subfase de testes)
+# =============================================================================
+#
+# demo_mode NÃO tem um estado "assumido" como filter_mode: um CSV antigo sem
+# essa coluna nunca foi uma sessão de demonstração de verdade (o perfil
+# Evento não existia), então False é sempre a leitura correta para CSVs
+# antigos — não uma suposição que precise ser marcada à parte.
+#
+# CSV_FIELDS (goniometry_csv.py) ainda NÃO inclui "demo_mode" nesta subfase
+# — por isso o helper abaixo escreve o arquivo com um cabeçalho próprio
+# (CSV_FIELDS + ["demo_mode"]), simulando o formato FUTURO sem depender de
+# nenhuma mudança de produção. Mesma técnica já usada por
+# _write_old_format_csv() (acima) para simular o formato ANTERIOR à
+# Fase 5 subtraindo uma coluna — aqui é o mesmo raciocínio, somando uma.
+
+
+def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 200.0) -> None:
+    future_fieldnames = CSV_FIELDS + ["demo_mode"]
+    angles = _synthetic_angles(tam_index=tam_index)
+
+    row = {"timestamp": 1700000000.0, "frame_id": 1}
+    for finger in ("INDEX", "MIDDLE", "RING", "PINKY"):
+        for joint in ("MCP", "PIP", "DIP", "ABD", "TAM"):
+            row[f"{finger}_{joint}"] = angles[finger][joint]
+    row["THUMB_MCP"] = angles["THUMB"]["MCP"]
+    row["THUMB_IP"] = angles["THUMB"]["IP"]
+    row["THUMB_TAM"] = angles["THUMB"]["TAM"]
+    row["filter_mode"] = "EMA"
+    row["demo_mode"] = demo_mode
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=future_fieldnames)
+        writer.writeheader()
+        writer.writerow(row)
+
+
+class TestLoadSessionCsvWillReadDemoModeColumn:
+    def test_demo_mode_true_is_read_as_bool(self, tmp_path):
+        """FALHA ESPERADA ATÉ A FASE 7E-e.
+
+        load_session_csv() ainda não conhece a chave "demo_mode" no
+        dicionário que devolve — falha hoje com KeyError."""
+        csv_path = tmp_path / "evento_session.csv"
+        _write_csv_with_demo_mode_column(csv_path, demo_mode="True")
+
+        data = load_session_csv(str(csv_path))
+
+        assert data["demo_mode"] is True
+
+    def test_demo_mode_false_is_read_as_bool(self, tmp_path):
+        """FALHA ESPERADA ATÉ A FASE 7E-e."""
+        csv_path = tmp_path / "clinical_session.csv"
+        _write_csv_with_demo_mode_column(csv_path, demo_mode="False")
+
+        data = load_session_csv(str(csv_path))
+
+        assert data["demo_mode"] is False
+
+    def test_old_csv_without_the_column_reads_as_false_not_assumed(self, tmp_path):
+        """FALHA ESPERADA ATÉ A FASE 7E-e.
+
+        Diferente de filter_mode_assumed: não existe um "demo_mode_assumed"
+        proposto, porque não há ambiguidade a marcar — todo CSV gravado
+        antes do perfil Evento existir é, por definição, uma sessão
+        clínica. False é fato, não suposição."""
+        csv_path = tmp_path / "old_session.csv"
+        _write_old_format_csv(csv_path)  # formato sem filter_mode NEM demo_mode
+
+        data = load_session_csv(str(csv_path))
+
+        assert data["demo_mode"] is False
+
+
+class TestFooterDemoModeWarning:
+    """
+    A função proposta para compor o aviso — build_demo_mode_warning_text() —
+    é uma SUGESTÃO de nome para a Fase 7E-e, no mesmo espírito de
+    build_footer_method_text() (função pura, sem renderizar PDF). Se a
+    implementação escolher outro nome, estes dois testes continuam sendo o
+    contrato correto a satisfazer — só o nome importado muda.
+    """
+
+    def test_warning_text_exists_and_mentions_demonstration_when_true(self):
+        """FALHA ESPERADA ATÉ A FASE 7E-e."""
+        from session_report import build_demo_mode_warning_text
+
+        texto = build_demo_mode_warning_text(demo_mode=True)
+
+        assert texto.strip() != ""
+        assert "demonstra" in texto.lower() or "evento" in texto.lower()
+
+    def test_warning_text_is_empty_when_not_demo(self):
+        """FALHA ESPERADA ATÉ A FASE 7E-e.
+
+        Uma sessão clínica normal não deve ganhar nenhuma linha extra no
+        rodapé — o aviso é exclusivo do perfil Evento."""
+        from session_report import build_demo_mode_warning_text
+
+        assert build_demo_mode_warning_text(demo_mode=False) == ""

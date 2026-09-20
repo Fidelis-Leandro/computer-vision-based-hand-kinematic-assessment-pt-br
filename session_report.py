@@ -165,6 +165,28 @@ def build_footer_method_text(filter_mode: Optional[str], assumed: bool) -> str:
     return f"{base}. Modo de filtragem: {label}."
 
 
+def build_demo_mode_warning_text(demo_mode: bool) -> str:
+    """
+    Monta o aviso de demonstração do rodapé técnico do PDF, separado do
+    texto de método (build_footer_method_text) — os dois são metadados
+    independentes: um descreve o filtro real usado, o outro identifica se
+    a sessão foi o perfil Evento. Não os combino na mesma frase para que
+    nenhuma mudança em um afete o texto do outro.
+
+    demo_mode=False (sessão clínica, ou CSV antigo sem a coluna) devolve
+    string vazia — o rodapé de uma sessão normal não deve ganhar nenhuma
+    linha extra.
+    """
+    if not demo_mode:
+        return ""
+
+    return (
+        "⚠ SESSÃO GERADA NO PERFIL EVENTO (DEMONSTRAÇÃO) — a resposta da mão "
+        "robótica foi ampliada artificialmente para exibição em estande. Os "
+        "ângulos e classificações clínicas acima permanecem medições reais."
+    )
+
+
 FOOTER_DISCLAIMER = (
     "Este relatório destina-se a uso acadêmico e suporte à documentação funcional. "
     "Não substitui validação clínica formal."
@@ -203,6 +225,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
         "n_frames":      int,
         "filter_mode": str | None,      # modo lido do CSV, ou None se ausente
         "filter_mode_assumed": bool,    # True = CSV antigo, sem essa coluna
+        "demo_mode": bool,              # True = sessão do perfil Evento
     }
 
     filter_mode vem da coluna "filter_mode" (Fase 5), a mesma em toda linha
@@ -210,10 +233,17 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
     essa coluna; nesse caso, filter_mode fica None e filter_mode_assumed
     fica True, para que quem gera o relatório saiba que o modo não foi
     registrado e não pode ser afirmado como fato.
+
+    demo_mode vem da coluna "demo_mode" (Fase 7E), lida como texto
+    "True"/"False". Ao contrário de filter_mode, não existe aqui um
+    "demo_mode_assumed": um CSV sem essa coluna é sempre de antes do perfil
+    Evento existir, então False é um FATO sobre esse CSV, não uma suposição
+    — a ausência da coluna já responde a pergunta.
     """
     timestamps: List[float] = []
     frame_ids: List[int] = []
     filter_mode_from_csv: Optional[str] = None
+    demo_mode_from_csv: bool = False
 
     fingers_data: Dict[str, Dict[str, List[float]]] = {}
     for finger in FINGERS:
@@ -239,6 +269,13 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
             # (CSV antigo) ou "" se existir mas vier vazia; os dois casos
             # devem virar None aqui.
             filter_mode_from_csv = row.get("filter_mode") or None
+
+            # demo_mode é gravado como texto ("True"/"False") em toda linha
+            # de CSVs a partir da Fase 7E. Um CSV sem a coluna (row.get()
+            # devolve None) ou com célula vazia cai no default "" -> False,
+            # que é exatamente o comportamento correto: nunca existiu perfil
+            # Evento antes desta fase.
+            demo_mode_from_csv = (row.get("demo_mode") or "").strip().lower() == "true"
 
             # Dedos longos
             for finger in ("INDEX", "MIDDLE", "RING", "PINKY"):
@@ -286,6 +323,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
         "n_frames": len(timestamps),
         "filter_mode": filter_mode_from_csv,
         "filter_mode_assumed": filter_mode_from_csv is None,
+        "demo_mode": demo_mode_from_csv,
     }
 
 
@@ -1013,7 +1051,10 @@ def _add_legend(pdf: _ReportPDF) -> None:
 
 
 def _add_footer_technical(
-    pdf: _ReportPDF, filter_mode: Optional[str], filter_mode_assumed: bool
+    pdf: _ReportPDF,
+    filter_mode: Optional[str],
+    filter_mode_assumed: bool,
+    demo_mode: bool = False,
 ) -> None:
     """Adiciona o rodapé técnico, incluindo o modo de filtragem real da sessão."""
     pdf.set_draw_color(180, 180, 190)
@@ -1026,6 +1067,19 @@ def _add_footer_technical(
     footer_method = build_footer_method_text(filter_mode, filter_mode_assumed)
     _multi_cell(pdf, 0, 4, footer_method)
     pdf.ln(1)
+
+    # Aviso de demonstração: bloco próprio, separado do texto de método
+    # acima — build_demo_mode_warning_text() devolve "" para sessões
+    # clínicas, então nada é desenhado nesse caso. Fonte maior, negrito e
+    # vermelho mais saturado que o aviso legal abaixo, para se destacar
+    # como o alerta mais sério do rodapé.
+    demo_warning = build_demo_mode_warning_text(demo_mode)
+    if demo_warning:
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(200, 30, 30)
+        _multi_cell(pdf, 0, 4.5, demo_warning)
+        pdf.ln(1)
+
     pdf.set_font("Helvetica", "B", 7)
     pdf.set_text_color(180, 80, 80)
     _multi_cell(pdf, 0, 4, f"Aviso legal: {FOOTER_DISCLAIMER}")
@@ -1168,7 +1222,9 @@ def generate_pdf_report(
     # Rodapé técnico
     if pdf.get_y() > 250:
         pdf.add_page()
-    _add_footer_technical(pdf, data["filter_mode"], data["filter_mode_assumed"])
+    _add_footer_technical(
+        pdf, data["filter_mode"], data["filter_mode_assumed"], data["demo_mode"]
+    )
 
     # Salva o PDF
     pdf.output(output_path)

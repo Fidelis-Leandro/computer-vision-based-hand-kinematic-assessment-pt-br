@@ -249,8 +249,9 @@ def test_dashboard_utils_classify_hand_state():
 
 @pytest.mark.parametrize("mode", ["RAW", "EMA", "KALMAN", "EMA_KALMAN"])
 def test_csv_logger_writes_filter_mode_as_last_column(mode):
-    # A. filter_mode deve aparecer como a ÚLTIMA coluna do cabeçalho, com o
-    # valor exato do modo informado, sem afetar nenhuma coluna existente.
+    # A. filter_mode deve aparecer imediatamente antes de demo_mode — a
+    # verdadeira última coluna do cabeçalho desde a Fase 7E-e — com o valor
+    # exato do modo informado, sem afetar nenhuma coluna existente.
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_path = os.path.join(tmpdir, "test_filter_mode.csv")
         logger = GoniometryCSVLogger(csv_path)
@@ -263,9 +264,10 @@ def test_csv_logger_writes_filter_mode_as_last_column(mode):
 
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            assert reader.fieldnames[-1] == "filter_mode"
-            # As 24 colunas atuais continuam presentes, na mesma ordem.
-            assert reader.fieldnames[:-1] == [
+            assert reader.fieldnames[-1] == "demo_mode"
+            assert reader.fieldnames[-2] == "filter_mode"
+            # As 24 colunas clínicas continuam presentes, na mesma ordem.
+            assert reader.fieldnames[:-2] == [
                 "timestamp", "frame_id",
                 "INDEX_MCP", "INDEX_PIP", "INDEX_DIP", "INDEX_ABD", "INDEX_TAM",
                 "MIDDLE_MCP", "MIDDLE_PIP", "MIDDLE_DIP", "MIDDLE_ABD", "MIDDLE_TAM",
@@ -321,3 +323,64 @@ def test_csv_logger_without_filter_mode_defaults_to_ema_kalman():
             reader = csv.DictReader(f)
             row = list(reader)[0]
             assert row.get("filter_mode") == "EMA_KALMAN"
+
+
+# =============================================================================
+# Fase 7E-e — testes de integração real para demo_mode no CSV
+# =============================================================================
+#
+# GoniometryCSVLogger.log() aceita demo_mode (default False, mesmo motivo
+# do default de filter_mode: preservar toda chamada anterior à Fase 7E) e
+# grava a coluna sempre como a última do cabeçalho, depois de filter_mode.
+#
+# Sem MagicMock: é o GoniometryCSVLogger real escrevendo em arquivo real
+# (tmpdir), a mesma técnica já usada pelos testes de filter_mode acima —
+# é o que confirma que log(demo_mode=...) não levanta TypeError de verdade,
+# não apenas contra um mock que aceitaria qualquer kwarg sem reclamar.
+
+
+@pytest.mark.parametrize("demo_mode", [True, False])
+def test_csv_logger_writes_demo_mode_as_last_column(demo_mode):
+    # demo_mode deve aparecer como a ÚLTIMA coluna do cabeçalho — depois de
+    # filter_mode, nunca no meio — com o texto "True"/"False" exato.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_demo_mode.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+
+        logger.log(1, angles, filter_mode="EMA", demo_mode=demo_mode)
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            assert reader.fieldnames[-1] == "demo_mode"
+            assert reader.fieldnames[-2] == "filter_mode"
+
+            row = list(reader)[0]
+            assert row["demo_mode"] == str(demo_mode)
+            # Dado clínico não sofre nenhuma interferência da coluna nova.
+            assert float(row["THUMB_TAM"]) == angles["THUMB"]["TAM"]
+
+
+def test_csv_logger_without_demo_mode_defaults_to_false():
+    # Retrocompatibilidade da API Python: chamar log() sem informar
+    # demo_mode (como todo o código anterior à Fase 7E faz, inclusive as
+    # próprias chamadas de filter_mode acima) deve continuar funcionando
+    # sem TypeError, e a coluna nova deve assumir "False" — o valor clínico
+    # seguro.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "test_no_demo_mode_arg.csv")
+        logger = GoniometryCSVLogger(csv_path)
+
+        gonio = DigitalGoniometer()
+        angles = gonio.compute_all(create_flexed_hand(), eh_mao_direita=True)
+
+        logger.log(1, angles, filter_mode="EMA")  # sem demo_mode
+        logger.close()
+
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            row = list(reader)[0]
+            assert row.get("demo_mode") == "False"

@@ -68,6 +68,10 @@ CSV_FIELDS = [
     # externa que leia as colunas antigas por posição continua funcionando
     # sem mudança — só quem já espera a coluna nova precisa procurá-la.
     "filter_mode",
+    # demo_mode vem depois de filter_mode, pelo mesmo motivo (Fase 7E):
+    # identifica sessões do perfil Evento (demonstração em estande), nunca
+    # reordenando as colunas que já existiam antes dela.
+    "demo_mode",
 ]
 
 # Os únicos modos que smoothing.py implementa hoje. Mantido aqui como uma
@@ -99,6 +103,7 @@ class GoniometryCSVLogger:
         frame_id: int,
         angles: Dict[str, Dict[str, float]],
         filter_mode: str = "EMA_KALMAN",
+        demo_mode: bool = False,
     ) -> None:
         """
         Grava uma linha correspondente a um quadro processado.
@@ -111,6 +116,15 @@ class GoniometryCSVLogger:
         chamadas antigas a log(frame_id, angles) — de antes da Fase 5 —
         continuem funcionando sem alteração, gravando o único modo que
         o sistema já usava.
+
+        demo_mode identifica se a sessão é o perfil Evento (demonstração
+        em estande) — metadado de registro, nunca altera angles. O default
+        False existe pelo mesmo motivo do default de filter_mode: preservar
+        toda chamada anterior à Fase 7E sem exigir alteração, gravando
+        sempre o valor clínico seguro quando o chamador não informa nada.
+        Gravado como "True"/"False" por extenso, nunca célula vazia — ao
+        contrário de um ângulo ausente, aqui não existe "sem dado": toda
+        sessão é ou não é o perfil Evento, sem ambiguidade a marcar.
         """
         if filter_mode not in CSV_VALID_FILTER_MODES:
             raise ValueError(
@@ -137,6 +151,7 @@ class GoniometryCSVLogger:
         row["THUMB_TAM"] = _safe_round(thumb.get("TAM"))
 
         row["filter_mode"] = filter_mode
+        row["demo_mode"] = str(bool(demo_mode))
 
         self._writer.writerow(row)
 
