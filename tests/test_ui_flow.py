@@ -846,21 +846,19 @@ def test_build_button_row_no_longer_exists(app_window: MainWindow, qtbot):
 # mudar uma linha sequer para os 4 modos clínicos, e recebam "EMA" — um modo
 # genuinamente válido — mesmo quando o item selecionado é o Evento.
 #
-# NENHUM destes testes foi implementado em produção ainda (isto é 7E-a: só
-# testes). Os marcados "FALHA ESPERADA" devem falhar agora, pelo motivo
-# descrito em cada um — a 7E-d ainda não aconteceu. Os demais (sem essa
-# marca) já descrevem comportamento que continua sendo verdade tanto antes
-# quanto depois da Fase 7E, e por isso já passam hoje.
+# Estes testes nasceram na subfase 7E-a, antes da implementação, e hoje
+# passam todos: o quinto item, o papel de perfil e o reset já existem em
+# produção (7E-d). Permanecem como guardas de regressão permanentes do
+# comportamento do Evento no seletor.
 
-# Espelha o papel customizado que a produção vai definir em ui/main_window.py
-# na Fase 7E-d. Definido aqui, e não importado, porque o símbolo de produção
-# ainda não existe — um import direto quebraria a coleta do arquivo inteiro.
-# Qt já está importado no topo deste arquivo (linha ~26); nenhum import novo
-# é necessário aqui.
+# Espelha o papel customizado definido em ui/main_window.py (_PROFILE_ROLE,
+# Fase 7E-d). Definido aqui, e não importado, porque nasceu antes de o
+# símbolo existir em produção; foi mantido assim por simplicidade. Qt já está
+# importado no topo deste arquivo; nenhum import novo é necessário aqui.
 _PROFILE_ROLE = Qt.ItemDataRole(int(Qt.ItemDataRole.UserRole) + 1)
 
 
-# --- Já verdade hoje e continua sendo depois do Evento ----------------------
+# --- Comportamento dos 4 modos clínicos e do padrão --------------------------
 
 
 def test_clinical_items_keep_their_mode_in_the_first_four_slots(
@@ -868,10 +866,9 @@ def test_clinical_items_keep_their_mode_in_the_first_four_slots(
 ):
     """
     Os 4 modos clínicos devem ocupar os índices 0-3 do combo com o mesmo
-    filtro real de sempre, tanto antes quanto depois do Evento ser
-    adicionado como 5º item. Não afirma o total de itens (isso é o teste de
-    transição abaixo) — só que os 4 primeiros não mudam de lugar nem de
-    valor quando o Evento for inserido no fim da lista.
+    filtro real de sempre, com o Evento como 5º item no fim da lista. Não
+    afirma o total de itens (isso é o teste do quinto item, abaixo) — só que
+    os 4 primeiros não mudam de lugar nem de valor.
     """
     combo = app_window._setup_combo_filter
     esperado = ["EMA_KALMAN", "EMA", "KALMAN", "RAW"]
@@ -885,12 +882,12 @@ def test_filter_combo_default_selection_stays_ema_kalman(
     """
     A seleção inicial do combo continua vindo exclusivamente de
     config.FILTER_MODE_DEFAULT — o Evento não pode se tornar o padrão por
-    engano, nem agora nem depois de implementado."""
+    engano."""
     assert app_window._setup_combo_filter.currentData() == config.FILTER_MODE_DEFAULT
     assert config.FILTER_MODE_DEFAULT == "EMA_KALMAN"
 
 
-# --- FALHA ESPERADA: comportamento do Evento, ainda não implementado --------
+# --- Comportamento do item Evento ---------------------------------------------
 
 
 def test_filter_combo_will_have_five_items_with_evento_last(
@@ -898,8 +895,8 @@ def test_filter_combo_will_have_five_items_with_evento_last(
 ):
     """Guarda de regressão permanente (não é mais uma transição).
 
-    Hoje o combo tem 4 itens. "⚡ Evento — resposta rápida da mão robótica"
-    deve ser o quinto, por último — mesma lógica de posicionamento já usada
+    O combo tem 5 itens. "⚡ Evento — resposta rápida da mão robótica" é o
+    quinto, por último — mesma lógica de posicionamento já usada
     para RAW: o item de uso não-clínico fica longe do clique apressado."""
     combo = app_window._setup_combo_filter
 
@@ -910,12 +907,11 @@ def test_filter_combo_will_have_five_items_with_evento_last(
 def test_evento_item_carries_ema_as_its_real_filter(app_window: MainWindow, qtbot):
     """Guarda de regressão permanente (não é mais uma transição).
 
-    O UserRole do item Evento deve ser "EMA" — o mesmo filtro válido que os
+    O UserRole do item Evento é "EMA" — o mesmo filtro válido que os
     demais itens usam. Isto é o que permite ao Evento atravessar
     set_filter_mode() e a coluna filter_mode do CSV sem nenhuma mudança de
     validação: para essas duas peças do sistema, Evento simplesmente "é"
-    EMA. Hoje o combo só tem 4 itens, então o índice 4 não existe e
-    itemData(4) devolve None."""
+    EMA."""
     combo = app_window._setup_combo_filter
 
     assert combo.itemData(4) == "EMA"
@@ -927,13 +923,9 @@ def test_clinical_items_have_no_profile_role_yet(
 ):
     """Guarda de regressão permanente (não é mais uma transição).
 
-    Os 4 itens clínicos devem passar a carregar ("CLINICAL", None) no papel
-    customizado — hoje esse papel não é escrito em NENHUM item, nem nos 4
-    que já existem, porque a Fase 7E-d ainda não aconteceu. Por isso este
-    teste testa exatamente os índices que já existem hoje (0-3), não o
-    índice do Evento — a falha aqui prova que o mecanismo do papel
-    customizado como um todo ainda não foi ligado, não só que falta o
-    Evento."""
+    Os 4 itens clínicos (índices 0-3) carregam ("CLINICAL", None) no papel
+    customizado de perfil. Testa os itens clínicos, não o Evento: garante
+    que o mecanismo do papel cobre todos os itens, e não só o quinto."""
     combo = app_window._setup_combo_filter
 
     assert combo.itemData(index, _PROFILE_ROLE) == ("CLINICAL", None)
@@ -960,21 +952,12 @@ def test_new_evaluation_resets_combo_from_evento_to_clinical_default(
 
     Seleciona Evento e aciona diretamente o mesmo reset que o botão "Nova
     Avaliação" usa (_on_result_new_session(), com o diálogo de confirmação
-    interceptado) — sem passar por _start_session(): o índice do Evento
-    ainda não existe hoje, e setCurrentIndex(4) num combo de 4 itens zera a
-    seleção (currentIndex vira -1) em vez de virar um no-op inofensivo.
-    Rodar uma sessão de verdade com essa seleção quebrada faria
-    set_filter_mode(None) explodir dentro do loop de eventos Qt — um erro
-    barulhento e desviado do que este teste quer provar. Por isso o reset é
-    exercitado isoladamente: _on_result_new_session() nunca lê o combo antes
-    de resetá-lo, então é seguro chamá-lo mesmo com a seleção inválida.
-
-    Falha hoje porque o índice 4 não existe: currentIndex() fica em -1 após
-    setCurrentIndex(4), e mesmo depois do reset (que sempre mira o índice
-    de EMA_KALMAN) currentData() já seria "EMA_KALMAN" — mas
-    itemData(idx, _PROFILE_ROLE) ainda não existe em nenhum item hoje."""
+    interceptado) — sem passar por _start_session(), que não é necessário
+    para provar o reset. Depois do reset, o combo volta ao índice de
+    EMA_KALMAN e o item padrão carrega o perfil ("CLINICAL", None), nunca
+    o do Evento."""
     combo = app_window._setup_combo_filter
-    combo.setCurrentIndex(4)  # índice do Evento, ainda inexistente hoje
+    combo.setCurrentIndex(4)  # índice do Evento
 
     _auto_accept_dialogs(monkeypatch)
     app_window._on_result_new_session()

@@ -249,12 +249,12 @@ class TestGeneratePdfReportToleratesFutureCsvFormat:
 # Evento não existia), então False é sempre a leitura correta para CSVs
 # antigos — não uma suposição que precise ser marcada à parte.
 #
-# CSV_FIELDS (goniometry_csv.py) ainda NÃO inclui "demo_mode" nesta subfase
-# — por isso o helper abaixo escreve o arquivo com um cabeçalho próprio
-# (CSV_FIELDS + ["demo_mode"]), simulando o formato FUTURO sem depender de
-# nenhuma mudança de produção. Mesma técnica já usada por
-# _write_old_format_csv() (acima) para simular o formato ANTERIOR à
-# Fase 5 subtraindo uma coluna — aqui é o mesmo raciocínio, somando uma.
+# O helper abaixo escreve o CSV diretamente com csv.DictWriter, montando o
+# cabeçalho como CSV_FIELDS + ["demo_mode"]. Esse helper nasceu na 7E-a,
+# quando "demo_mode" ainda não fazia parte de CSV_FIELDS; hoje CSV_FIELDS já
+# a inclui (7E-e), então o cabeçalho gerado repete a coluna. O csv tolera
+# isso e load_session_csv() lê por nome, por isso os testes seguem válidos.
+# Mesma técnica de _write_old_format_csv() (acima), que subtrai uma coluna.
 
 
 def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 200.0) -> None:
@@ -281,8 +281,8 @@ class TestLoadSessionCsvWillReadDemoModeColumn:
     def test_demo_mode_true_is_read_as_bool(self, tmp_path):
         """Guarda de regressão permanente (não é mais uma transição).
 
-        load_session_csv() ainda não conhece a chave "demo_mode" no
-        dicionário que devolve — falha hoje com KeyError."""
+        load_session_csv() devolve a chave "demo_mode" no dicionário,
+        lida da coluna do CSV como bool."""
         csv_path = tmp_path / "evento_session.csv"
         _write_csv_with_demo_mode_column(csv_path, demo_mode="True")
 
@@ -316,11 +316,10 @@ class TestLoadSessionCsvWillReadDemoModeColumn:
 
 class TestFooterDemoModeWarning:
     """
-    A função proposta para compor o aviso — build_demo_mode_warning_text() —
-    é uma SUGESTÃO de nome para a Fase 7E-e, no mesmo espírito de
-    build_footer_method_text() (função pura, sem renderizar PDF). Se a
-    implementação escolher outro nome, estes dois testes continuam sendo o
-    contrato correto a satisfazer — só o nome importado muda.
+    build_demo_mode_warning_text() (session_report.py) monta o aviso de
+    demonstração do rodapé, no mesmo espírito de build_footer_method_text():
+    função pura, sem renderizar nem ler PDF. Estes testes fixam o contrato:
+    texto de alerta quando demo_mode=True, string vazia quando False.
     """
 
     def test_warning_text_exists_and_mentions_demonstration_when_true(self):

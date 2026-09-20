@@ -30,12 +30,10 @@ class TestHandLostTimeoutIsConfigurable:
     def test_default_timeout_matches_the_clinical_constant(self):
         """Guarda de regressão permanente (não é mais uma transição).
 
-        Sem argumento novo, o worker deve continuar usando exatamente
-        HAND_LOST_TIMEOUT_S (1.0s) — o comportamento clínico de hoje não
-        pode mudar só porque o parâmetro passou a existir. Hoje o worker
-        não expõe esse valor como atributo de instância nenhum (ele só é
-        lido como constante de módulo dentro de _send_cycle()), então este
-        teste falha com AttributeError."""
+        Sem argumento novo, o worker continua usando exatamente
+        HAND_LOST_TIMEOUT_S (1.0s) — o comportamento clínico não muda só
+        porque o parâmetro existe. O valor fica guardado no atributo de
+        instância _hand_lost_timeout_s, que _send_cycle() lê."""
         worker = RobotHandWorker(parent=None)
 
         assert worker._hand_lost_timeout_s == HAND_LOST_TIMEOUT_S
@@ -43,8 +41,8 @@ class TestHandLostTimeoutIsConfigurable:
     def test_custom_timeout_is_accepted_and_stored(self):
         """Guarda de regressão permanente (não é mais uma transição).
 
-        O construtor ainda não aceita hand_lost_timeout_s — falha hoje com
-        TypeError, antes mesmo de qualquer I/O ser tentada."""
+        O construtor aceita hand_lost_timeout_s e guarda o valor na
+        instância, sem nenhuma I/O (nenhuma porta serial é aberta)."""
         worker = RobotHandWorker(parent=None, hand_lost_timeout_s=1.5)
 
         assert worker._hand_lost_timeout_s == 1.5
@@ -52,11 +50,10 @@ class TestHandLostTimeoutIsConfigurable:
     def test_custom_timeout_does_not_mutate_the_module_constant(self):
         """Guarda de regressão permanente (não é mais uma transição).
 
-        Guarda de sanidade permanente, não só de transição: passar um
-        timeout customizado para uma instância nunca pode alterar
-        HAND_LOST_TIMEOUT_S para as demais — isso vazaria o timeout do
-        perfil Evento para uma sessão clínica seguinte que reutilizasse o
-        mesmo processo."""
+        Guarda de sanidade: passar um timeout customizado para uma
+        instância nunca pode alterar HAND_LOST_TIMEOUT_S para as demais —
+        isso vazaria o timeout do perfil Evento para uma sessão clínica
+        seguinte que reutilizasse o mesmo processo."""
         RobotHandWorker(parent=None, hand_lost_timeout_s=1.5)
 
         assert HAND_LOST_TIMEOUT_S == 1.0
