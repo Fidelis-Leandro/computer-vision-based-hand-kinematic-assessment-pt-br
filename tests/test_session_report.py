@@ -249,16 +249,14 @@ class TestGeneratePdfReportToleratesFutureCsvFormat:
 # Evento não existia), então False é sempre a leitura correta para CSVs
 # antigos — não uma suposição que precise ser marcada à parte.
 #
-# O helper abaixo escreve o CSV diretamente com csv.DictWriter, montando o
-# cabeçalho como CSV_FIELDS + ["demo_mode"]. Esse helper nasceu na 7E-a,
-# quando "demo_mode" ainda não fazia parte de CSV_FIELDS; hoje CSV_FIELDS já
-# a inclui (7E-e), então o cabeçalho gerado repete a coluna. O csv tolera
-# isso e load_session_csv() lê por nome, por isso os testes seguem válidos.
-# Mesma técnica de _write_old_format_csv() (acima), que subtrai uma coluna.
+# O helper abaixo escreve o CSV diretamente com csv.DictWriter, usando
+# CSV_FIELDS como cabeçalho: desde a 7E-e a lista canônica já inclui
+# "demo_mode" como última coluna, então o arquivo de teste tem exatamente o
+# schema real, sem coluna repetida. Mesma técnica de _write_old_format_csv()
+# (acima), que subtrai uma coluna para simular o formato antigo.
 
 
 def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 200.0) -> None:
-    future_fieldnames = CSV_FIELDS + ["demo_mode"]
     angles = _synthetic_angles(tam_index=tam_index)
 
     row = {"timestamp": 1700000000.0, "frame_id": 1}
@@ -272,7 +270,7 @@ def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 20
     row["demo_mode"] = demo_mode
 
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=future_fieldnames)
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerow(row)
 
