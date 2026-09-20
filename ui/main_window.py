@@ -120,6 +120,24 @@ logger = logging.getLogger(__name__)
 # para set_filter_mode()/CSV_VALID_FILTER_MODES sem essa separação.
 _PROFILE_ROLE = Qt.ItemDataRole(Qt.ItemDataRole.UserRole.value + 1)
 
+# Tooltip normal do botão "Não Salvar Esta Sessão". Em constante porque é
+# restaurado em dois pontos (_on_pdf_finished e _on_pdf_error) depois de ser
+# trocado pelo aviso temporário durante a geração do PDF — repetir o texto
+# em três lugares seria a forma mais fácil de eles divergirem.
+_DO_NOT_SAVE_TOOLTIP = (
+    "Remove definitivamente do disco o CSV desta sessão e o relatório PDF, "
+    "se já tiver sido gerado. Use quando não quiser manter nenhum registro "
+    "desta avaliação. Cópias já exportadas para outras pastas não são "
+    "afetadas."
+)
+
+# Tooltip enquanto o PDF está sendo gerado: explica POR QUE o botão está
+# desabilitado. O Qt mostra tooltip de widget desabilitado, então esta é a
+# única via de explicar o bloqueio sem ocupar espaço na tela.
+_DO_NOT_SAVE_TOOLTIP_PDF_BUSY = (
+    "Aguarde a conclusão da geração do PDF antes de remover os arquivos."
+)
+
 # Modos de filtro oferecidos na tela de configuração, na ordem em que aparecem
 # no seletor: o recomendado primeiro, RAW antes do último, para afastar o modo
 # sem suavização do clique acidental de quem abre a lista com pressa, e Evento
@@ -1090,6 +1108,36 @@ class MainWindow(QMainWindow):
         self._btn_result_history.clicked.connect(self._abrir_historico)
         card_layout.addWidget(self._btn_result_history)
 
+        # Botão: Não Salvar Esta Sessão — remove do disco o CSV e, se já
+        # gerado, o PDF desta sessão. Fica entre os botões de exportação e
+        # "Nova Avaliação" porque age sobre os MESMOS arquivos que os de
+        # exportação, enquanto o reset age sobre a tela. Hover em
+        # COLOR_DANGER, como "Nova Avaliação": ambos são irreversíveis, e a
+        # proteção real é o diálogo de confirmação, não a cor.
+        self._btn_result_do_not_save = QPushButton("🗂️  Não Salvar Esta Sessão")
+        self._btn_result_do_not_save.setMinimumHeight(42)
+        self._btn_result_do_not_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
+        self._btn_result_do_not_save.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_PRIMARY};
+                border: 1px solid {COLOR_TEXT_SECONDARY};
+                border-radius: 5px;
+                font-size: 13px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {COLOR_DANGER};
+            }}
+            """
+        )
+        self._btn_result_do_not_save.clicked.connect(
+            self._on_result_do_not_save_session
+        )
+        card_layout.addWidget(self._btn_result_do_not_save)
+
         card_layout.addSpacing(6)
 
         # Botão: Nova Avaliação — único caminho de reset da aplicação.
@@ -1152,6 +1200,10 @@ class MainWindow(QMainWindow):
         has_csv = bool(self._csv_path and os.path.exists(self._csv_path))
         self._btn_result_pdf.setEnabled(has_csv)
         self._btn_result_csv.setEnabled(has_csv)
+        # Mesmo critério dos botões de exportação: sem CSV em disco não há o
+        # que remover. Depois da remoção (8c), este método é chamado de novo
+        # e desabilita os três de uma vez.
+        self._btn_result_do_not_save.setEnabled(has_csv)
 
     def _on_result_new_session(self) -> None:
         """
@@ -1239,6 +1291,137 @@ class MainWindow(QMainWindow):
         msg.exec()
 
         return msg.clickedButton() == btn_nova
+
+    def _session_pdf_candidate(self) -> str:
+        """
+        Fonte única de verdade para o caminho do PDF da sessão atual.
+
+        Todo código que precise saber onde está (ou estaria) o relatório
+        desta sessão deve passar por aqui, inclusive os testes, que o usam
+        para criar o arquivo exatamente no lugar que a produção usaria.
+
+        generate_pdf_report() monta o nome como <base do csv>_report.pdf no
+        mesmo diretório do CSV, e _gerar_relatorio() nunca passa output_path.
+        Derivar daqui evita guardar um segundo caminho em memória, que
+        poderia divergir do arquivo real depois de um reset.
+
+        O caminho é apenas calculado: o arquivo pode não existir, e quem
+        chama precisa checar. Devolve "" quando não há CSV de sessão —
+        nunca um caminho inventado.
+        """
+        if not self._csv_path:
+            return ""
+        return os.path.splitext(self._csv_path)[0] + "_report.pdf"
+
+    def _confirm_do_not_save_session(self) -> bool:
+        """
+        Pede confirmação antes de remover os arquivos da sessão atual.
+
+        Lista os nomes reais dos arquivos que serão removidos, em vez de uma
+        frase genérica: é o que permite ao operador conferir, antes de uma
+        ação irreversível, que está descartando a sessão certa.
+
+        O aviso sobre logs/app.log é deliberado. Remover CSV e PDF não apaga
+        o nome do paciente já registrado no log técnico da aplicação —
+        prometer sigilo completo aqui seria falso.
+
+        Retorna True se o operador confirmou.
+        """
+        arquivos = []
+        if self._csv_path and os.path.exists(self._csv_path):
+            arquivos.append(f"• CSV: {os.path.basename(self._csv_path)}")
+
+        pdf_path = self._session_pdf_candidate()
+        if pdf_path and os.path.exists(pdf_path):
+            arquivos.append(f"• Relatório PDF: {os.path.basename(pdf_path)}")
+
+        lista = "\n".join(arquivos) if arquivos else "• (nenhum arquivo encontrado)"
+
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Não Salvar Esta Sessão?")
+        msg.setText("Deseja remover definitivamente os arquivos desta sessão?")
+        msg.setInformativeText(
+            "Serão removidos do disco:\n"
+            f"{lista}\n\n"
+            "Esta ação não pode ser desfeita. Cópias exportadas para outras "
+            "pastas não são afetadas.\n"
+            "Registros técnicos do sistema (logs/app.log) podem manter o nome "
+            "do paciente."
+        )
+        btn_nao_salvar = msg.addButton("Não Salvar", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_cancelar)
+
+        msg.exec()
+
+        return msg.clickedButton() == btn_nao_salvar
+
+    def _on_result_do_not_save_session(self) -> None:
+        """
+        Remove do disco os arquivos da sessão atual, após confirmação.
+
+        Cada arquivo é removido de forma independente: se o CSV estiver
+        aberto em outro programa (caso comum no Windows, com o Excel), a
+        falha dele não impede a remoção do PDF, e vice-versa. Uma falha
+        nunca vira exceção — só aviso ao operador, com o arquivo intacto.
+
+        O PDF é resolvido ANTES de _csv_path ser limpo, porque seu caminho é
+        derivado do CSV.
+        """
+        if not self._confirm_do_not_save_session():
+            return
+
+        csv_removed = False
+        pdf_removed = False
+
+        if self._csv_path and os.path.exists(self._csv_path):
+            try:
+                os.remove(self._csv_path)
+                csv_removed = True
+            except OSError as exc:
+                self.log_widget.log_error(
+                    "Não foi possível remover o CSV — o arquivo pode estar "
+                    f"aberto em outro programa: {exc}"
+                )
+                logger.warning("Falha ao remover CSV da sessão: %s", exc)
+
+        pdf_path = self._session_pdf_candidate()
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+                pdf_removed = True
+            except OSError as exc:
+                self.log_widget.log_error(
+                    "Não foi possível remover o PDF — o arquivo pode estar "
+                    f"aberto em outro programa: {exc}"
+                )
+                logger.warning("Falha ao remover PDF da sessão: %s", exc)
+
+        # O registro da ação não repete nome de paciente nem caminho de
+        # arquivo: reintroduzir esses dados no log seria desfazer no rastro
+        # técnico exatamente o que o operador pediu para não manter. Só o
+        # fato e o resultado por tipo de arquivo.
+        if csv_removed or pdf_removed:
+            self.log_widget.log_success("Arquivos da sessão removidos.")
+            logger.info(
+                "Sessão descartada: CSV=%s, PDF=%s", csv_removed, pdf_removed
+            )
+        else:
+            self.log_widget.log(
+                "Nenhum arquivo da sessão foi encontrado para remoção."
+            )
+            logger.info("Tentativa de descarte de sessão: nenhum arquivo encontrado.")
+
+        # Só esquece o caminho se o arquivo saiu mesmo do disco. Se a remoção
+        # falhou, manter a referência é o que permite tentar de novo depois
+        # de fechar o programa que segura o arquivo.
+        if csv_removed:
+            self._csv_path = ""
+
+        # Recalcula o estado dos botões: sem CSV em disco, exportação e
+        # "Não Salvar" ficam desabilitados de uma vez só.
+        self._update_result_page_data()
 
     def _update_navigation_chrome(self) -> None:
         """
@@ -1833,7 +2016,7 @@ class MainWindow(QMainWindow):
             "Os dados coletados até agora serão salvos e a sessão será finalizada."
         )
         btn_encerrar = msg.addButton(
-            "Encerrar e Salvar", QMessageBox.ButtonRole.AcceptRole
+            "Encerrar Sessão", QMessageBox.ButtonRole.AcceptRole
         )
         btn_cancelar = msg.addButton(
             "Cancelar", QMessageBox.ButtonRole.RejectRole
@@ -1929,6 +2112,11 @@ class MainWindow(QMainWindow):
         # Desabilita o botão durante a geração para evitar duplos cliques.
         self._btn_result_pdf.setEnabled(False)
         self._btn_result_pdf.setText("⏳  Gerando PDF...")
+        # "Não Salvar" também sai de cena enquanto o PDF é gerado: o worker
+        # está lendo o CSV nesse instante, e removê-lo no meio quebraria a
+        # geração em curso. O tooltip troca junto para explicar o bloqueio.
+        self._btn_result_do_not_save.setEnabled(False)
+        self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP_PDF_BUSY)
         self._status_bar.showMessage("Gerando relatório PDF... Aguarde.")
         self.log_widget.log("Iniciando geração do relatório PDF...")
 
@@ -1961,6 +2149,8 @@ class MainWindow(QMainWindow):
         # Restaura o botão ao estado original.
         self._btn_result_pdf.setEnabled(True)
         self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
+        self._btn_result_do_not_save.setEnabled(True)
+        self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
         self._status_bar.showMessage(f"PDF gerado: {pdf_path}")
         self.log_widget.log_success(f"Relatório PDF gerado: {pdf_path}")
 
@@ -1986,6 +2176,8 @@ class MainWindow(QMainWindow):
         # presa em "Gerando PDF..." e o operador não teria como tentar de novo.
         self._btn_result_pdf.setEnabled(True)
         self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
+        self._btn_result_do_not_save.setEnabled(True)
+        self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
         self._status_bar.showMessage("Falha ao gerar relatório PDF.")
         self.log_widget.log_error(f"Falha ao gerar PDF: {error_message}")
 

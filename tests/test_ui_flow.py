@@ -18,6 +18,7 @@ Diretrizes de isolamento para execução determinística e segura:
   4. Transições assíncronas são aguardadas com qtbot.waitUntil() para evitar race conditions.
 """
 
+import logging
 import os
 import sys
 from typing import Generator
@@ -1216,4 +1217,277 @@ def test_new_evaluation_resets_demo_profile_and_badge(
     assert app_window._demo_badge.isVisible() is False
     assert combo.currentData() == config.FILTER_MODE_DEFAULT
     assert combo.itemData(combo.currentIndex(), _PROFILE_ROLE) == ("CLINICAL", None)
+
+
+# =============================================================================
+# Fase 8a — "Não Salvar Esta Sessão" na Tela de Resultado (subfase de testes)
+# =============================================================================
+#
+# Hoje o CSV da sessão nasce em _start_session() e permanece em logs/ para
+# sempre; não existe nenhum caminho na interface para descartá-lo. Esta fase
+# acrescenta um botão na Tela 3 que remove do disco o CSV e, se já tiver sido
+# gerado, o relatório PDF daquela sessão.
+#
+# Nomes contratados por estes testes (produção ainda não os tem):
+#   _btn_result_do_not_save      botão na Tela de Resultado
+#   _confirm_do_not_save_session()  diálogo de confirmação
+#   _on_result_do_not_save_session()  handler que remove os arquivos
+#   _session_pdf_path            caminho do PDF gerado nesta sessão
+#
+# Isolamento: a fixture app_window já redireciona config.LOG_DIR para
+# tmp_path, então _start_session() cria o CSV real DENTRO do tmp_path do
+# pytest. Nenhum teste desta seção toca a pasta logs/ do repositório, e
+# nenhum abre câmera, Arduino ou thread real (start() dos workers é no-op
+# na fixture).
+
+
+def _reject_dialogs(monkeypatch) -> None:
+    """Faz todo QMessageBox subsequente responder como 'Cancelar'."""
+    monkeypatch.setattr(QMessageBox, "exec", lambda msg_self: 0)
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda msg_self: None)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.No),
+    )
+
+
+def _derived_pdf_path(csv_path: str) -> str:
+    """
+    Caminho do PDF que generate_pdf_report() produz para um dado CSV.
+
+    session_report.py monta o nome como <base do csv>_report.pdf, no mesmo
+    diretório do CSV. Reproduzido aqui para que os testes criem o arquivo
+    exatamente onde a produção o teria criado.
+    """
+    return os.path.splitext(csv_path)[0] + "_report.pdf"
+
+
+def _session_with_files(app_window, qtbot, monkeypatch, with_pdf: bool):
+    """
+    Roda uma sessão até a Tela de Resultado e devolve (csv_path, pdf_path).
+
+    O CSV é real, criado pelo próprio _start_session() em tmp_path. O PDF,
+    quando pedido, é um arquivo de conteúdo irrelevante criado no caminho
+    derivado e registrado via _on_pdf_finished() — o mesmo caminho que a
+    geração real usaria, sem rodar Matplotlib nem FPDF.
+    """
+    _run_session_until_result_page(app_window, qtbot, monkeypatch)
+    csv_path = app_window._csv_path
+
+    pdf_path = None
+    if with_pdf:
+        pdf_path = _derived_pdf_path(csv_path)
+        with open(pdf_path, "w", encoding="utf-8") as f:
+            f.write("PDF de teste")
+        app_window._on_pdf_finished(pdf_path)
+
+    return csv_path, pdf_path
+
+
+# --- 1 a 3: remoção dos arquivos ---------------------------------------------
+
+
+def test_do_not_save_removes_the_session_csv(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """1. O CSV da sessão é removido do disco."""
+    csv_path, _ = _session_with_files(app_window, qtbot, monkeypatch, with_pdf=False)
+    assert os.path.exists(csv_path)
+
+    app_window._on_result_do_not_save_session()
+
+    assert not os.path.exists(csv_path)
+
+
+def test_do_not_save_removes_the_generated_pdf(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """2. Se o PDF já foi gerado nesta sessão, ele também é removido —
+    guardar só o CSV deixaria o relatório clínico em disco, que é
+    justamente o que o operador pediu para não manter."""
+    csv_path, pdf_path = _session_with_files(
+        app_window, qtbot, monkeypatch, with_pdf=True
+    )
+    assert os.path.exists(pdf_path)
+
+    app_window._on_result_do_not_save_session()
+
+    assert not os.path.exists(csv_path)
+    assert not os.path.exists(pdf_path)
+
+
+def test_do_not_save_without_any_pdf_does_not_error(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """3. Nenhum PDF gerado é o caso mais comum: a ausência do arquivo não
+    pode virar exceção nem impedir a remoção do CSV."""
+    csv_path, _ = _session_with_files(app_window, qtbot, monkeypatch, with_pdf=False)
+    assert not os.path.exists(_derived_pdf_path(csv_path))
+
+    app_window._on_result_do_not_save_session()
+
+    assert not os.path.exists(csv_path)
+
+
+# --- 4: idempotência ---------------------------------------------------------
+
+
+def test_do_not_save_twice_does_not_raise(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """4. Uma segunda chamada, com os arquivos já removidos, não pode
+    levantar exceção — o botão fica desabilitado, mas o handler precisa ser
+    seguro por si só."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+
+    app_window._on_result_do_not_save_session()
+    app_window._on_result_do_not_save_session()  # não deve levantar
+
+
+# --- 5: estado dos botões depois da ação -------------------------------------
+
+
+def test_do_not_save_disables_export_buttons_and_itself(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """5. Sem arquivo em disco, "Gerar Relatório PDF" e "Exportar CSV" não
+    têm sobre o que operar, e o próprio botão não deve permitir uma segunda
+    tentativa."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+    assert app_window._btn_result_pdf.isEnabled() is True
+    assert app_window._btn_result_csv.isEnabled() is True
+
+    app_window._on_result_do_not_save_session()
+
+    assert app_window._btn_result_pdf.isEnabled() is False
+    assert app_window._btn_result_csv.isEnabled() is False
+    assert app_window._btn_result_do_not_save.isEnabled() is False
+
+
+# --- 6: rastreabilidade sem vazar identificação ------------------------------
+
+
+def test_do_not_save_logs_the_action_without_the_patient_name(
+    app_window: MainWindow, qtbot, monkeypatch, caplog
+):
+    """6. A ação é registrada para rastreabilidade, mas o log não pode
+    reintroduzir justamente o dado que o operador pediu para não manter —
+    nem o nome do paciente, nem o caminho completo do arquivo."""
+    csv_path, _ = _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+
+    # O início/fim da sessão já logaram nome e caminho; só interessa o que
+    # a remoção em si registra.
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        app_window._on_result_do_not_save_session()
+
+    assert caplog.text.strip() != ""
+    assert "Paciente Teste" not in caplog.text
+    assert csv_path not in caplog.text
+
+
+# --- 7: escopo restrito à sessão atual ---------------------------------------
+
+
+def test_do_not_save_keeps_files_from_other_sessions(
+    app_window: MainWindow, qtbot, monkeypatch, tmp_path
+):
+    """7. Só os arquivos da sessão atual são removidos. Um CSV de outra
+    sessão, no mesmo diretório, precisa sobreviver intacto."""
+    outra_sessao = tmp_path / "session_Outro_Paciente_20260101_120000_s1.csv"
+    outra_sessao.write_text("timestamp,frame_id\n", encoding="utf-8")
+
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+
+    app_window._on_result_do_not_save_session()
+
+    assert outra_sessao.exists()
+    assert outra_sessao.read_text(encoding="utf-8") == "timestamp,frame_id\n"
+
+
+# --- 8: arquivo bloqueado por outro programa ---------------------------------
+
+
+def test_do_not_save_warns_when_a_file_is_locked(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """8. No Windows, um CSV aberto no Excel não pode ser removido. O
+    handler deve avisar e seguir sem travar nem estourar exceção — e o
+    arquivo que não pôde ser removido continua em disco."""
+    csv_path, _ = _session_with_files(app_window, qtbot, monkeypatch, with_pdf=False)
+
+    def remove_bloqueado(path):
+        raise PermissionError(f"arquivo em uso: {path}")
+
+    # monkeypatch restaura os.remove ao final do teste automaticamente.
+    monkeypatch.setattr(os, "remove", remove_bloqueado)
+
+    app_window._on_result_do_not_save_session()  # não deve levantar
+
+    assert os.path.exists(csv_path)
+
+
+# --- 9: corrida com a geração de PDF -----------------------------------------
+
+
+def test_do_not_save_is_blocked_while_the_pdf_is_being_generated(
+    app_window: MainWindow, qtbot, tmp_path, monkeypatch
+):
+    """9. Remover o CSV enquanto _PdfGeneratorWorker o está lendo quebraria
+    a geração em curso. Durante a geração o botão fica desabilitado, e volta
+    ao normal quando o PDF termina."""
+    _prepare_pdf_session(app_window, tmp_path, monkeypatch)
+
+    app_window._gerar_relatorio()
+    assert app_window._btn_result_do_not_save.isEnabled() is False
+
+    app_window._on_pdf_finished(str(tmp_path / "relatorio.pdf"))
+    assert app_window._btn_result_do_not_save.isEnabled() is True
+
+
+# --- 10: cancelamento --------------------------------------------------------
+
+
+def test_do_not_save_cancelled_keeps_every_file(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """10. Cancelar no diálogo não remove nada — a confirmação é a única
+    proteção contra o clique acidental numa ação irreversível.
+
+    Exercita o fluxo real (clique no botão -> diálogo -> cancelamento), não
+    o handler isolado: é o clique que precisa passar pela confirmação antes
+    de qualquer remoção."""
+    csv_path, pdf_path = _session_with_files(
+        app_window, qtbot, monkeypatch, with_pdf=True
+    )
+
+    _reject_dialogs(monkeypatch)
+    # Sem este assert, um botão desabilitado faria o teste passar sem nunca
+    # ter chegado ao diálogo — um falso verde.
+    assert app_window._btn_result_do_not_save.isEnabled() is True
+    app_window._btn_result_do_not_save.click()
+
+    assert os.path.exists(csv_path)
+    assert os.path.exists(pdf_path)
+    assert app_window._btn_result_pdf.isEnabled() is True
+
+
+# --- 11: convivência com o reset ---------------------------------------------
+
+
+def test_new_evaluation_works_after_do_not_save(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """11. Descartar os arquivos não pode deixar a interface num estado que
+    impeça o fluxo seguinte: "Nova Avaliação" continua levando a IDLE na
+    Tela de Configuração."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+    app_window._on_result_do_not_save_session()
+
+    app_window._btn_result_next.click()
+    qtbot.waitUntil(lambda: app_window._state == "IDLE", timeout=3000)
+
+    assert app_window._stack.currentIndex() == 1
+    assert app_window._csv_path == ""
 
