@@ -205,7 +205,25 @@ class RobotHandWorker(QThread):
     connected_signal = pyqtSignal(bool)
     error_signal = pyqtSignal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        hand_lost_timeout_s: float = HAND_LOST_TIMEOUT_S,
+    ) -> None:
+        """
+        Parâmetros:
+            parent: pai Qt (ver QThread).
+            hand_lost_timeout_s: tolerância sem detecção de mão antes da
+                reabertura de segurança. Default preserva exatamente
+                HAND_LOST_TIMEOUT_S (1.0s, comportamento clínico de sempre)
+                para todo chamador que não informar este argumento. O
+                perfil "Evento" (demonstração em estande) passa um valor
+                maior (1.5s) para tolerar mais a oclusão do MediaPipe
+                durante o punho fechado — ver investigação de amplitude em
+                INTEGRACAO_MAO_ROBOTICA.md. Guardado por instância, nunca
+                escrito na constante de módulo: uma instância com timeout
+                customizado não pode vazar esse valor para outra.
+        """
         super().__init__(parent)
 
         self._stop_requested = threading.Event()
@@ -218,6 +236,7 @@ class RobotHandWorker(QThread):
 
         self._hand_detected: bool = False
         self._last_hand_time: Optional[float] = None
+        self._hand_lost_timeout_s: float = hand_lost_timeout_s
 
         self._board = None
         self._port: Optional[str] = None
@@ -335,7 +354,7 @@ class RobotHandWorker(QThread):
         now = time.monotonic()
         hand_lost_too_long = (
             not hand_detected
-            and (last_hand_time is None or (now - last_hand_time) > HAND_LOST_TIMEOUT_S)
+            and (last_hand_time is None or (now - last_hand_time) > self._hand_lost_timeout_s)
         )
 
         for finger in FINGER_ORDER:

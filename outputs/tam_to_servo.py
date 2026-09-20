@@ -69,6 +69,23 @@ TAM_MAX: Dict[str, float] = {
     "minimo": 270.0,
 }
 
+# Teto de TAM do perfil "Evento" (demonstração em estande) — tabela PARALELA
+# a TAM_MAX, nunca lida pelo caminho clínico padrão. Só entra em uso quando
+# tam_to_servo()/map_all() recebem tam_max_table=TAM_MAX_DEMO explicitamente.
+#
+# Tetos bem abaixo do clínico, para a mão robótica fechar por completo com
+# pouco esforço do visitante. Ajustados manualmente para demonstração (a
+# investigação de amplitude em INTEGRACAO_MAO_ROBOTICA.md havia sugerido
+# 100/200/230/230/230, partindo dos CSVs reais de logs/; estes valores são
+# mais permissivos e não foram validados contra esses dados).
+TAM_MAX_DEMO: Dict[str, float] = {
+    "polegar": 70.0,
+    "indicador": 150.0,
+    "medio": 150.0,
+    "anelar": 150.0,
+    "minimo": 150.0,
+}
+
 # Posição de servo correspondente à mão aberta. Fixo em 0 para todos os dedos.
 SERVO_OPEN: Dict[str, int] = {
     "polegar": 0,
@@ -105,7 +122,11 @@ GONIO_FINGER_KEY: Dict[str, str] = {
 }
 
 
-def tam_to_servo(finger: str, tam: Optional[float]) -> Optional[int]:
+def tam_to_servo(
+    finger: str,
+    tam: Optional[float],
+    tam_max_table: Optional[Dict[str, float]] = None,
+) -> Optional[int]:
     """
     Converte o TAM (graus) de UM dedo em posição de servo (inteiro).
 
@@ -113,13 +134,18 @@ def tam_to_servo(finger: str, tam: Optional[float]) -> Optional[int]:
         - tam None/NaN/infinito -> None (valor inválido, chamador deve descartar
           e manter a última posição válida daquele dedo).
         - tam <= 0 -> SERVO_OPEN[finger].
-        - tam >= TAM_MAX[finger] -> SERVO_CLOSED[finger].
+        - tam >= teto (TAM_MAX[finger] ou tam_max_table[finger]) -> SERVO_CLOSED[finger].
         - caso contrário -> interpolação linear entre SERVO_OPEN e SERVO_CLOSED,
           sempre limitada (clamp) ao intervalo [SERVO_OPEN, SERVO_CLOSED].
 
     Parâmetros:
         finger: uma das chaves de FINGER_ORDER ("polegar", "indicador", ...).
         tam: TAM em graus, tipicamente vindo de angles_smooth[...]["TAM"].
+        tam_max_table: teto de TAM a usar nesta chamada. None (default) usa
+            TAM_MAX, o teto clínico. Uma tabela explícita (ex.: TAM_MAX_DEMO)
+            vale só para esta chamada — nenhuma tabela global é alterada, e
+            SERVO_OPEN/SERVO_CLOSED continuam vindo sempre das tabelas
+            clínicas de sempre, com ou sem esse parâmetro.
 
     Retorna:
         Posição de servo (int) ou None se o valor de entrada for inválido
@@ -141,7 +167,7 @@ def tam_to_servo(finger: str, tam: Optional[float]) -> Optional[int]:
 
     servo_open = SERVO_OPEN[finger]
     servo_closed = SERVO_CLOSED[finger]
-    tam_max = TAM_MAX[finger]
+    tam_max = (tam_max_table if tam_max_table is not None else TAM_MAX)[finger]
 
     if tam_f <= 0.0:
         return servo_open
@@ -157,7 +183,10 @@ def tam_to_servo(finger: str, tam: Optional[float]) -> Optional[int]:
     return int(round(position))
 
 
-def map_all(angles_smooth: Dict[str, Dict[str, float]]) -> Dict[str, Optional[int]]:
+def map_all(
+    angles_smooth: Dict[str, Dict[str, float]],
+    tam_max_table: Optional[Dict[str, float]] = None,
+) -> Dict[str, Optional[int]]:
     """
     Converte o dicionário completo angles_smooth (saída do pipeline
     goniométrico) em posições de servo para os 5 dedos.
@@ -166,6 +195,9 @@ def map_all(angles_smooth: Dict[str, Dict[str, float]]) -> Dict[str, Optional[in
         angles_smooth: dicionário {"INDEX": {"TAM": ..., ...}, "THUMB": {...}, ...}
                         no formato de ProcessingResult.angles_smooth. Pode ser {}
                         (nenhuma mão detectada) ou conter apenas alguns dedos.
+        tam_max_table: repassado a tam_to_servo() para cada dedo — mesmo
+            significado: None usa o teto clínico (TAM_MAX), uma tabela
+            explícita (ex.: TAM_MAX_DEMO) vale só para esta chamada.
 
     Retorna:
         {"polegar": int|None, "indicador": int|None, "medio": int|None,
@@ -179,5 +211,5 @@ def map_all(angles_smooth: Dict[str, Dict[str, float]]) -> Dict[str, Optional[in
         gonio_key = GONIO_FINGER_KEY[finger]
         finger_data = angles_smooth.get(gonio_key, {})
         tam = finger_data.get("TAM")
-        result[finger] = tam_to_servo(finger, tam)
+        result[finger] = tam_to_servo(finger, tam, tam_max_table=tam_max_table)
     return result
