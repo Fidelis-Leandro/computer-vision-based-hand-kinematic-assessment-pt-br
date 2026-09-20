@@ -96,6 +96,7 @@ from workers.processing_worker import ProcessingResult, ProcessingWorker
 # Importa o worker e o mapeamento da mão robótica (Arduino).
 # Módulo independente: não importa nada do projeto "Mão robo".
 from outputs.robot_hand_output import RobotHandWorker
+from outputs.tam_to_servo import TAM_MAX_DEMO
 from outputs.tam_to_servo import map_all as robot_hand_map_all
 
 # Importa os widgets de interface.
@@ -110,14 +111,31 @@ from ui.video_widget import VideoWidget
 logger = logging.getLogger(__name__)
 
 
+# Papel Qt customizado que carrega o PERFIL de operação de cada item do
+# seletor — ("CLINICAL", None) ou ("DEMO", hand_lost_timeout_s). Separado
+# do UserRole (que continua carregando só o filtro real, ver comentário
+# abaixo) porque são duas perguntas independentes: "qual filtro aplicar" e
+# "isto é uma sessão clínica ou uma demonstração de estande". Misturar as
+# duas no mesmo valor faria o item Evento deixar de ser um "EMA" válido
+# para set_filter_mode()/CSV_VALID_FILTER_MODES sem essa separação.
+_PROFILE_ROLE = Qt.ItemDataRole(Qt.ItemDataRole.UserRole.value + 1)
+
 # Modos de filtro oferecidos na tela de configuração, na ordem em que aparecem
-# no seletor: o recomendado primeiro e RAW por último, para afastar o modo sem
-# suavização do clique acidental de quem abre a lista com pressa.
+# no seletor: o recomendado primeiro, RAW antes do último, para afastar o modo
+# sem suavização do clique acidental de quem abre a lista com pressa, e Evento
+# por último — é o único item que não representa um modo clínico.
 #
-# Cada entrada é (modo interno, rótulo visível, tooltip, linha de ajuda). O modo
-# interno é a mesma string que smoothing.py e a coluna filter_mode do CSV usam —
-# ela viaja como userData do QComboBox, sem nenhum dicionário de tradução
-# paralelo na interface.
+# Cada entrada é (modo interno, rótulo visível, tooltip, linha de ajuda,
+# perfil). O modo interno é a mesma string que smoothing.py e a coluna
+# filter_mode do CSV usam — ela viaja como userData do QComboBox (UserRole),
+# sem nenhum dicionário de tradução paralelo na interface. O perfil viaja em
+# _PROFILE_ROLE, um papel separado (ver comentário acima).
+#
+# "Evento" NÃO é um quinto algoritmo de smoothing.py: seu modo interno é
+# "EMA", o mesmo filtro válido do item 2 — só o perfil ("DEMO", 1.5) o
+# distingue. Isso significa que set_filter_mode(), a validação de
+# CSV_VALID_FILTER_MODES e tudo que já lê currentData() continuam recebendo
+# uma string que já é válida hoje, sem precisar saber que Evento existe.
 FILTER_MODE_OPTIONS = (
     (
         "EMA_KALMAN",
@@ -125,6 +143,7 @@ FILTER_MODE_OPTIONS = (
         "Pipeline clínico validado (EMA seguido de Kalman). "
         "Elimina oscilação sem atraso perceptível.",
         "Pipeline clínico validado. Use este modo para avaliações reais.",
+        ("CLINICAL", None),
     ),
     (
         "EMA",
@@ -132,6 +151,7 @@ FILTER_MODE_OPTIONS = (
         "Só média móvel exponencial. Mais simples e levemente mais responsivo, "
         "com mais oscilação residual.",
         "Suavização simples. Levemente mais responsivo, com mais oscilação residual.",
+        ("CLINICAL", None),
     ),
     (
         "KALMAN",
@@ -139,6 +159,7 @@ FILTER_MODE_OPTIONS = (
         "Só filtro preditivo. Bom para movimento contínuo; pode oscilar mais "
         "em movimentos bruscos.",
         "Filtro preditivo. Bom para movimento contínuo.",
+        ("CLINICAL", None),
     ),
     (
         "RAW",
@@ -146,6 +167,19 @@ FILTER_MODE_OPTIONS = (
         "Sem nenhuma suavização. Uso para demonstração, comparação ou "
         "diagnóstico técnico — não recomendado para avaliação clínica.",
         "⚠ Sem suavização — os valores oscilam. Uso técnico/demonstração.",
+        ("CLINICAL", None),
+    ),
+    (
+        "EMA",
+        "⚡ Evento — resposta rápida da mão robótica",
+        "Perfil de demonstração: usa o filtro EMA, amplia a faixa de "
+        "fechamento da mão robótica e tolera mais tempo sem detecção antes "
+        "de reabrir. Os ângulos e classificações clínicas exibidos "
+        "continuam sendo medições reais — só a resposta da mão robótica é "
+        "ajustada para impressionar o público.",
+        "⚡ Modo de demonstração para estande — a mão robótica fecha com mais "
+        "facilidade. Os dados clínicos na tela continuam reais.",
+        ("DEMO", 1.5),
     ),
 )
 
@@ -291,6 +325,17 @@ class MainWindow(QMainWindow):
         # Caminho para o CSV da sessão ativa. Definido em _start_session().
         # Usado por _gerar_relatorio() e _exportar_csv().
         self._csv_path: str = ""
+
+        # Perfil da sessão ATUAL, congelado em _start_session() a partir do
+        # _PROFILE_ROLE do item selecionado no combo. Nasce sempre no modo
+        # clínico seguro (False/None), e só o item Evento o altera — nunca
+        # o inverso. _on_result() e _start_robot_hand() leem estes dois
+        # campos, nunca o combo diretamente: durante RUNNING o dropdown já
+        # está desabilitado, mas ler o estado congelado em vez do widget é
+        # o que garante que o perfil não pode mudar no meio da sessão, nem
+        # por acidente nem por uma futura alteração de UI.
+        self._session_demo_mode: bool = False
+        self._session_hand_lost_timeout_s: Optional[float] = None
 
         # Worker de geração de PDF — mantemos referência para evitar coleta de lixo
         # antes de o PDF terminar de ser gerado.
@@ -581,6 +626,21 @@ class MainWindow(QMainWindow):
             f"QLabel {{ color: {COLOR_TEXT_PRIMARY}; font-size: 14px; font-weight: bold; border: none; }}"
         )
         bar_layout.addWidget(self._assessment_bar_label)
+
+        # Badge do perfil Evento (Fase 7E-f) — somente leitura, sem clique.
+        # Oculto por padrão: só _update_demo_badge_visibility() decide quando
+        # mostrá-lo, e só o faz em RUNNING com self._session_demo_mode True.
+        # Nasce escondido para que nenhum estado transitório da inicialização
+        # o exiba antes da primeira chamada a _set_state().
+        self._demo_badge = QLabel("⚡ EVENTO — DEMONSTRAÇÃO")
+        self._demo_badge.setStyleSheet(
+            f"QLabel {{ color: {COLOR_DANGER}; font-size: 11px; font-weight: bold; "
+            f"border: 1px solid {COLOR_DANGER}; border-radius: 4px; padding: 2px 8px; }}"
+        )
+        self._demo_badge.setEnabled(False)  # nunca interativo — só leitura.
+        self._demo_badge.hide()
+        bar_layout.addWidget(self._demo_badge)
+
         bar_layout.addStretch()
         bar_layout.addWidget(self.btn_robot_hand)
         bar_layout.addWidget(self.btn_end)
@@ -732,13 +792,13 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(lbl_filtro)
 
         self._setup_combo_filter = QComboBox()
-        for mode, label, tooltip, _help_text in FILTER_MODE_OPTIONS:
+        for mode, label, tooltip, _help_text, profile in FILTER_MODE_OPTIONS:
             self._setup_combo_filter.addItem(label, mode)
+            item_index = self._setup_combo_filter.count() - 1
             self._setup_combo_filter.setItemData(
-                self._setup_combo_filter.count() - 1,
-                tooltip,
-                Qt.ItemDataRole.ToolTipRole,
+                item_index, tooltip, Qt.ItemDataRole.ToolTipRole
             )
+            self._setup_combo_filter.setItemData(item_index, profile, _PROFILE_ROLE)
         self._setup_combo_filter.setToolTip(
             "Define como os ângulos são suavizados antes de aparecerem na tela, "
             "serem gravados no CSV e usados no relatório PDF. O modo escolhido "
@@ -808,12 +868,24 @@ class MainWindow(QMainWindow):
 
         RAW recebe cor âmbar porque é o único modo que entrega ângulos sem
         nenhuma suavização: os valores oscilam de forma visível e ele não
-        deve ser usado em avaliação clínica. Os demais modos compartilham a
-        cor neutra do formulário — se o destaque valesse para todos, deixaria
-        de comunicar qualquer coisa.
+        deve ser usado em avaliação clínica. Evento recebe COLOR_DANGER,
+        mais forte que o âmbar de RAW — é o único item cujo perfil é DEMO,
+        não CLINICAL, e o alerta precisa ser distinguível do de RAW à
+        primeira vista, não apenas mais um tom de aviso. Os demais modos
+        compartilham a cor neutra do formulário — se o destaque valesse
+        para todos, deixaria de comunicar qualquer coisa.
+
+        A cor é decidida pelo perfil (profile[0] == "DEMO"), não pelo modo
+        interno: Evento usa "EMA" como filtro real, o mesmo do item 2, então
+        checar mode == "RAW"/"EMA" não bastaria para diferenciá-lo.
         """
-        mode, _label, _tooltip, help_text = FILTER_MODE_OPTIONS[index]
-        color = COLOR_WARNING if mode == "RAW" else COLOR_TEXT_SECONDARY
+        mode, _label, _tooltip, help_text, profile = FILTER_MODE_OPTIONS[index]
+        if profile[0] == "DEMO":
+            color = COLOR_DANGER
+        elif mode == "RAW":
+            color = COLOR_WARNING
+        else:
+            color = COLOR_TEXT_SECONDARY
 
         self._setup_lbl_filter_help.setText(help_text)
         self._setup_lbl_filter_help.setStyleSheet(
@@ -1128,6 +1200,16 @@ class MainWindow(QMainWindow):
             self._setup_combo_filter.findData(config.FILTER_MODE_DEFAULT)
         )
 
+        # 3b. Perfil da sessão de volta ao clínico — o badge de demonstração
+        #     nunca pode sobreviver a um reset. _set_state("IDLE") já
+        #     ocultaria o badge por si só (ele exige RUNNING), mas o estado
+        #     em si precisa voltar ao valor seguro aqui, e não só na
+        #     próxima chamada a _start_session(): enquanto a Tela de
+        #     Configuração está aberta, o perfil "atual" não deve continuar
+        #     marcado como Evento de uma sessão que já terminou.
+        self._session_demo_mode = False
+        self._session_hand_lost_timeout_s = None
+
         # 4. Estado final.
         self._set_state("IDLE")
         self._stack.setCurrentIndex(1)
@@ -1261,7 +1343,29 @@ class MainWindow(QMainWindow):
         }
         self._status_bar.showMessage(status_messages.get(state, ""))
 
+        # O badge só pode aparecer em RUNNING com perfil Evento — chamado
+        # aqui (e não só em _start_session()) porque _set_state() é o único
+        # método que toda transição de estado passa por, incluindo o
+        # encerramento da sessão (STOPPED) e o reset (IDLE), onde o badge
+        # precisa desaparecer.
+        self._update_demo_badge_visibility()
+
         logger.debug("Estado alterado para: %s", state)
+
+    def _update_demo_badge_visibility(self) -> None:
+        """
+        Mostra o badge "⚡ EVENTO — DEMONSTRAÇÃO" só quando as duas condições
+        valem ao mesmo tempo: self._state == "RUNNING" e
+        self._session_demo_mode is True. Em qualquer outro estado (IDLE,
+        READY, STOPPED) ou com o perfil clínico, o badge fica oculto.
+
+        Lê self._session_demo_mode (o perfil já congelado em
+        _start_session()), nunca o combo — o mesmo motivo documentado no
+        campo: o badge tem que refletir a sessão que está de fato em
+        andamento, não o que o dropdown mostraria se estivesse habilitado.
+        """
+        show = self._state == "RUNNING" and self._session_demo_mode
+        self._demo_badge.setVisible(show)
 
     # =========================================================================
     # SLOTS DE RESULTADO E ERRO
@@ -1307,8 +1411,18 @@ class MainWindow(QMainWindow):
         # Mão robótica: só envia alvos se estiver LIGADA e conectada.
         # update_targets() é barato (grava sob lock, sem I/O) — não há risco
         # de atrasar a distribuição do resultado para os demais widgets.
+        #
+        # tam_max_table vem do perfil CONGELADO da sessão
+        # (self._session_demo_mode), nunca de uma nova leitura do combo:
+        # durante RUNNING o dropdown já está desabilitado, e o perfil não
+        # pode mudar no meio da sessão. Fora do perfil Evento, None preserva
+        # exatamente o comportamento clínico de sempre (TAM_MAX interno de
+        # outputs/tam_to_servo.py, não a tabela paralela TAM_MAX_DEMO).
         if self._robot_hand_worker is not None and self._robot_hand_state == "on":
-            servo_positions = robot_hand_map_all(r.angles_smooth)
+            tam_max_table = TAM_MAX_DEMO if self._session_demo_mode else None
+            servo_positions = robot_hand_map_all(
+                r.angles_smooth, tam_max_table=tam_max_table
+            )
             self._robot_hand_worker.update_targets(servo_positions, r.hand_detected)
 
     def _on_camera_error(self, message: str) -> None:
@@ -1366,7 +1480,17 @@ class MainWindow(QMainWindow):
         self._robot_hand_had_error = False
         self._set_robot_hand_state("connecting")
 
-        self._robot_hand_worker = RobotHandWorker(parent=self)
+        # O timeout vem do perfil CONGELADO da sessão
+        # (self._session_hand_lost_timeout_s), não de uma nova leitura do
+        # combo. None (perfil clínico) omite o argumento por completo, então
+        # RobotHandWorker usa seu próprio default (HAND_LOST_TIMEOUT_S,
+        # 1.0s) — o mesmo comportamento de sempre, sem precisar duplicar
+        # esse valor aqui.
+        worker_kwargs = {"parent": self}
+        if self._session_hand_lost_timeout_s is not None:
+            worker_kwargs["hand_lost_timeout_s"] = self._session_hand_lost_timeout_s
+
+        self._robot_hand_worker = RobotHandWorker(**worker_kwargs)
         self._robot_hand_worker.connected_signal.connect(self._on_robot_hand_connected)
         self._robot_hand_worker.error_signal.connect(self._on_robot_hand_error)
         self._robot_hand_worker.finished.connect(self._on_robot_hand_finished)
@@ -1635,13 +1759,25 @@ class MainWindow(QMainWindow):
         csv_filename: str = f"session_{safe_name}_{timestamp_str}_s{session_number}.csv"
         self._csv_path = os.path.join(config.LOG_DIR, csv_filename)
 
-        # Aplica o modo de filtro escolhido ANTES de abrir o CSV. A ordem
-        # importa: start_session() abre o arquivo e, a partir daí, cada linha
-        # gravada carrega o modo do banco atualmente instalado. Trocar o banco
-        # depois faria as primeiras linhas saírem com o modo anterior — um erro
-        # silencioso, que só apareceria no rodapé de um PDF já entregue.
+        # Lê modo e perfil do combo AQUI, uma única vez, e congela ambos em
+        # self._session_*. Depois deste ponto, nenhum outro método volta a
+        # ler o combo: durante RUNNING o dropdown já está desabilitado, mas
+        # o motivo real de ler o estado congelado (não o widget) é que o
+        # perfil da sessão não pode mudar no meio dela por nenhum caminho —
+        # nem um clique acidental, nem uma alteração futura de UI.
         selected_mode = self._setup_combo_filter.currentData()
+        selected_profile = self._setup_combo_filter.currentData(_PROFILE_ROLE)
+        self._session_demo_mode = selected_profile[0] == "DEMO"
+        self._session_hand_lost_timeout_s = selected_profile[1]
+
+        # Aplica o modo de filtro e o perfil de demonstração ANTES de abrir
+        # o CSV. A ordem importa: start_session() abre o arquivo e, a partir
+        # daí, cada linha gravada carrega o modo/perfil atualmente instalado
+        # no worker. Trocar qualquer um dos dois depois faria as primeiras
+        # linhas saírem com o valor anterior — um erro silencioso, que só
+        # apareceria no rodapé de um PDF já entregue.
         self.processing_worker.set_filter_mode(selected_mode)
+        self.processing_worker.set_demo_mode(self._session_demo_mode)
 
         # Inicia a sessão CSV no worker ANTES de iniciar as threads.
         # Isso garante que o logger esteja pronto quando os primeiros quadros chegarem.

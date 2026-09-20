@@ -21,18 +21,22 @@ Diretrizes de isolamento para execução determinística e segura:
 import os
 import sys
 from typing import Generator
+from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWidgets import QLabel, QMessageBox
 
 # Garante que o diretório raiz do projeto esteja no sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config
 import ui.main_window as main_window_module
-from themes import COLOR_WARNING
+from outputs.tam_to_servo import TAM_MAX_DEMO
+from themes import COLOR_DANGER, COLOR_WARNING
 from ui.main_window import MainWindow
+from workers.processing_worker import ProcessingResult
 
 
 @pytest.fixture
@@ -411,12 +415,14 @@ def _run_session_until_result_page(app_window, qtbot, monkeypatch) -> None:
 
 
 def test_filter_combo_has_the_four_modes_recommended_first(app_window: MainWindow, qtbot):
-    """14. O seletor expõe exatamente os quatro modos de smoothing.py, com o
-    recomendado em primeiro e RAW por último — a ordem afasta o modo de risco
-    do clique acidental de quem abre o combo com pressa."""
+    """14. O seletor expõe os quatro modos de smoothing.py nos primeiros
+    quatro índices, com o recomendado em primeiro e RAW por último — a ordem
+    afasta o modo de risco do clique acidental de quem abre o combo com
+    pressa. Um quinto item (Evento, Fase 7E-d) vem depois, sem modo próprio
+    em smoothing.py — por isso o teste verifica os quatro primeiros índices,
+    não o total de itens (ver test_filter_combo_will_have_five_items_with_evento_last)."""
     combo = app_window._setup_combo_filter
 
-    assert combo.count() == 4
     assert [combo.itemData(i) for i in range(4)] == ["EMA_KALMAN", "EMA", "KALMAN", "RAW"]
 
 
@@ -429,26 +435,32 @@ def test_filter_combo_starts_at_the_configured_default(app_window: MainWindow, q
 
 def test_filter_combo_labels_are_readable_for_the_operator(app_window: MainWindow, qtbot):
     """16. Os rótulos visíveis identificam o modo sem exigir conhecimento do
-    código, e o recomendado se anuncia como tal."""
-    combo = app_window._setup_combo_filter
-    labels = {combo.itemData(i): combo.itemText(i) for i in range(combo.count())}
+    código, e o recomendado se anuncia como tal.
 
-    assert "recomendado" in labels["EMA_KALMAN"].lower()
-    assert "EMA" in labels["EMA"]
-    assert "Kalman" in labels["KALMAN"]
-    assert "RAW" in labels["RAW"]
+    Lê por ÍNDICE, não por um dicionário chaveado por itemData(): desde a
+    Fase 7E-d, o item Evento também tem itemData() == "EMA" (mesmo filtro
+    real do item 2, por design) — um dicionário {mode: label} colapsaria os
+    dois no mesmo valor e o rótulo do Evento sobrescreveria o do EMA
+    clínico."""
+    combo = app_window._setup_combo_filter
+
+    assert "recomendado" in combo.itemText(0).lower()
+    assert "EMA" in combo.itemText(1)
+    assert "Kalman" in combo.itemText(2)
+    assert "RAW" in combo.itemText(3)
 
 
 def test_every_filter_mode_has_its_own_tooltip(app_window: MainWindow, qtbot):
     """17. Cada opção traz explicação própria (ToolTipRole), não um texto
-    genérico repetido — quatro tooltips distintos e não vazios."""
+    genérico repetido. Cinco itens desde a Fase 7E-d (Evento incluído) —
+    cinco tooltips distintos e não vazios, nenhum deles reaproveitado."""
     combo = app_window._setup_combo_filter
     tooltips = [
         combo.itemData(i, Qt.ItemDataRole.ToolTipRole) for i in range(combo.count())
     ]
 
     assert all(tip and tip.strip() for tip in tooltips)
-    assert len(set(tooltips)) == 4
+    assert len(set(tooltips)) == len(main_window_module.FILTER_MODE_OPTIONS)
 
 
 # --- Seletor: linha de ajuda dinâmica ---------------------------------------
@@ -815,4 +827,410 @@ def test_build_button_row_no_longer_exists(app_window: MainWindow, qtbot):
     por ninguém — a própria docstring admitia que não entrava em nenhum
     layout visível."""
     assert not hasattr(app_window, "_build_button_row")
+
+
+# =============================================================================
+# Fase 7E-a — perfil "Evento" no seletor de filtro (subfase de testes)
+# =============================================================================
+#
+# "Evento" é um QUINTO ITEM do mesmo QComboBox "Modo de Filtro" — não um
+# controle novo, não um quinto algoritmo de smoothing.py. Ele usa o filtro
+# EMA de sempre (já válido em VALID_FILTER_MODES/CSV_VALID_FILTER_MODES, sem
+# nenhuma mudança de validação em smoothing.py ou goniometry_csv.py) e
+# acrescenta um PERFIL de operação (CLINICAL vs DEMO), carregado num segundo
+# papel de dado do próprio item do combo — Qt.ItemDataRole.UserRole continua
+# guardando só o filtro real (como hoje, para os 5 itens), e um papel
+# customizado (UserRole + 1) guarda o perfil. Essa separação é o que garante
+# que os quatro chamadores já existentes de currentData()/findData() (o
+# combo em si, set_filter_mode(), a coluna filter_mode do CSV) não precisem
+# mudar uma linha sequer para os 4 modos clínicos, e recebam "EMA" — um modo
+# genuinamente válido — mesmo quando o item selecionado é o Evento.
+#
+# NENHUM destes testes foi implementado em produção ainda (isto é 7E-a: só
+# testes). Os marcados "FALHA ESPERADA" devem falhar agora, pelo motivo
+# descrito em cada um — a 7E-d ainda não aconteceu. Os demais (sem essa
+# marca) já descrevem comportamento que continua sendo verdade tanto antes
+# quanto depois da Fase 7E, e por isso já passam hoje.
+
+# Espelha o papel customizado que a produção vai definir em ui/main_window.py
+# na Fase 7E-d. Definido aqui, e não importado, porque o símbolo de produção
+# ainda não existe — um import direto quebraria a coleta do arquivo inteiro.
+# Qt já está importado no topo deste arquivo (linha ~26); nenhum import novo
+# é necessário aqui.
+_PROFILE_ROLE = Qt.ItemDataRole(int(Qt.ItemDataRole.UserRole) + 1)
+
+
+# --- Já verdade hoje e continua sendo depois do Evento ----------------------
+
+
+def test_clinical_items_keep_their_mode_in_the_first_four_slots(
+    app_window: MainWindow, qtbot
+):
+    """
+    Os 4 modos clínicos devem ocupar os índices 0-3 do combo com o mesmo
+    filtro real de sempre, tanto antes quanto depois do Evento ser
+    adicionado como 5º item. Não afirma o total de itens (isso é o teste de
+    transição abaixo) — só que os 4 primeiros não mudam de lugar nem de
+    valor quando o Evento for inserido no fim da lista.
+    """
+    combo = app_window._setup_combo_filter
+    esperado = ["EMA_KALMAN", "EMA", "KALMAN", "RAW"]
+
+    assert [combo.itemData(i) for i in range(4)] == esperado
+
+
+def test_filter_combo_default_selection_stays_ema_kalman(
+    app_window: MainWindow, qtbot
+):
+    """
+    A seleção inicial do combo continua vindo exclusivamente de
+    config.FILTER_MODE_DEFAULT — o Evento não pode se tornar o padrão por
+    engano, nem agora nem depois de implementado."""
+    assert app_window._setup_combo_filter.currentData() == config.FILTER_MODE_DEFAULT
+    assert config.FILTER_MODE_DEFAULT == "EMA_KALMAN"
+
+
+# --- FALHA ESPERADA: comportamento do Evento, ainda não implementado --------
+
+
+def test_filter_combo_will_have_five_items_with_evento_last(
+    app_window: MainWindow, qtbot
+):
+    """FALHA ESPERADA ATÉ A FASE 7E-d.
+
+    Hoje o combo tem 4 itens. "⚡ Evento — resposta rápida da mão robótica"
+    deve ser o quinto, por último — mesma lógica de posicionamento já usada
+    para RAW: o item de uso não-clínico fica longe do clique apressado."""
+    combo = app_window._setup_combo_filter
+
+    assert combo.count() == 5
+    assert "Evento" in combo.itemText(4)
+
+
+def test_evento_item_carries_ema_as_its_real_filter(app_window: MainWindow, qtbot):
+    """FALHA ESPERADA ATÉ A FASE 7E-d.
+
+    O UserRole do item Evento deve ser "EMA" — o mesmo filtro válido que os
+    demais itens usam. Isto é o que permite ao Evento atravessar
+    set_filter_mode() e a coluna filter_mode do CSV sem nenhuma mudança de
+    validação: para essas duas peças do sistema, Evento simplesmente "é"
+    EMA. Hoje o combo só tem 4 itens, então o índice 4 não existe e
+    itemData(4) devolve None."""
+    combo = app_window._setup_combo_filter
+
+    assert combo.itemData(4) == "EMA"
+
+
+@pytest.mark.parametrize("index", range(4))
+def test_clinical_items_have_no_profile_role_yet(
+    app_window: MainWindow, qtbot, index
+):
+    """FALHA ESPERADA ATÉ A FASE 7E-d.
+
+    Os 4 itens clínicos devem passar a carregar ("CLINICAL", None) no papel
+    customizado — hoje esse papel não é escrito em NENHUM item, nem nos 4
+    que já existem, porque a Fase 7E-d ainda não aconteceu. Por isso este
+    teste testa exatamente os índices que já existem hoje (0-3), não o
+    índice do Evento — a falha aqui prova que o mecanismo do papel
+    customizado como um todo ainda não foi ligado, não só que falta o
+    Evento."""
+    combo = app_window._setup_combo_filter
+
+    assert combo.itemData(index, _PROFILE_ROLE) == ("CLINICAL", None)
+
+
+def test_evento_item_profile_is_demo_with_1_5s_timeout(
+    app_window: MainWindow, qtbot
+):
+    """FALHA ESPERADA ATÉ A FASE 7E-d.
+
+    O perfil do Evento é ("DEMO", 1.5): perfil de servo DEMO e tolerância de
+    1.5s sem detecção de mão antes da reabertura de segurança (contra 1.0s
+    do modo clínico) — valor escolhido a partir da investigação de
+    amplitude/oclusão já documentada em INTEGRACAO_MAO_ROBOTICA.md."""
+    combo = app_window._setup_combo_filter
+
+    assert combo.itemData(4, _PROFILE_ROLE) == ("DEMO", 1.5)
+
+
+def test_new_evaluation_resets_combo_from_evento_to_clinical_default(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """FALHA ESPERADA ATÉ A FASE 7E-d/7E-f.
+
+    Seleciona Evento e aciona diretamente o mesmo reset que o botão "Nova
+    Avaliação" usa (_on_result_new_session(), com o diálogo de confirmação
+    interceptado) — sem passar por _start_session(): o índice do Evento
+    ainda não existe hoje, e setCurrentIndex(4) num combo de 4 itens zera a
+    seleção (currentIndex vira -1) em vez de virar um no-op inofensivo.
+    Rodar uma sessão de verdade com essa seleção quebrada faria
+    set_filter_mode(None) explodir dentro do loop de eventos Qt — um erro
+    barulhento e desviado do que este teste quer provar. Por isso o reset é
+    exercitado isoladamente: _on_result_new_session() nunca lê o combo antes
+    de resetá-lo, então é seguro chamá-lo mesmo com a seleção inválida.
+
+    Falha hoje porque o índice 4 não existe: currentIndex() fica em -1 após
+    setCurrentIndex(4), e mesmo depois do reset (que sempre mira o índice
+    de EMA_KALMAN) currentData() já seria "EMA_KALMAN" — mas
+    itemData(idx, _PROFILE_ROLE) ainda não existe em nenhum item hoje."""
+    combo = app_window._setup_combo_filter
+    combo.setCurrentIndex(4)  # índice do Evento, ainda inexistente hoje
+
+    _auto_accept_dialogs(monkeypatch)
+    app_window._on_result_new_session()
+
+    assert combo.currentData() == config.FILTER_MODE_DEFAULT
+    assert combo.itemData(combo.currentIndex(), _PROFILE_ROLE) == ("CLINICAL", None)
+
+
+# =============================================================================
+# Fase 7E-f — ativação real do perfil Evento (congelamento, robô, badge)
+# =============================================================================
+#
+# Estes testes exercitam o comportamento que a Fase 7E-d apenas preparou:
+# selecionar Evento agora tem efeito real sobre o worker de processamento
+# (set_demo_mode), o mapeamento de servo (tam_max_table) e o timeout de
+# segurança do RobotHandWorker — tudo lido do perfil CONGELADO em
+# self._session_demo_mode/self._session_hand_lost_timeout_s, nunca de uma
+# nova leitura do combo.
+#
+# RobotHandWorker e robot_hand_map_all são sempre mockados aqui: nenhum
+# teste desta seção abre porta serial, conecta a um Arduino real ou inicia
+# uma thread de verdade — quando a classe inteira é substituída por um
+# MagicMock, chamar .start() na instância apenas registra a chamada, sem
+# nenhuma I/O.
+
+
+def _fake_processing_result(angles_smooth=None) -> ProcessingResult:
+    """ProcessingResult mínimo para exercitar _on_result() sem câmera real."""
+    return ProcessingResult(
+        frame_overlay=np.zeros((4, 4, 3), dtype=np.uint8),
+        angles_smooth=angles_smooth or {},
+        hand_state={},
+        metrics_per_finger={},
+        hand_detected=True,
+        frame_id=1,
+        fps=30.0,
+    )
+
+
+# --- Requisito 1: congelamento do perfil ao iniciar a sessão ----------------
+
+
+def test_starting_session_with_evento_freezes_demo_profile(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """Selecionar Evento e iniciar a sessão deve: instalar EMA como filtro
+    real, marcar demo_mode=True no worker, e congelar
+    self._session_demo_mode/self._session_hand_lost_timeout_s em True/1.5."""
+    combo = app_window._setup_combo_filter
+    combo.setCurrentIndex(4)  # Evento
+
+    filter_mode_calls = []
+    demo_mode_calls = []
+    monkeypatch.setattr(
+        app_window.processing_worker,
+        "set_filter_mode",
+        lambda m: filter_mode_calls.append(m),
+    )
+    monkeypatch.setattr(
+        app_window.processing_worker,
+        "set_demo_mode",
+        lambda d: demo_mode_calls.append(d),
+    )
+
+    app_window._setup_input_patient.setText("Paciente Teste")
+    app_window._setup_btn_start.click()
+    qtbot.waitUntil(lambda: app_window._state == "RUNNING", timeout=3000)
+
+    assert filter_mode_calls == ["EMA"]
+    assert demo_mode_calls == [True]
+    assert app_window._session_demo_mode is True
+    assert app_window._session_hand_lost_timeout_s == 1.5
+
+
+@pytest.mark.parametrize(
+    "index,expected_mode",
+    [(0, "EMA_KALMAN"), (1, "EMA"), (2, "KALMAN"), (3, "RAW")],
+)
+def test_starting_session_with_clinical_item_keeps_clinical_profile(
+    app_window: MainWindow, qtbot, monkeypatch, index, expected_mode
+):
+    """Qualquer item clínico deve manter demo_mode=False, timeout de sessão
+    None, e instalar o filtro real correspondente — sem nenhum efeito do
+    mecanismo de perfil sobre o comportamento já validado nas fases
+    anteriores."""
+    combo = app_window._setup_combo_filter
+    combo.setCurrentIndex(index)
+
+    demo_mode_calls = []
+    monkeypatch.setattr(
+        app_window.processing_worker,
+        "set_demo_mode",
+        lambda d: demo_mode_calls.append(d),
+    )
+
+    app_window._setup_input_patient.setText("Paciente Teste")
+    app_window._setup_btn_start.click()
+    qtbot.waitUntil(lambda: app_window._state == "RUNNING", timeout=3000)
+
+    assert demo_mode_calls == [False]
+    assert app_window._session_demo_mode is False
+    assert app_window._session_hand_lost_timeout_s is None
+    assert app_window.processing_worker._filter_bank.mode == expected_mode
+
+
+# --- Requisito 2: mapeamento do robô com a tabela correta --------------------
+
+
+def test_on_result_uses_demo_tam_max_table_in_evento_profile(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """Com o perfil congelado em DEMO, _on_result() deve chamar
+    robot_hand_map_all(..., tam_max_table=TAM_MAX_DEMO)."""
+    app_window._session_demo_mode = True
+    app_window._robot_hand_worker = MagicMock()
+    app_window._robot_hand_state = "on"
+
+    fake_map_all = MagicMock(
+        return_value={f: 0 for f in ("polegar", "indicador", "medio", "anelar", "minimo")}
+    )
+    monkeypatch.setattr(main_window_module, "robot_hand_map_all", fake_map_all)
+
+    app_window._on_result(_fake_processing_result())
+
+    fake_map_all.assert_called_once()
+    _, kwargs = fake_map_all.call_args
+    assert kwargs.get("tam_max_table") is TAM_MAX_DEMO
+
+
+def test_on_result_uses_clinical_table_outside_evento_profile(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """Fora do perfil Evento, tam_max_table deve ser None — preservando
+    exatamente o mapeamento clínico de sempre (TAM_MAX interno do módulo,
+    não a tabela paralela TAM_MAX_DEMO)."""
+    app_window._session_demo_mode = False
+    app_window._robot_hand_worker = MagicMock()
+    app_window._robot_hand_state = "on"
+
+    fake_map_all = MagicMock(
+        return_value={f: 0 for f in ("polegar", "indicador", "medio", "anelar", "minimo")}
+    )
+    monkeypatch.setattr(main_window_module, "robot_hand_map_all", fake_map_all)
+
+    app_window._on_result(_fake_processing_result())
+
+    _, kwargs = fake_map_all.call_args
+    assert kwargs.get("tam_max_table") is None
+
+
+# --- Requisito 3: timeout do RobotHandWorker ---------------------------------
+
+
+def test_start_robot_hand_uses_1_5s_timeout_in_evento_profile(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """_start_robot_hand() deve passar hand_lost_timeout_s=1.5 quando o
+    perfil congelado é Evento. RobotHandWorker é substituído por um
+    MagicMock inteiro: instanciá-lo não conecta a nenhum Arduino, e
+    chamar .start() na instância apenas registra a chamada."""
+    fake_worker_class = MagicMock()
+    monkeypatch.setattr(main_window_module, "RobotHandWorker", fake_worker_class)
+
+    app_window._session_hand_lost_timeout_s = 1.5
+    app_window._start_robot_hand()
+
+    _, kwargs = fake_worker_class.call_args
+    assert kwargs.get("hand_lost_timeout_s") == 1.5
+    fake_worker_class.return_value.start.assert_called_once()
+
+
+def test_start_robot_hand_uses_clinical_default_timeout_outside_evento(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """Fora do perfil Evento, _start_robot_hand() não deve passar
+    hand_lost_timeout_s — RobotHandWorker usa seu próprio default (1.0s)
+    sem esse valor precisar ser duplicado aqui."""
+    fake_worker_class = MagicMock()
+    monkeypatch.setattr(main_window_module, "RobotHandWorker", fake_worker_class)
+
+    app_window._session_hand_lost_timeout_s = None
+    app_window._start_robot_hand()
+
+    _, kwargs = fake_worker_class.call_args
+    assert "hand_lost_timeout_s" not in kwargs
+
+
+# --- Requisito 4: badge visual -----------------------------------------------
+
+
+def test_demo_badge_exists_as_a_read_only_label(app_window: MainWindow, qtbot):
+    assert hasattr(app_window, "_demo_badge")
+    assert isinstance(app_window._demo_badge, QLabel)
+    assert app_window._demo_badge.isEnabled() is False
+
+
+def test_demo_badge_hidden_at_startup(app_window: MainWindow, qtbot):
+    assert app_window._demo_badge.isVisible() is False
+
+
+def test_demo_badge_text_and_color(app_window: MainWindow, qtbot):
+    text = app_window._demo_badge.text()
+    assert "EVENTO" in text
+    assert "DEMONSTRAÇÃO" in text
+    assert COLOR_DANGER.lower() in app_window._demo_badge.styleSheet().lower()
+
+
+def test_demo_badge_appears_only_during_running_with_evento(
+    app_window: MainWindow, qtbot
+):
+    combo = app_window._setup_combo_filter
+    combo.setCurrentIndex(4)  # Evento
+
+    app_window._setup_input_patient.setText("Paciente Teste")
+    app_window._setup_btn_start.click()
+    qtbot.waitUntil(lambda: app_window._state == "RUNNING", timeout=3000)
+
+    assert app_window._demo_badge.isVisible() is True
+
+
+def test_demo_badge_stays_hidden_during_clinical_session(app_window: MainWindow, qtbot):
+    app_window._setup_input_patient.setText("Paciente Teste")
+    app_window._setup_btn_start.click()  # default EMA_KALMAN
+    qtbot.waitUntil(lambda: app_window._state == "RUNNING", timeout=3000)
+
+    assert app_window._demo_badge.isVisible() is False
+
+
+def test_demo_badge_hides_when_session_stops(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    combo = app_window._setup_combo_filter
+    combo.setCurrentIndex(4)  # Evento
+
+    _run_session_until_result_page(app_window, qtbot, monkeypatch)
+
+    assert app_window._state == "STOPPED"
+    assert app_window._demo_badge.isVisible() is False
+
+
+# --- Requisito 8: reset por Nova Avaliação -----------------------------------
+
+
+def test_new_evaluation_resets_demo_profile_and_badge(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    combo = app_window._setup_combo_filter
+    combo.setCurrentIndex(4)  # Evento
+
+    _run_session_until_result_page(app_window, qtbot, monkeypatch)
+    app_window._btn_result_next.click()
+    qtbot.waitUntil(lambda: app_window._state == "IDLE", timeout=3000)
+
+    assert app_window._session_demo_mode is False
+    assert app_window._session_hand_lost_timeout_s is None
+    assert app_window._demo_badge.isVisible() is False
+    assert combo.currentData() == config.FILTER_MODE_DEFAULT
+    assert combo.itemData(combo.currentIndex(), _PROFILE_ROLE) == ("CLINICAL", None)
 
