@@ -74,10 +74,11 @@ TAM_MAX: Dict[str, float] = {
 # tam_to_servo()/map_all() recebem tam_max_table=TAM_MAX_DEMO explicitamente.
 #
 # Tetos bem abaixo do clínico, para a mão robótica fechar por completo com
-# pouco esforço do visitante. Ajustados manualmente para demonstração (a
-# investigação de amplitude em INTEGRACAO_MAO_ROBOTICA.md havia sugerido
-# 100/200/230/230/230, partindo dos CSVs reais de logs/; estes valores são
-# mais permissivos e não foram validados contra esses dados).
+# pouco esforço do visitante. Valores de teste manual, ajustados
+# empiricamente durante demonstração — NÃO foram validados contra os CSVs
+# reais de logs/ (a investigação em INTEGRACAO_MAO_ROBOTICA.md sugeria
+# 100/200/230/230/230). Recomenda-se revalidar com mais sessões reais antes
+# de uso recorrente em evento.
 TAM_MAX_DEMO: Dict[str, float] = {
     "polegar": 70.0,
     "indicador": 150.0,
