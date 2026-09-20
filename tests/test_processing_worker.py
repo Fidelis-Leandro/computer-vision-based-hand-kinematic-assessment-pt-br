@@ -206,3 +206,55 @@ class TestResetStateRemovedInPhase7Db:
         """Guarda contra remoção excessiva: _reset_for_hand_change() tem nome
         parecido, mas é chamado de verdade quando a mão avaliada muda."""
         assert hasattr(ProcessingWorker, "_reset_for_hand_change")
+
+
+# =============================================================================
+# Fase 7E-a — perfil Evento: set_demo_mode() no worker (subfase de testes)
+# =============================================================================
+#
+# demo_mode é uma informação de REGISTRO (o que vai para a linha do CSV),
+# não um segundo estado do banco de filtros — o filtro real do Evento já é
+# "EMA", aplicado pelo set_filter_mode() de sempre. set_demo_mode() só
+# grava um bool que _try_log_csv() repassa a cada linha, mesmo mecanismo já
+# usado para filter_mode (ver TestProcessingWorkerForwardsFilterModeToCsvLogger
+# acima) — inclusive o motivo de existir um default (False) é o mesmo:
+# preservar qualquer chamada antiga a start_session()/_try_log_csv() sem
+# esse argumento.
+
+
+class TestSetDemoModeForwardsToCsvLogger:
+    def _worker_with_fake_logger(self) -> tuple:
+        worker = ProcessingWorker()
+        fake_logger = MagicMock()
+        worker._csv_logger = fake_logger
+        worker._session_active = True
+        worker._frame_id = 3
+        return worker, fake_logger
+
+    def test_set_demo_mode_method_exists(self):
+        """FALHA ESPERADA ATÉ A FASE 7E-c."""
+        assert hasattr(ProcessingWorker, "set_demo_mode")
+
+    def test_demo_mode_defaults_to_false(self):
+        """FALHA ESPERADA ATÉ A FASE 7E-c.
+
+        Sem nenhuma chamada a set_demo_mode(), toda sessão é clínica por
+        padrão — o mesmo raciocínio de segurança de config.FILTER_MODE_DEFAULT:
+        o modo de exibição precisa ser escolhido explicitamente, nunca
+        herdado por omissão."""
+        worker, fake_logger = self._worker_with_fake_logger()
+
+        worker._try_log_csv({"INDEX": {"MCP": 10.0}})
+
+        _, kwargs = fake_logger.log.call_args
+        assert kwargs.get("demo_mode") is False
+
+    def test_set_demo_mode_true_is_forwarded_to_every_logged_row(self):
+        """FALHA ESPERADA ATÉ A FASE 7E-c."""
+        worker, fake_logger = self._worker_with_fake_logger()
+        worker.set_demo_mode(True)
+
+        worker._try_log_csv({"INDEX": {"MCP": 10.0}})
+
+        _, kwargs = fake_logger.log.call_args
+        assert kwargs.get("demo_mode") is True

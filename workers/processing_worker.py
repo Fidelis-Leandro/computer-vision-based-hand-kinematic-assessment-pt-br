@@ -265,6 +265,12 @@ class ProcessingWorker(QThread):
         self._csv_path: str = ""
         self._session_active: bool = False
 
+        # Metadado de registro da sessão (perfil Evento/demonstração em
+        # estande) — não é estado científico. False é o padrão clínico
+        # seguro: uma sessão só é marcada como demonstração se algo
+        # explicitamente chamar set_demo_mode(True) antes de start_session().
+        self._demo_mode: bool = False
+
         # Lock que protege _session_active e _csv_logger.
         # MainWindow pode chamar start_session()/stop_session() de fora
         # da thread do worker, portanto precisamos de sincronização.
@@ -317,6 +323,24 @@ class ProcessingWorker(QThread):
         de start().
         """
         self._filter_bank = self._make_filter_bank(mode)
+
+    def set_demo_mode(self, enabled: bool) -> None:
+        """
+        Marca a próxima sessão como perfil Evento (demonstração em estande).
+
+        Isto é METADADO de registro — o que _try_log_csv() grava na coluna
+        demo_mode de cada linha, para que o CSV e o PDF deixem explícito que
+        a sessão não é clínica. Não instala filtro, não chama
+        set_filter_mode(), não troca o banco de filtros e não altera TAM,
+        angles_raw/angles_smooth ou qualquer cálculo científico — o perfil
+        Evento usa o filtro EMA de sempre, aplicado pelo mecanismo de sempre;
+        esta chamada não sabe nem precisa saber disso.
+
+        Mesma regra de ordem que set_filter_mode(): deve ser chamada antes
+        de start_session(), para que a primeira linha gravada já reflita o
+        valor correto.
+        """
+        self._demo_mode = bool(enabled)
 
     def set_evaluated_hand(self, side: str) -> None:
         """Atualiza o lado da mão avaliada ('Direita' ou 'Esquerda') de forma segura a partir da UI."""
@@ -793,12 +817,19 @@ class ProcessingWorker(QThread):
 
         filter_mode (self._filter_bank.mode) é registrado em toda linha do
         CSV desta sessão, para que seja possível saber depois qual modo de
-        smoothing.py gerou os dados (Fase 5).
+        smoothing.py gerou os dados (Fase 5). demo_mode (self._demo_mode) é
+        registrado do mesmo jeito, para que fique explícito no CSV/PDF se a
+        sessão é o perfil Evento (demonstração) ou uma sessão clínica normal
+        (Fase 7E) — ambos são metadado de registro, nenhum dos dois altera
+        angles_smooth.
         """
         with self._session_lock:
             if self._session_active and self._csv_logger is not None:
                 self._csv_logger.log(
-                    self._frame_id, angles_smooth, filter_mode=self._filter_bank.mode
+                    self._frame_id,
+                    angles_smooth,
+                    filter_mode=self._filter_bank.mode,
+                    demo_mode=self._demo_mode,
                 )
 
                 # Executa flush a cada 60 quadros para reduzir E/S sem risco de perda de dados.
