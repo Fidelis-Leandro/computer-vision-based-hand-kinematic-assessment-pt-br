@@ -232,11 +232,11 @@ class TestSetDemoModeForwardsToCsvLogger:
         return worker, fake_logger
 
     def test_set_demo_mode_method_exists(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-c."""
+        """Guarda de regressão permanente (não é mais uma transição)."""
         assert hasattr(ProcessingWorker, "set_demo_mode")
 
     def test_demo_mode_defaults_to_false(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-c.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         Sem nenhuma chamada a set_demo_mode(), toda sessão é clínica por
         padrão — o mesmo raciocínio de segurança de config.FILTER_MODE_DEFAULT:
@@ -250,7 +250,7 @@ class TestSetDemoModeForwardsToCsvLogger:
         assert kwargs.get("demo_mode") is False
 
     def test_set_demo_mode_true_is_forwarded_to_every_logged_row(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-c."""
+        """Guarda de regressão permanente (não é mais uma transição)."""
         worker, fake_logger = self._worker_with_fake_logger()
         worker.set_demo_mode(True)
 

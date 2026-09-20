@@ -28,7 +28,7 @@ from outputs.robot_hand_output import HAND_LOST_TIMEOUT_S, RobotHandWorker
 
 class TestHandLostTimeoutIsConfigurable:
     def test_default_timeout_matches_the_clinical_constant(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-b.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         Sem argumento novo, o worker deve continuar usando exatamente
         HAND_LOST_TIMEOUT_S (1.0s) — o comportamento clínico de hoje não
@@ -41,7 +41,7 @@ class TestHandLostTimeoutIsConfigurable:
         assert worker._hand_lost_timeout_s == HAND_LOST_TIMEOUT_S
 
     def test_custom_timeout_is_accepted_and_stored(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-b.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         O construtor ainda não aceita hand_lost_timeout_s — falha hoje com
         TypeError, antes mesmo de qualquer I/O ser tentada."""
@@ -50,7 +50,7 @@ class TestHandLostTimeoutIsConfigurable:
         assert worker._hand_lost_timeout_s == 1.5
 
     def test_custom_timeout_does_not_mutate_the_module_constant(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-b.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         Guarda de sanidade permanente, não só de transição: passar um
         timeout customizado para uma instância nunca pode alterar

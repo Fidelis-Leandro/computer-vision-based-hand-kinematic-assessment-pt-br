@@ -896,7 +896,7 @@ def test_filter_combo_default_selection_stays_ema_kalman(
 def test_filter_combo_will_have_five_items_with_evento_last(
     app_window: MainWindow, qtbot
 ):
-    """FALHA ESPERADA ATÉ A FASE 7E-d.
+    """Guarda de regressão permanente (não é mais uma transição).
 
     Hoje o combo tem 4 itens. "⚡ Evento — resposta rápida da mão robótica"
     deve ser o quinto, por último — mesma lógica de posicionamento já usada
@@ -908,7 +908,7 @@ def test_filter_combo_will_have_five_items_with_evento_last(
 
 
 def test_evento_item_carries_ema_as_its_real_filter(app_window: MainWindow, qtbot):
-    """FALHA ESPERADA ATÉ A FASE 7E-d.
+    """Guarda de regressão permanente (não é mais uma transição).
 
     O UserRole do item Evento deve ser "EMA" — o mesmo filtro válido que os
     demais itens usam. Isto é o que permite ao Evento atravessar
@@ -925,7 +925,7 @@ def test_evento_item_carries_ema_as_its_real_filter(app_window: MainWindow, qtbo
 def test_clinical_items_have_no_profile_role_yet(
     app_window: MainWindow, qtbot, index
 ):
-    """FALHA ESPERADA ATÉ A FASE 7E-d.
+    """Guarda de regressão permanente (não é mais uma transição).
 
     Os 4 itens clínicos devem passar a carregar ("CLINICAL", None) no papel
     customizado — hoje esse papel não é escrito em NENHUM item, nem nos 4
@@ -942,7 +942,7 @@ def test_clinical_items_have_no_profile_role_yet(
 def test_evento_item_profile_is_demo_with_1_5s_timeout(
     app_window: MainWindow, qtbot
 ):
-    """FALHA ESPERADA ATÉ A FASE 7E-d.
+    """Guarda de regressão permanente (não é mais uma transição).
 
     O perfil do Evento é ("DEMO", 1.5): perfil de servo DEMO e tolerância de
     1.5s sem detecção de mão antes da reabertura de segurança (contra 1.0s
@@ -956,7 +956,7 @@ def test_evento_item_profile_is_demo_with_1_5s_timeout(
 def test_new_evaluation_resets_combo_from_evento_to_clinical_default(
     app_window: MainWindow, qtbot, monkeypatch
 ):
-    """FALHA ESPERADA ATÉ A FASE 7E-d/7E-f.
+    """Guarda de regressão permanente (não é mais uma transição).
 
     Seleciona Evento e aciona diretamente o mesmo reset que o botão "Nova
     Avaliação" usa (_on_result_new_session(), com o diálogo de confirmação

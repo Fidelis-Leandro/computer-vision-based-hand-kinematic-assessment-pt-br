@@ -279,7 +279,7 @@ def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 20
 
 class TestLoadSessionCsvWillReadDemoModeColumn:
     def test_demo_mode_true_is_read_as_bool(self, tmp_path):
-        """FALHA ESPERADA ATÉ A FASE 7E-e.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         load_session_csv() ainda não conhece a chave "demo_mode" no
         dicionário que devolve — falha hoje com KeyError."""
@@ -291,7 +291,7 @@ class TestLoadSessionCsvWillReadDemoModeColumn:
         assert data["demo_mode"] is True
 
     def test_demo_mode_false_is_read_as_bool(self, tmp_path):
-        """FALHA ESPERADA ATÉ A FASE 7E-e."""
+        """Guarda de regressão permanente (não é mais uma transição)."""
         csv_path = tmp_path / "clinical_session.csv"
         _write_csv_with_demo_mode_column(csv_path, demo_mode="False")
 
@@ -300,7 +300,7 @@ class TestLoadSessionCsvWillReadDemoModeColumn:
         assert data["demo_mode"] is False
 
     def test_old_csv_without_the_column_reads_as_false_not_assumed(self, tmp_path):
-        """FALHA ESPERADA ATÉ A FASE 7E-e.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         Diferente de filter_mode_assumed: não existe um "demo_mode_assumed"
         proposto, porque não há ambiguidade a marcar — todo CSV gravado
@@ -324,7 +324,7 @@ class TestFooterDemoModeWarning:
     """
 
     def test_warning_text_exists_and_mentions_demonstration_when_true(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-e."""
+        """Guarda de regressão permanente (não é mais uma transição)."""
         from session_report import build_demo_mode_warning_text
 
         texto = build_demo_mode_warning_text(demo_mode=True)
@@ -333,7 +333,7 @@ class TestFooterDemoModeWarning:
         assert "demonstra" in texto.lower() or "evento" in texto.lower()
 
     def test_warning_text_is_empty_when_not_demo(self):
-        """FALHA ESPERADA ATÉ A FASE 7E-e.
+        """Guarda de regressão permanente (não é mais uma transição).
 
         Uma sessão clínica normal não deve ganhar nenhuma linha extra no
         rodapé — o aviso é exclusivo do perfil Evento."""
