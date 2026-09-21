@@ -1969,8 +1969,8 @@ class MainWindow(QMainWindow):
         if confirm:
             resp = QMessageBox.question(
                 self,
-                "Atenção: Nova Sessão",
-                "Iniciar uma nova sessão limpará todos os gráficos e métricas atuais da tela.\n\n"
+                "Atenção: Nova Avaliação",
+                "Iniciar uma nova avaliação limpará todos os gráficos e métricas atuais da tela.\n\n"
                 "Certifique-se de ter exportado o CSV ou gerado o Relatório PDF se precisar desses dados.\n\n"
                 "Tem certeza que deseja começar do zero?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
