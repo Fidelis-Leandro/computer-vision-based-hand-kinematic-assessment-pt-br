@@ -1,7 +1,7 @@
 # Avaliação Cinemática da Mão Baseada em Visão Computacional
 
 <div align="center">
-  <img src="assets/screenshots/tela-avaliacao.jpg" alt="Interface de Avaliação Cinemática da Mão Baseada em Visão Computacional" width="800"/>
+  <img src="assets/screenshots/tela-avaliacao.png" alt="Interface de Avaliação Cinemática da Mão Baseada em Visão Computacional" width="800"/>
 </div>
 
 > **Avaliação cinemática de dedos sem marcadores em tempo real com emissão automatizada de relatórios clínicos — webcam RGB comum, sem necessidade de hardware especializado.**
@@ -92,7 +92,7 @@ Tela 3 — Resultado da Sessão
 
 1. **Tela de Configuração da Sessão (Página 1)**:
 
-   ![Tela de Configuração da Sessão](assets/screenshots/tela-configuracao.jpg)
+   ![Tela de Configuração da Sessão](assets/screenshots/tela-configuracao.png)
    - Formulário inicial limpo para inserção de:
      - Nome do paciente;
      - Mão avaliada (Direita ou Esquerda);
@@ -102,7 +102,7 @@ Tela 3 — Resultado da Sessão
 
 2. **Tela de Avaliação em Andamento (Página 0)**:
 
-   ![Tela de Avaliação em Andamento](assets/screenshots/tela-avaliacao.jpg)
+   ![Tela de Avaliação em Andamento](assets/screenshots/tela-avaliacao.png)
    - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"Encerrar Sessão"** sempre visível e acessível. Ao lado dele ficam o botão da mão robótica e, no perfil Evento, o badge de demonstração.
    - **Área de rolagem clínica (`QScrollArea`)**:
      - *SessionHeaderWidget*: dados da sessão, mão avaliada e cronômetro em tempo real;
@@ -116,7 +116,7 @@ Tela 3 — Resultado da Sessão
 
 3. **Tela de Resultado da Sessão (Página 2)**:
 
-   ![Tela de Resultado da Sessão](assets/screenshots/tela-resultado.jpg)
+   ![Tela de Resultado da Sessão](assets/screenshots/tela-resultado.png)
    - Apresentada automaticamente após a parada completa dos workers (`STOPPED`) e o fechamento do arquivo CSV.
    - Apresenta o resumo clínico e operacional da avaliação:
      - Nome do paciente;
@@ -457,6 +457,8 @@ Durante e após a avaliação clínica, o sistema gerencia os dados coletados de
    - O arquivo é fechado com segurança antes de qualquer navegação pós-sessão.
 
 2. **Geração de Relatório em PDF sob Demanda** — Ao encerrar a sessão e transicionar para a Tela 3 (Resultado), o profissional pode emitir o relatório clínico completo clicando no botão **"Gerar Relatório PDF"**.
+
+   ![Relatório PDF da Sessão](assets/screenshots/tela-relatorio.png)
    - Gerado via [`session_report.py`](session_report.py) com a biblioteca FPDF2 em thread secundária assíncrona (`_PdfGeneratorWorker`), impedindo qualquer congelamento da interface visual.
    - Contém metadados da sessão, faixas de normalidade ASSH, amplitudes mínimas, máximas e médias por articulação e visualizações gráficas das curvas de flexão/extensão.
    - As medidas angulares são apresentadas em graus (`54°`) e as velocidades angulares em graus por segundo (`75°/s`).
