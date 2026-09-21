@@ -1,6 +1,7 @@
 # =============================================================================
 # Digital Goniometry System — Project Dependencies
-# Python 3.10 or 3.11 required (MediaPipe limitation)
+# Ambiente validado: Python 3.11.9.
+# Outras versões do Python não foram verificadas.
 # =============================================================================
 
 # =============================================================================

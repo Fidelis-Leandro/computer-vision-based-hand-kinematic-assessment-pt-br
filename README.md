@@ -6,7 +6,7 @@
 
 > **Avaliação cinemática de dedos sem marcadores em tempo real com emissão automatizada de relatórios clínicos — webcam RGB comum, sem necessidade de hardware especializado.**
 > 
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11.9%20validado-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![PyQt6](https://img.shields.io/badge/PyQt6-6.6%2B-41CD52?style=flat-square&logo=qt&logoColor=white)](https://www.riverbankcomputing.com/software/pyqt/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10%2B-0097A7?style=flat-square&logo=google&logoColor=white)](https://mediapipe.dev/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.9%2B-5C3EE8?style=flat-square&logo=opencv&logoColor=white)](https://opencv.org/)
@@ -56,8 +56,11 @@ A goniometria é o método padrão-ouro para avaliação da amplitude de movimen
 - **Painel de métricas clínicas** com amplitude mínima, máxima e média da sessão
 - **Pipeline duplo de suavização** — Média Móvel Exponencial (EMA) + Filtro de Kalman — para eliminar oscilações (jitter) sem introduzir latência
 - **Modo de filtro selecionável na interface** — EMA + Kalman (padrão), EMA, Kalman ou dados brutos (RAW), escolhido antes de iniciar a sessão e registrado no CSV e no relatório PDF
+- **Perfil Evento para demonstração** — opção do seletor de modo de filtro voltada a demonstrações com a mão robótica; usa o filtro EMA, exibe um badge de demonstração e é registrada no CSV e no relatório PDF (ver [Perfil Evento](#perfil-evento))
 - **Gravação contínua em CSV** no diretório `logs/` com registro temporal (timestamp) e valores por articulação
 - **Geração de relatório em PDF sob demanda** com resumo clínico da sessão gerado em thread secundária
+- **Visualização do relatório PDF dentro da aplicação**, sem depender do leitor de PDF do sistema operacional
+- **Remoção opcional dos arquivos da sessão** — "Não Salvar Esta Sessão" apaga o CSV e o PDF da sessão atual, após confirmação
 - **Fluxo clínico em 3 telas desacopladas** (Configuração → Avaliação → Resultado) via `QStackedWidget`
 - **Barra fixa superior de avaliação** fora da área de rolagem, garantindo encerramento seguro e imediato
 - **Painel de logs recolhível** integrado à interface para inspeção diagnóstica sem poluir a visão clínica
@@ -81,7 +84,9 @@ Tela 3 — Resultado da Sessão
        │
        ├─► [Gerar Relatório PDF] (sob demanda via thread dedicada)
        ├─► [Exportar CSV] (diálogo nativo para salvar em qualquer pasta)
+       ├─► [Visualizar Relatório] (abre o PDF numa janela da própria aplicação)
        ├─► [Abrir Pasta de Sessões] (abre a pasta logs/)
+       ├─► [Não Salvar Esta Sessão] (remove o CSV e o PDF da sessão, com confirmação)
        └─► [Nova Avaliação] (reset completo com confirmação → Tela 1 em IDLE)
 ```
 
@@ -98,7 +103,7 @@ Tela 3 — Resultado da Sessão
 2. **Tela de Avaliação em Andamento (Página 0)**:
 
    ![Tela de Avaliação em Andamento](assets/screenshots/tela-avaliacao.jpg)
-   - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"Encerrar Sessão"** sempre visível e acessível.
+   - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"Encerrar Sessão"** sempre visível e acessível. Ao lado dele ficam o botão da mão robótica e, no perfil Evento, o badge de demonstração.
    - **Área de rolagem clínica (`QScrollArea`)**:
      - *SessionHeaderWidget*: dados da sessão, mão avaliada e cronômetro em tempo real;
      - *VideoWidget*: transmissão da câmera HD com renderização de esqueleto anatômico e vetores goniométricos;
@@ -107,7 +112,7 @@ Tela 3 — Resultado da Sessão
      - *FingerCardsPanel*: cartões de amplitude detalhada por dedo;
      - *LogWidget recolhível*: painel de eventos do sistema com botão para expandir ou recolher logs técnicos.
    - **Gravação automática**: todos os quadros processados são gravados continuamente no arquivo CSV da sessão (`logs/`).
-   - **Encerramento seguro**: o clique em "Encerrar Sessão" aciona um diálogo modal de confirmação defensiva antes de parar as threads e fechar o arquivo CSV. Durante a avaliação, botões de exportação, nova sessão e relatório PDF permanecem ocultos.
+   - **Encerramento seguro**: o clique em "Encerrar Sessão" aciona um diálogo modal de confirmação defensiva antes de parar as threads e fechar o arquivo CSV. Durante a avaliação, botões de exportação, nova avaliação e relatório PDF permanecem ocultos.
 
 3. **Tela de Resultado da Sessão (Página 2)**:
 
@@ -120,13 +125,15 @@ Tela 3 — Resultado da Sessão
      - Horário de início;
      - Duração total da coleta;
      - Caminho completo do arquivo CSV gerado.
-   - **Ações disponíveis**:
-     - **Gerar Relatório PDF**: gera sob demanda o relatório clínico com métricas consolidadas via `_PdfGeneratorWorker` em background, sem travar a interface gráfica.
+   - **Ações disponíveis** (na ordem em que aparecem na tela; **Gerar Relatório PDF** e **Exportar CSV** ocupam a mesma linha):
+     - **Gerar Relatório PDF**: gera sob demanda o relatório clínico com métricas consolidadas via `_PdfGeneratorWorker` em background, sem travar a interface gráfica. O arquivo recebe o nome do CSV da sessão com o sufixo `_report.pdf`; gerar novamente substitui o PDF anterior da mesma sessão.
      - **Exportar CSV**: abre diálogo nativo do sistema operacional permitindo salvar uma cópia do CSV da sessão em qualquer pasta.
-     - **Visualizar Relatório**: abre o PDF desta sessão em uma janela embutida da própria aplicação, sem depender de leitor externo. O visualizador usa `QPdfView`/`QPdfDocument` (já disponíveis no PyQt6 instalado, sem dependência nova) e não é modal — a Tela de Resultado continua utilizável com o relatório aberto ao lado. Uma só janela por vez: um segundo clique traz a existente para frente. O botão fica desabilitado enquanto o PDF está sendo gerado e é reabilitado apenas se o arquivo existir em disco. Fechar a janela libera o handle do arquivo, permitindo que "Não Salvar Esta Sessão" remova o PDF sem erro de permissão.
+     - **Visualizar Relatório**: abre o PDF da sessão numa janela da própria aplicação, sem depender do leitor de PDF do sistema operacional. Usa `QPdfDocument` e `QPdfView`, incluídos no PyQt6. A janela não é modal: a Tela de Resultado continua utilizável enquanto o relatório está aberto. Existe uma só janela por vez, e um novo clique traz a existente para frente. O botão só fica habilitado quando o PDF existe em disco e é bloqueado enquanto o PDF está sendo gerado. O documento é fechado antes de gerar o PDF novamente, iniciar outra sessão, executar **Nova Avaliação** ou remover os arquivos da sessão, o que libera o arquivo no Windows. Se o PDF não puder ser lido, a aplicação avisa e não abre a janela.
      - **Abrir Pasta de Sessões**: abre o explorador de arquivos diretamente no diretório `logs/`.
-     - **Não Salvar Esta Sessão**: remove definitivamente do disco o CSV da sessão e o relatório PDF, se já tiver sido gerado — para quando o atendimento não deve ficar arquivado (sessão de teste, erro de operação, pedido do paciente). O diálogo de confirmação lista os nomes reais dos arquivos antes de remover, tem *Cancelar* como botão padrão e avisa que `logs/app.log` pode manter o nome do paciente. A falha ao remover um arquivo (por exemplo, CSV aberto no Excel) não impede a remoção do outro e nunca interrompe a aplicação: o operador é avisado e o arquivo permanece. O registro da ação não repete nome de paciente nem caminho. Cópias já exportadas para outras pastas não são afetadas. O botão fica bloqueado enquanto o PDF está sendo gerado, com tooltip explicando o motivo.
-     - **Nova Avaliação**: único caminho de reset do sistema. Com confirmação defensiva (botão padrão *Cancelar*), para e recria os workers, limpa gráficos, métricas, widgets e log, apaga a identificação do paciente (nome em branco, mão Direita, sessão 1), devolve o modo de filtro ao padrão (EMA + Kalman) e retorna à Tela 1 no estado `IDLE`. Os arquivos CSV e PDF já salvos **não** são apagados.
+     - **Não Salvar Esta Sessão**: remove definitivamente do disco o CSV da sessão e o relatório PDF correspondente, se já tiver sido gerado — para quando o atendimento não deve ficar arquivado (sessão de teste, erro de operação, pedido do paciente). Pede confirmação, lista os nomes reais dos arquivos antes de remover e tem *Cancelar* como botão padrão. Fecha o visualizador de PDF antes de remover. Se um arquivo não puder ser removido (por exemplo, CSV aberto no Excel), o outro ainda é removido, a aplicação continua funcionando, o operador é avisado e o arquivo permanece. **Não remove** cópias já exportadas para outras pastas e **não altera `logs/app.log`**, que pode conservar registros técnicos anteriores, inclusive caminhos de arquivo que contêm o nome do paciente (ver [Logs e Dados da Sessão](#logs-e-dados-da-sessão)). O botão fica bloqueado enquanto o PDF está sendo gerado, com tooltip explicando o motivo.
+     - **Nova Avaliação**: único caminho de reset do sistema. Com confirmação defensiva (botão padrão *Cancelar*), fecha o visualizador de PDF, para e recria os workers, limpa gráficos, métricas, widgets e log em tela, apaga a identificação do paciente (nome em branco, mão Direita, sessão 1), devolve o modo de filtro ao padrão (EMA + Kalman) e retorna à Tela 1 no estado `IDLE`. **Não remove arquivos**: o CSV e o PDF já gravados permanecem em `logs/`.
+
+   > **Nova Avaliação** limpa o estado da aplicação; **Não Salvar Esta Sessão** remove os arquivos da sessão atual. As duas ações são independentes, e nenhuma delas afeta cópias criadas por **Exportar CSV**.
 
 ---
 
@@ -146,19 +153,20 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 |                        (Orquestrador Principal da UI)                         |
 |                                                                               |
 |   +-----------------------------------------------------------------------+   |
-|   | Barra Fixa de Avaliação (Rótulo de Status + Botão Encerrar Sessão)  |   |
+|   | Barra Fixa de Avaliação (Status + Mão Robótica + Encerrar Sessão)     |   |
 |   +-----------------------------------------------------------------------+   |
 |                                                                               |
 |   +-----------------------------------------------------------------------+   |
 |   | QStackedWidget (Gerenciador de Telas)                                 |   |
 |   |                                                                       |   |
-|   |  [Tela 1: Configuração]  [Tela 2: Avaliação (Scroll)]  [Tela 3: Resultado]  |
-|   |  - Nome do paciente      - SessionHeaderWidget         - Resumo da sessão |   |
-|   |  - Mão avaliada          - VideoWidget (Câmera+Overlay)- Gerar PDF (dem.) |   |
-|   |  - Número da sessão      - MetricsWidget (Clínico)     - Exportar CSV     |   |
-|   |  - Modo de filtro        - GoniometryPlotWidget        - Abrir Pasta      |   |
-|   |  - Iniciar Avaliação     - FingerCardsPanel            - Nova Avaliação   |   |
-|   |                          - LogWidget (Recolhível)                         |   |
+|   | [Tela 1: Config.]    [Tela 2: Avaliação]       [Tela 3: Resultado]    |   |
+|   | - Nome do paciente   - SessionHeaderWidget     - Resumo da sessão     |   |
+|   | - Mão avaliada       - VideoWidget (Câmera)    - Gerar PDF            |   |
+|   | - Número da sessão   - MetricsWidget (Clínico) - Exportar CSV         |   |
+|   | - Modo de filtro     - GoniometryPlotWidget    - Visualizar Relatório |   |
+|   | - Iniciar Avaliação  - FingerCardsPanel        - Abrir Pasta          |   |
+|   |                      - LogWidget (Recolhível)  - Não Salvar Sessão    |   |
+|   |                                                - Nova Avaliação       |   |
 |   +-----------------------------------------------------------------------+   |
 +---------------------------------------+---------------------------------------+
                                         | Sinais Qt (thread-safe)
@@ -178,6 +186,9 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
                                           v
                                     goniometry_csv.py (gravação contínua em logs/)
                                     session_report.py (PDF sob demanda em logs/)
+
+  ui/main_window.py --> ui/pdf_viewer_dialog.py  (visualização do PDF da sessão)
+  ui/main_window.py --> outputs/                 (mão robótica opcional: TAM -> servo -> Arduino)
 ```
 
 **Princípios de design:**
@@ -191,7 +202,7 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 
 | Categoria | Tecnologia | Versão |
 |-----------|-----------|--------|
-| **Linguagem** | Python | 3.11+ |
+| **Linguagem** | Python | 3.11.9 (validado) |
 | **Interface Gráfica** | PyQt6 | 6.6+ |
 | **Gráficos em Tempo Real** | PyQtGraph | 0.13+ |
 | **Visão Computacional** | MediaPipe | 0.10.11-0.10.17 |
@@ -204,7 +215,7 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 
 ### Resumo Técnico
 
-* **Linguagem**: Python 3.11+
+* **Linguagem**: Python 3.11.9 (ambiente validado)
 * **Interface**: PyQt6
 * **Visão Computacional**: MediaPipe & OpenCV
 * **Cálculos Matemáticos**: NumPy
@@ -215,11 +226,29 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 
 ## Pré-requisitos
 
-- **Sistema Operacional**: Windows 10/11 (recomendado), Linux ou macOS
-- **Python**: 3.10 ou 3.11 (obrigatório — limitação do MediaPipe)
+- **Sistema Operacional**: Windows 11 — ambiente validado. Outros sistemas operacionais não foram verificados neste ambiente.
+- **Python**: 3.11.9 — ambiente validado. Outras versões do Python não foram verificadas.
 - **Câmera**: Webcam integrada ou USB com resolução mínima de 720p
 - **Memória RAM**: Mínimo de 4 GB (8 GB recomendado)
 - **GPU**: Não necessária — o processamento é realizado na CPU
+
+### Ambiente validado
+
+O projeto foi executado e testado com as versões abaixo. Versões diferentes podem funcionar, mas não foram verificadas.
+
+| Componente | Versão |
+|------------|--------|
+| Python | 3.11.9 |
+| MediaPipe | 0.10.14 |
+| NumPy | 1.26.4 |
+| OpenCV (`opencv-python`) | 4.11.0.86 |
+| PyQt6 | 6.11.0 |
+| PyQtGraph | 0.14.0 |
+| FPDF2 | 2.8.8 |
+| Matplotlib | 3.11.1 |
+| psutil | 7.2.2 |
+| PyFirmata | 1.1.0 |
+| PySerial | 3.5 |
 
 ---
 
@@ -278,6 +307,7 @@ computer-vision-based-hand-kinematic-assessment/
 +-- dashboard_utils.py           # Utilitários de painel e cálculo
 +-- themes.py                    # Tema visual Dark Mode (estilos Qt)
 +-- requirements.txt             # Dependências do projeto
++-- INTEGRACAO_MAO_ROBOTICA.md   # Documentação técnica da integração com a mão robótica
 |
 +-- ui/                          # Interface gráfica (widgets PyQt6)
 |   +-- main_window.py           #   Janela principal (orquestrador)
@@ -287,6 +317,7 @@ computer-vision-based-hand-kinematic-assessment/
 |   +-- metrics_widget.py        #   Painel de métricas clínicas
 |   +-- session_header.py        #   Cabeçalho da sessão
 |   +-- log_widget.py            #   Painel de logs integrado
+|   +-- pdf_viewer_dialog.py     #   Visualizador embutido do relatório PDF (janela não modal)
 |
 +-- workers/                     # Threads de processamento (Produtor-Consumidor)
 |   +-- camera_worker.py         #   Thread de captura de vídeo (workers/camera_worker.py)
@@ -296,9 +327,16 @@ computer-vision-based-hand-kinematic-assessment/
 |   +-- tam_to_servo.py          #   Mapeamento puro TAM (graus) -> posição de servo
 |   +-- robot_hand_output.py     #   RobotHandWorker (QThread): conexão e envio ao Arduino
 |
-+-- logs/                        # Logs gerados pela aplicação
++-- logs/                        # app.log, CSVs e PDFs das sessões
 +-- tests/                       # Testes automatizados
-|   +-- test_tam_to_servo.py     #   Testes do mapeamento TAM -> servo (sem hardware)
+|   +-- test_ui_flow.py                   #   Fluxo multitelas da interface (PyQt6)
+|   +-- test_session_report.py            #   CSV, relatório PDF, unidades e sanitização
+|   +-- test_smoothing.py                 #   Filtros e modos de filtro
+|   +-- test_kinematic_assessment.py      #   Cálculo goniométrico e gravação do CSV
+|   +-- test_processing_worker.py         #   Integração ProcessingWorker <-> filtros e CSV
+|   +-- test_goniometry_overlay.py        #   Overlay de vídeo
+|   +-- test_tam_to_servo.py              #   Mapeamento TAM -> servo (sem hardware)
+|   +-- test_robot_hand_worker_config.py  #   Configuração do RobotHandWorker (sem hardware)
 ```
 
 > Nota: os recursos estáticos do projeto ficam em `assets/screenshots/`
@@ -349,11 +387,12 @@ seletor **Modo de Filtro** da Tela de Configuração — não é necessário edi
 | EMA — suavização exponencial | `EMA` | Suavização simples, levemente mais responsiva, com mais oscilação residual. |
 | Kalman — filtro preditivo | `KALMAN` | Filtro preditivo. Bom para movimento contínuo. |
 | Dados brutos (RAW) — sem suavização | `RAW` | Demonstração, comparação ou diagnóstico técnico. Os valores oscilam visivelmente. |
+| Evento — resposta rápida da mão robótica | `EMA` | Demonstração com a mão robótica. Ver [Perfil Evento](#perfil-evento). |
 
 Regras de uso:
 
 - **EMA + Kalman é o padrão**, definido por `FILTER_MODE_DEFAULT` em `config.py`. Quem
-  nunca tocar no seletor obtém exatamente o pipeline clínico de sempre.
+  nunca tocar no seletor obtém o pipeline clínico validado (EMA + Kalman).
 - A escolha é feita **antes de iniciar a sessão**. Durante a avaliação (`RUNNING`) o
   seletor fica desabilitado, e o modo não muda no meio da coleta.
 - O modo escolhido **vale para toda a sessão** e é aplicado a um banco de filtros novo,
@@ -367,6 +406,20 @@ Regras de uso:
 - Sessões gravadas em modos diferentes não são diretamente comparáveis entre si; o
   registro no CSV e no PDF existe justamente para tornar essa diferença visível.
 
+### Perfil Evento
+
+**Evento** é uma opção do seletor de modo de filtro voltada à demonstração da mão robótica em eventos e estandes. Não é um algoritmo de suavização a mais: o filtro aplicado é o `EMA`, e o perfil altera apenas a resposta da mão robótica.
+
+- **Resposta da mão robótica mais permissiva**: o mapeamento TAM → servo usa uma tabela própria de demonstração, de modo que a mão feche por completo com menos amplitude de movimento.
+- **Maior tolerância à perda de detecção**: a mão robótica aguarda um intervalo maior sem detectar a mão antes de executar o comportamento de segurança (retornar à posição aberta).
+- **Só com a mão robótica ligada**: essas duas mudanças só têm efeito quando o botão da mão robótica está ligado. Sem ela, o perfil apenas registra e sinaliza a sessão, como descrito a seguir.
+- **Badge de demonstração**: a barra superior exibe o badge "EVENTO — DEMONSTRAÇÃO" durante a avaliação.
+- **Ângulos e classificações inalterados**: o TAM, os ângulos e as classificações clínicas exibidos continuam sendo calculados pela goniometria, sem interferência do perfil.
+- **Registro no CSV**: a coluna `demo_mode` recebe `True` em todas as linhas da sessão (e `False` nas demais sessões), e `filter_mode` registra `EMA`.
+- **Aviso no relatório PDF**: o relatório da sessão é gerado normalmente e inclui um aviso de que ela foi realizada no perfil Evento.
+
+Como os demais modos, o perfil é escolhido antes de iniciar a sessão e não muda durante a avaliação; **Nova Avaliação** devolve o seletor ao modo padrão. Os ajustes da resposta da mão robótica são manuais e voltados à demonstração: não constituem parâmetros clínicos validados. Sessões desse perfil ficam identificadas no CSV e no PDF. Sobre a integração com a mão robótica, ver [INTEGRACAO_MAO_ROBOTICA.md](INTEGRACAO_MAO_ROBOTICA.md).
+
 ---
 
 ## Integração com Mão Robótica
@@ -379,12 +432,13 @@ avaliação em andamento (**MÃO ROBÓTICA: DESLIGADA / LIGADA**).
 
 Resumo rápido:
 - Fluxo: `angles_smooth[<dedo>]["TAM"]` → `outputs/tam_to_servo.py` (mapeamento
-  linear fixo, sem calibração por usuário nesta versão) → `outputs/robot_hand_output.py`
+  linear fixo, sem calibração por usuário) → `outputs/robot_hand_output.py`
   (`RobotHandWorker`, thread dedicada) → pyFirmata → Arduino → servos.
 - A porta COM é autodetectada por descrição (não é fixa em código).
 - Requer StandardFirmata já gravado no Arduino e fonte externa dedicada para os servos.
 - **Nunca execute este sistema e `Mão robo/main.py` ao mesmo tempo apontando para
   a mesma porta COM** — os dois disputariam o mesmo Arduino.
+- O perfil **Evento** do seletor de modo de filtro altera a resposta da mão robótica; ver [Perfil Evento](#perfil-evento).
 
 Para pinagem, valores de calibração inicial, diagnóstico de erros comuns
 ("Arduino não conectado"), avisos de segurança elétrica/mecânica e o roteiro de
@@ -396,18 +450,22 @@ teste físico dos servos, consulte **[INTEGRACAO_MAO_ROBOTICA.md](INTEGRACAO_MAO
 
 Durante e após a avaliação clínica, o sistema gerencia os dados coletados de forma segura e estruturada no diretório `logs/`:
 
-1. **Gravação Contínua em CSV** — Durante a avaliação (na Tela 2), os ângulos articulares de cada dedo, o TAM e os timestamps são gravados continuamente em arquivo CSV com frequência definida em `CSV_LOG_INTERVAL` (padrão a cada 3 quadros, ~10 amostras/s).
+1. **Gravação Contínua em CSV** — Durante a avaliação (na Tela 2), os ângulos articulares de cada dedo, o TAM e os timestamps são gravados continuamente em arquivo CSV com frequência definida em `CSV_LOG_INTERVAL` (padrão a cada 3 quadros, ~10 amostras/s). As duas últimas colunas, `filter_mode` e `demo_mode`, registram o modo de filtro e o perfil da sessão.
    - Localização: `logs/session_<paciente>_<timestamp>_s<num>.csv`
    - O arquivo é fechado com segurança antes de qualquer navegação pós-sessão.
 
 2. **Geração de Relatório em PDF sob Demanda** — Ao encerrar a sessão e transicionar para a Tela 3 (Resultado), o profissional pode emitir o relatório clínico completo clicando no botão **"Gerar Relatório PDF"**.
    - Gerado via [`session_report.py`](session_report.py) com a biblioteca FPDF2 em thread secundária assíncrona (`_PdfGeneratorWorker`), impedindo qualquer congelamento da interface visual.
    - Contém metadados da sessão, faixas de normalidade ASSH, amplitudes mínimas, máximas e médias por articulação e visualizações gráficas das curvas de flexão/extensão.
-   - Localização: `logs/session_<paciente>_<timestamp>_s<num>_report.pdf`
+   - As medidas angulares são apresentadas em graus (`54°`) e as velocidades angulares em graus por segundo (`75°/s`).
+   - Sessões do perfil Evento são geradas normalmente e recebem um aviso de demonstração no rodapé técnico do relatório.
+   - Localização: `logs/session_<paciente>_<timestamp>_s<num>_report.pdf`. Gerar novamente substitui o PDF da mesma sessão; se o visualizador estiver aberto, ele é fechado antes.
 
-3. **Exportação e Gestão de Arquivos**:
+3. **Visualização, Exportação e Gestão de Arquivos**:
+   - **Visualizar Relatório**: botão **"Visualizar Relatório"** abre o PDF da sessão numa janela da própria aplicação (ver [Tela de Resultado](#fluxo-clínico-e-telas)).
    - **Exportar CSV**: botão **"Exportar CSV"** na Tela de Resultado abre uma caixa de diálogo nativa do sistema operacional para copiar o arquivo CSV para diretórios externos (como pendrives, prontuários eletrônicos ou pastas compartilhadas de rede).
    - **Abrir Pasta de Sessões**: botão **"Abrir Pasta de Sessões"** abre o gerenciador de arquivos nativo diretamente na pasta `logs/`.
+   - **Não Salvar Esta Sessão**: botão **"Não Salvar Esta Sessão"** remove o CSV e o PDF da sessão atual, após confirmação. Cópias exportadas não são afetadas.
 
 ---
 
@@ -417,19 +475,28 @@ O sistema centraliza todos os arquivos gerados no diretório `logs/`:
 
 | Tipo | Localização | Conteúdo | Momento da Criação |
 |------|------------|----------|--------------------|
-| **Log da Aplicação** | `logs/app.log` | Eventos do sistema, diagnósticos e erros de execução | Inicialização e tempo de execução |
-| **Dados da Sessão (CSV)** | `logs/session_*.csv` | Ângulos articulares e timestamps quadro a quadro | Gravação contínua durante a avaliação |
+| **Log da Aplicação** | `logs/app.log` | Registro técnico: eventos do sistema, diagnósticos e erros de execução | Inicialização e tempo de execução |
+| **Dados da Sessão (CSV)** | `logs/session_*.csv` | Ângulos articulares e timestamps quadro a quadro; as últimas colunas, `filter_mode` e `demo_mode`, registram o modo de filtro e o perfil da sessão | Gravação contínua durante a avaliação |
 | **Relatório Clínico (PDF)** | `logs/session_*_report.pdf` | Resumo estatístico, faixas ASSH e gráficos consolidados | Sob demanda na Tela de Resultado |
 
-O log da aplicação utiliza o módulo nativo `logging` do Python, configurado em [`app_pyqt.py`](app_pyqt.py) para registrar simultaneamente no **console** (terminal) e no **arquivo** `logs/app.log`.
+### Log da aplicação
 
-Formato padrão das mensagens:
+O log utiliza o módulo nativo `logging` do Python, configurado em [`app_pyqt.py`](app_pyqt.py) no nível `INFO`, e registra simultaneamente no **console** (terminal) e no arquivo `logs/app.log` (UTF-8). O painel de logs da Tela de Avaliação é um recurso à parte: exibe eventos na tela e não grava nesse arquivo.
 
+Formato das mensagens:
+
+```text
+AAAA-MM-DD HH:MM:SS,mmm | NÍVEL | logger | mensagem
 ```
-2026-06-23 14:35:12,123 | INFO     | ui.main_window | Session started
-2026-06-23 14:35:45,891 | WARNING  | workers.camera | Frame dropped (queue full)
-2026-06-23 14:36:02,045 | ERROR    | goniometry     | Insufficient landmarks
+
+O campo `logger` identifica o módulo de origem, por exemplo `ui.main_window`, `outputs.robot_hand_output` ou `app_pyqt`. Exemplos ilustrativos, com dados fictícios:
+
+```text
+2026-09-21 10:15:42,318 | INFO | ui.main_window | Sessão encerrada. CSV: logs\session_<paciente>_<timestamp>_s<sessão>.csv
+2026-09-21 10:16:01,244 | INFO | ui.main_window | closeEvent: encerrando workers antes de fechar.
 ```
+
+> **Privacidade:** `logs/app.log` é um registro técnico. A aplicação apenas acrescenta linhas a ele: nenhuma ação da interface o edita ou apaga, inclusive **Não Salvar Esta Sessão** e **Nova Avaliação**. Ele pode conter o caminho dos arquivos da sessão, que inclui o nome do paciente informado no formulário, e mensagens de erro do sistema operacional que citam esses caminhos. Trate esse arquivo com o mesmo cuidado dado aos CSV e PDF das sessões.
 
 ---
 
