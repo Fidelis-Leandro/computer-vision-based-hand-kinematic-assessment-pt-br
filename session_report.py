@@ -54,8 +54,20 @@ from clinical_classification import (
 
 def sanitize_for_pdf(text: str) -> str:
     """
-    Converte caracteres Unicode não suportados pelas fontes padrão do FPDF
-    (faixa WinAnsi / Latin-1) para equivalentes seguros em ASCII.
+    Converte caracteres Unicode não suportados pelas fontes core do FPDF
+    para equivalentes seguros em ASCII.
+
+    O limite real é o Latin-1, não o WinAnsi: verificado com FPDF2 2.8.8 e
+    Helvetica, o travessão (U+2014, que existe no WinAnsi em 0x97) levanta
+    FPDFUnicodeEncodingException, enquanto o símbolo de grau (U+00B0) é
+    escrito sem problema. Por isso o grau NÃO é convertido — ele chega ao
+    relatório como "54°" e "75°/s", a notação clínica correta.
+
+    Todo texto do PDF passa por aqui, via _cell/_multi_cell. Um caractere
+    fora do Latin-1 que não esteja nesta tabela não degrada a aparência do
+    relatório: ele impede a geração inteira, com exceção. Foi o que
+    aconteceu com o sinal de aviso (U+26A0) entre as Fases 7E e 10 —
+    nenhuma sessão do perfil Evento conseguia produzir PDF.
     """
     if not isinstance(text, str):
         return text
@@ -67,7 +79,7 @@ def sanitize_for_pdf(text: str) -> str:
         "\u201C": '"',   # aspas duplas esquerda "
         "\u201D": '"',   # aspas duplas direita "
         "\u2026": "...", # reticências …
-        "\u00B0": " deg",# símbolo de grau °
+        "\u26A0": "!",   # sinal de aviso ⚠ (alerta do perfil Evento)
         "\u00B1": "+/-", # mais-ou-menos ±
         "\u2264": "<=",  # menor ou igual ≤
         "\u2265": ">=",  # maior ou igual ≥

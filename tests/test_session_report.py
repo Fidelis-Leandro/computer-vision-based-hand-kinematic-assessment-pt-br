@@ -25,6 +25,8 @@ pytest) — nenhum dado é gravado no repositório.
 
 import csv
 import os
+import re
+import zlib
 
 import pytest
 
@@ -337,3 +339,210 @@ class TestFooterDemoModeWarning:
         from session_report import build_demo_mode_warning_text
 
         assert build_demo_mode_warning_text(demo_mode=False) == ""
+
+
+# =============================================================================
+# Fase 10a — unidades ° / °/s no PDF e sessão Evento (subfase de testes)
+# =============================================================================
+#
+# O relatório hoje imprime "54 deg" e "75 deg/s" onde deveria imprimir "54°"
+# e "75°/s". A causa não está espalhada pelo módulo: o código-fonte já escreve
+# "°" em todas as tabelas, na legenda e na interpretação clínica. Quem troca o
+# símbolo é UMA entrada do dicionário interno de sanitize_for_pdf(),
+# {"°": " deg"} — e todo texto do PDF passa por lá, via _cell/_multi_cell.
+#
+# POR QUE A ENTRADA PODE SAIR: as fontes core do FPDF2 (Helvetica, usada em
+# todo o relatório) codificam em Latin-1, e "°" é U+00B0, dentro do Latin-1.
+# Não é preciso registrar fonte TTF nem mudar encoding. Já "—", "…", "≤", "≥"
+# e as aspas curvas estão FORA do Latin-1 e quebrariam a geração com
+# FPDFUnicodeEncodingException — por isso as demais entradas do dicionário
+# continuam sendo necessárias, e os testes abaixo as protegem explicitamente.
+#
+# BUG SEPARADO, MESMA CAUSA: o aviso do perfil Evento começa com "⚠"
+# (U+26A0), que também está fora do Latin-1 e NÃO tem entrada no dicionário.
+# Hoje, gerar o relatório de qualquer sessão do perfil Evento levanta
+# FPDFUnicodeEncodingException — nenhuma sessão de demonstração consegue
+# produzir PDF. Os testes da classe TestEventProfileReportGenerates fixam esse
+# contrato; eles falham hoje por um defeito de produção, não por uma
+# funcionalidade ausente.
+#
+# Todos os CSVs e PDFs vivem em tmp_path. Os helpers de CSV são os que já
+# existem neste arquivo (_write_new_format_csv e _write_csv_with_demo_mode_
+# column) — nada de CSV_FIELDS nem de dados sintéticos duplicados aqui.
+
+
+def _extract_pdf_text(pdf_path: str) -> str:
+    """
+    Extrai o texto de um PDF usando apenas a biblioteca padrão.
+
+    Não há biblioteca de leitura de PDF no projeto (pypdf, pdfminer e fitz
+    estão todos ausentes), e acrescentar uma dependência só para conferir
+    duas unidades seria caro demais. O formato permite ler o texto sem isso:
+    os streams são comprimidos com zlib e os textos aparecem como literais
+    entre parênteses dentro dos operadores de desenho.
+
+    Só os streams de TEXTO são lidos. Os gráficos Matplotlib embutidos também
+    são streams comprimidos, e seus bytes de imagem — megabytes de pixels —
+    contêm qualquer sequência de três letras por acaso, inclusive "deg". Ler
+    tudo faria a asserção "não contém deg" falhar por ruído de imagem em vez
+    de por unidade errada, então streams sem os operadores BT/Tj são
+    descartados.
+
+    O texto é decodificado como Latin-1 porque é exatamente assim que o FPDF2
+    grava com as fontes core: "°" chega ao arquivo como o byte 0xB0. As
+    sequências de escape do PDF (\\( e \\)) não são desfeitas — nenhuma
+    asserção daqui depende disso.
+    """
+    with open(pdf_path, "rb") as f:
+        raw = f.read()
+
+    partes = []
+    for match in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
+        try:
+            conteudo = zlib.decompress(match.group(1))
+        except zlib.error:
+            continue  # stream não comprimido ou com filtro diferente
+        if b"BT" not in conteudo or b"Tj" not in conteudo:
+            continue  # stream de imagem, não de texto
+        for literal in re.findall(rb"\((?:\\.|[^\\()])*\)", conteudo):
+            partes.append(literal[1:-1])
+
+    return b"".join(partes).decode("latin-1")
+
+
+class TestDegreeSymbolSurvivesSanitization:
+    """
+    O contrato mais direto da fase: o símbolo de grau precisa chegar ao PDF
+    como "°", não como " deg". Testado na função pura, que é o único ponto
+    onde a conversão acontece.
+    """
+
+    def test_degree_symbol_is_preserved(self):
+        """1. "54°" não pode virar "54 deg"."""
+        from session_report import sanitize_for_pdf
+
+        assert sanitize_for_pdf("54°") == "54°"
+
+    def test_degrees_per_second_is_preserved(self):
+        """2. "75°/s" não pode virar "75 deg/s"."""
+        from session_report import sanitize_for_pdf
+
+        assert sanitize_for_pdf("75°/s") == "75°/s"
+
+
+class TestUnsupportedCharactersStillConverted:
+    """
+    Proteção contra o excesso de zelo na direção oposta: remover a entrada
+    do grau não pode virar "remover o sanitizador". Estes caracteres estão
+    fora do Latin-1 e, sem conversão, quebram a geração inteira do relatório
+    com FPDFUnicodeEncodingException.
+    """
+
+    @pytest.mark.parametrize(
+        "original, esperado",
+        [
+            ("a — b", "a - b"),      # travessão (U+2014)
+            ("a – b", "a - b"),      # traço en (U+2013)
+            ("a…", "a..."),          # reticências (U+2026)
+            ("≤ 30", "<= 30"),       # menor ou igual (U+2264)
+            ("≥ 30", ">= 30"),       # maior ou igual (U+2265)
+            ("'x'", "'x'"),          # aspas simples curvas (U+2018/U+2019)
+            ("“x”", '"x"'),          # aspas duplas curvas (U+201C/U+201D)
+        ],
+    )
+    def test_character_outside_latin1_is_converted(self, original, esperado):
+        """3. Guarda de regressão: já passa hoje e deve continuar passando."""
+        from session_report import sanitize_for_pdf
+
+        assert sanitize_for_pdf(original) == esperado
+
+    @pytest.mark.parametrize(
+        "original",
+        ["a — b", "a – b", "a…", "≤ 30", "≥ 30", "'x'", "“x”", "54°", "75°/s"],
+    )
+    def test_sanitized_output_is_encodable_in_latin1(self, original):
+        """
+        4. O que sai do sanitizador precisa ser codificável em Latin-1.
+
+        Esta é a condição real que o FPDF2 impõe com fontes core, e é o que
+        um teste sobre o dicionário de substituições estaria tentando
+        aproximar. O dicionário é uma variável local de sanitize_for_pdf(),
+        não um atributo de módulo, então não há como percorrê-lo de fora —
+        mas verificar a SAÍDA é mais forte de qualquer forma: é o texto que
+        chega ao PDF, não a tabela que o produziu.
+        """
+        from session_report import sanitize_for_pdf
+
+        sanitize_for_pdf(original).encode("latin-1")  # não deve levantar
+
+
+class TestGeneratedPdfUsesDegreeSymbol:
+    def test_pdf_text_has_degree_symbol_and_no_deg_abbreviation(self, tmp_path):
+        """
+        5. Verificação ponta a ponta no arquivo gerado.
+
+        Os testes de sanitize_for_pdf() acima provam a função; este prova o
+        trajeto inteiro até o PDF em disco — tabela principal, tabela
+        suplementar, legenda e interpretação clínica, todas passando pelo
+        mesmo sanitizador.
+        """
+        from session_report import generate_pdf_report
+
+        csv_path = tmp_path / "sessao_unidades.csv"
+        _write_new_format_csv(csv_path, filter_mode="EMA_KALMAN", tam_index=200.0)
+
+        output_path = generate_pdf_report(
+            str(csv_path), patient_name="Paciente Teste", side="Direita"
+        )
+        texto = _extract_pdf_text(output_path)
+
+        assert "°" in texto, "o relatório deve imprimir o símbolo de grau"
+        assert "°/s" in texto, "as velocidades angulares devem usar °/s"
+        assert "deg" not in texto, (
+            "nenhuma unidade pode aparecer abreviada como 'deg' — "
+            f"encontradas {texto.count('deg')} ocorrências"
+        )
+
+
+class TestEventProfileReportGenerates:
+    """
+    Defeito de produção descoberto durante a investigação da Fase 10, não uma
+    funcionalidade nova: build_demo_mode_warning_text() começa com "⚠"
+    (U+26A0), fora do Latin-1 e sem entrada no dicionário do sanitizador.
+    Qualquer sessão do perfil Evento falha ao gerar o relatório.
+
+    Passou despercebido porque o único teste ponta a ponta existente usa
+    _write_new_format_csv(), que não escreve demo_mode=True, e os testes de
+    demonstração verificam o aviso como string pura, sem nunca passar pelo
+    FPDF.
+    """
+
+    def test_demo_warning_text_is_encodable_in_latin1(self):
+        """
+        6a. Localiza o defeito na função, antes do PDF.
+
+        Separado do teste ponta a ponta porque um relatório que falha inteiro
+        não diz QUAL caractere o derrubou; este diz.
+        """
+        from session_report import build_demo_mode_warning_text, sanitize_for_pdf
+
+        texto = sanitize_for_pdf(build_demo_mode_warning_text(demo_mode=True))
+
+        texto.encode("latin-1")  # não deve levantar
+
+    def test_generate_pdf_report_succeeds_for_an_event_profile_session(self, tmp_path):
+        """
+        6b. O relatório de uma sessão Evento precisa ser gerado como o de
+        qualquer outra: sem exceção, com arquivo real e não vazio.
+        """
+        from session_report import generate_pdf_report
+
+        csv_path = tmp_path / "sessao_evento.csv"
+        _write_csv_with_demo_mode_column(csv_path, demo_mode="True")
+
+        output_path = generate_pdf_report(
+            str(csv_path), patient_name="Paciente Teste", side="Direita"
+        )
+
+        assert os.path.isfile(output_path)
+        assert os.path.getsize(output_path) > 0
