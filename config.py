@@ -220,7 +220,7 @@ LOG_FORMAT: str = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 # =============================================================================
 
 # Título exibido na barra de título da janela no sistema operacional.
-APP_TITLE: str = "Goniometria Digital da Mão"
+APP_TITLE: str = "Avaliação Cinemática da Mão Baseada em Visão Computacional"
 
 # Tamanho mínimo da janela principal em pixels (largura x altura).
 # Garante que todos os widgets permaneçam visíveis mesmo em monitores menores.

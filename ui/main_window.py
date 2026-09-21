@@ -738,7 +738,7 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(12)
 
         # Título
-        lbl_title = QLabel("Goniometria Digital da Mão")
+        lbl_title = QLabel("Avaliação Cinemática da Mão")
         lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_title.setStyleSheet(
             f"QLabel {{ color: {COLOR_TEXT_PRIMARY}; font-size: 20px; font-weight: bold; border: none; }}"
@@ -746,7 +746,7 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(lbl_title)
 
         # Subtítulo
-        lbl_subtitle = QLabel("Nova Avaliação Clínica")
+        lbl_subtitle = QLabel("Baseada em Visão Computacional")
         lbl_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_subtitle.setStyleSheet(
             f"QLabel {{ color: {COLOR_TEXT_SECONDARY}; font-size: 13px; margin-bottom: 8px; border: none; }}"
