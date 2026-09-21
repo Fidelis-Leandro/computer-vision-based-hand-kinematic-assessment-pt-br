@@ -27,6 +27,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 from PyQt6.QtCore import Qt
+from PyQt6.QtPdf import QPdfDocument
 from PyQt6.QtWidgets import QLabel, QMessageBox
 
 # Garante que o diretório raiz do projeto esteja no sys.path
@@ -1490,4 +1491,215 @@ def test_new_evaluation_works_after_do_not_save(
 
     assert app_window._stack.currentIndex() == 1
     assert app_window._csv_path == ""
+
+
+# =============================================================================
+# Fase 9a — Visualizador de PDF embutido na Tela de Resultado (subfase de testes)
+# =============================================================================
+#
+# Hoje o relatório PDF só pode ser visto fora da aplicação: nada na interface
+# o abre. Esta fase acrescenta um botão na Tela 3 que exibe o PDF da sessão
+# num QDialog não modal, usando QPdfView/QPdfDocument (já disponíveis no
+# PyQt6 6.11 instalado, sem dependência nova).
+#
+# Nomes contratados por estes testes (produção ainda não os tem):
+#   _btn_result_view_pdf     botão "Visualizar Relatório" na Tela 3
+#   _on_result_view_pdf()    handler que abre o visualizador
+#   _pdf_viewer_dialog       instância aberta, ou None se nenhuma
+#   ui/pdf_viewer_dialog.py  módulo novo com a classe PdfViewerDialog
+#
+# DECISÃO DE DESIGN (caso 4): com o visualizador já aberto, um segundo
+# clique NÃO cria outra instância — reaproveita a existente e a traz para
+# frente. Duas janelas do mesmo relatório não trariam informação nova e
+# dobrariam os handles de arquivo a fechar antes de remover o PDF, que é
+# justamente o risco que o caso 5 protege.
+#
+# Nenhum PDF real é renderizado: QPdfDocument.load é sempre substituído por
+# monkeypatch (a classe do PyQt6 aceita, verificado antes de escrever estes
+# testes). Todos os arquivos vivem em tmp_path, nunca em logs/.
+
+
+def _fake_pdf_load(result=None):
+    """Substituto de QPdfDocument.load que não toca disco."""
+    resultado = QPdfDocument.Error.None_ if result is None else result
+    return lambda self, path: resultado
+
+
+def _open_viewer(app_window, monkeypatch):
+    """Abre o visualizador pelo caminho real (clique no botão)."""
+    monkeypatch.setattr(QPdfDocument, "load", _fake_pdf_load())
+    app_window._btn_result_view_pdf.click()
+
+
+# --- 1 e 2: habilitação do botão conforme o PDF existir ----------------------
+
+
+def test_view_pdf_button_disabled_without_pdf(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """1. Sem PDF em disco não há o que visualizar — mesmo critério de
+    existência de arquivo já usado pelos demais botões da Tela 3."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=False)
+
+    assert app_window._btn_result_view_pdf.isEnabled() is False
+
+
+def test_view_pdf_button_enabled_when_pdf_exists(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """2. Com o PDF gerado, o botão fica disponível. O rótulo é verificado
+    só pelo texto essencial: a presença ou não de emoji é decisão de estilo,
+    que não deve ficar travada num teste."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+
+    assert app_window._btn_result_view_pdf.isEnabled() is True
+    assert "Visualizar Relatório" in app_window._btn_result_view_pdf.text()
+
+
+# --- 3 e 4: abertura e reaproveitamento da janela ----------------------------
+
+
+def test_clicking_view_pdf_opens_the_viewer_dialog(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """3. O clique cria a instância de PdfViewerDialog e a exibe."""
+    from ui.pdf_viewer_dialog import PdfViewerDialog
+
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+    _open_viewer(app_window, monkeypatch)
+
+    assert isinstance(app_window._pdf_viewer_dialog, PdfViewerDialog)
+    assert app_window._pdf_viewer_dialog.isVisible() is True
+
+
+def test_second_click_reuses_the_open_viewer(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """4. Segundo clique não abre uma segunda janela: a instância é a mesma
+    (ver DECISÃO DE DESIGN no cabeçalho desta seção)."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+    _open_viewer(app_window, monkeypatch)
+    primeira = app_window._pdf_viewer_dialog
+
+    app_window._btn_result_view_pdf.click()
+
+    assert app_window._pdf_viewer_dialog is primeira
+
+
+# --- 5: o teste mais crítico — não regredir a Fase 8 -------------------------
+
+
+def test_do_not_save_closes_viewer_before_removing_files(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """5. "Não Salvar Esta Sessão" precisa fechar o visualizador e liberar o
+    handle do QPdfDocument ANTES de remover os arquivos.
+
+    No Windows, um PDF aberto pelo próprio aplicativo pode bloquear
+    os.remove() e transformar o descarte num PermissionError — ou seja, o
+    visualizador quebraria a funcionalidade da Fase 8. O espião em
+    os.remove registra o estado do visualizador no INSTANTE da remoção, que
+    é o que prova a ordem correta; conferir depois não provaria nada."""
+    csv_path, pdf_path = _session_with_files(
+        app_window, qtbot, monkeypatch, with_pdf=True
+    )
+    _open_viewer(app_window, monkeypatch)
+    assert app_window._pdf_viewer_dialog is not None
+
+    estado = {}
+    remove_real = os.remove
+
+    def remove_espiao(path):
+        estado.setdefault("viewer_no_momento_da_remocao", app_window._pdf_viewer_dialog)
+        remove_real(path)
+
+    monkeypatch.setattr(os, "remove", remove_espiao)
+    app_window._on_result_do_not_save_session()
+
+    assert estado["viewer_no_momento_da_remocao"] is None
+    assert not os.path.exists(csv_path)
+    assert not os.path.exists(pdf_path)
+
+
+# --- 6 e 7: ciclo de vida do visualizador ------------------------------------
+
+
+def test_new_evaluation_closes_the_viewer(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """6. "Nova Avaliação" limpa a tela; deixar aberto um relatório da
+    sessão anterior mostraria dados que não correspondem mais ao que está
+    na interface."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+    _open_viewer(app_window, monkeypatch)
+    assert app_window._pdf_viewer_dialog is not None
+
+    app_window._on_result_new_session()
+
+    assert app_window._pdf_viewer_dialog is None
+
+
+def test_starting_a_session_closes_a_leftover_viewer(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """7. Iniciar uma avaliação nova com o visualizador da anterior ainda
+    aberto deixaria na tela um relatório de outro paciente durante a
+    captura."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+    _open_viewer(app_window, monkeypatch)
+    assert app_window._pdf_viewer_dialog is not None
+
+    app_window._start_session()
+    qtbot.waitUntil(lambda: app_window._state == "RUNNING", timeout=3000)
+
+    assert app_window._pdf_viewer_dialog is None
+
+
+# --- 8: corrida com a geração do PDF -----------------------------------------
+
+
+def test_view_pdf_is_blocked_while_the_pdf_is_being_generated(
+    app_window: MainWindow, qtbot, tmp_path, monkeypatch
+):
+    """8. Durante a geração, o arquivo está sendo reescrito pelo
+    _PdfGeneratorWorker — abri-lo nesse instante mostraria um PDF
+    incompleto. Mesmo padrão já aplicado ao "Não Salvar Esta Sessão"."""
+    _prepare_pdf_session(app_window, tmp_path, monkeypatch)
+
+    app_window._gerar_relatorio()
+    assert app_window._btn_result_view_pdf.isEnabled() is False
+
+    # O PDF precisa existir para o botão voltar: a habilitação depende do
+    # arquivo em disco, não apenas do fim da geração.
+    pdf_path = _derived_pdf_path(app_window._csv_path)
+    with open(pdf_path, "w", encoding="utf-8") as f:
+        f.write("PDF de teste")
+    app_window._on_pdf_finished(pdf_path)
+
+    assert app_window._btn_result_view_pdf.isEnabled() is True
+
+
+# --- 9: PDF ilegível ---------------------------------------------------------
+
+
+def test_view_pdf_warns_when_the_document_fails_to_load(
+    app_window: MainWindow, qtbot, monkeypatch
+):
+    """9. Arquivo corrompido ou inacessível: o operador é avisado e nenhuma
+    exceção escapa. Sem visualizador pendurado depois da falha — uma janela
+    vazia seria pior que nenhuma."""
+    _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
+
+    monkeypatch.setattr(
+        QPdfDocument, "load", _fake_pdf_load(QPdfDocument.Error.InvalidFileFormat)
+    )
+    avisos = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", staticmethod(lambda *a, **k: avisos.append(a))
+    )
+
+    app_window._btn_result_view_pdf.click()  # não deve levantar
+
+    assert avisos, "o operador precisa ser avisado da falha de leitura"
+    assert app_window._pdf_viewer_dialog is None
 

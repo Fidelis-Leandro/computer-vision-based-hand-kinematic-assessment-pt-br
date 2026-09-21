@@ -103,6 +103,7 @@ from outputs.tam_to_servo import map_all as robot_hand_map_all
 from ui.finger_card_widget import FingerCardsPanel
 from ui.log_widget import LogWidget
 from ui.metrics_widget import MetricsWidget
+from ui.pdf_viewer_dialog import PdfViewerDialog
 from ui.plot_widget import GoniometryPlotWidget
 from ui.session_header import SessionHeaderWidget
 from ui.video_widget import VideoWidget
@@ -358,6 +359,13 @@ class MainWindow(QMainWindow):
         # Worker de geração de PDF — mantemos referência para evitar coleta de lixo
         # antes de o PDF terminar de ser gerado.
         self._pdf_worker: Optional[_PdfGeneratorWorker] = None
+
+        # Visualizador embutido do relatório PDF, ou None quando nenhum está
+        # aberto. Este atributo é a única fonte de verdade sobre a existência
+        # da janela: enquanto ele não for None, existe um QPdfDocument
+        # segurando o arquivo do relatório, e por isso todo caminho que
+        # remove ou substitui os arquivos da sessão precisa fechá-lo antes.
+        self._pdf_viewer_dialog: Optional[PdfViewerDialog] = None
 
         # Controle de visibilidade da gaveta de logs (Fase 4B)
         self._logs_visible: bool = False
@@ -1084,6 +1092,41 @@ class MainWindow(QMainWindow):
 
         card_layout.addLayout(btn_action_row)
 
+        # Botão: Visualizar Relatório — abre o PDF já gerado numa janela
+        # embutida. Fica logo abaixo de "Gerar Relatório PDF" porque é o
+        # passo seguinte natural do mesmo arquivo, e em largura total (não
+        # dentro de btn_action_row) para não espremer três botões numa linha
+        # que o layout dimensiona para dois.
+        self._btn_result_view_pdf = QPushButton("Visualizar Relatório")
+        self._btn_result_view_pdf.setMinimumHeight(42)
+        self._btn_result_view_pdf.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_result_view_pdf.setToolTip(
+            "Abre o relatório PDF desta sessão em uma janela da própria "
+            "aplicação, sem precisar de um leitor externo nem sair desta tela."
+        )
+        self._btn_result_view_pdf.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {COLOR_BG_MEDIUM};
+                color: {COLOR_TEXT_PRIMARY};
+                border: 1px solid #334155;
+                border-radius: 5px;
+                font-size: 13px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {COLOR_ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: #64748b;
+                border-color: #334155;
+                background-color: #0f172a;
+            }}
+            """
+        )
+        self._btn_result_view_pdf.clicked.connect(self._on_result_view_pdf)
+        card_layout.addWidget(self._btn_result_view_pdf)
+
         # Botão: Abrir Pasta de Sessões
         self._btn_result_history = QPushButton("Abrir Pasta de Sessões")
         self._btn_result_history.setMinimumHeight(38)
@@ -1205,6 +1248,73 @@ class MainWindow(QMainWindow):
         # e desabilita os três de uma vez.
         self._btn_result_do_not_save.setEnabled(has_csv)
 
+        # "Visualizar Relatório" segue o PDF, não o CSV: o relatório é gerado
+        # sob demanda e pode não existir mesmo com o CSV em disco.
+        self._refresh_view_pdf_enabled()
+
+    def _refresh_view_pdf_enabled(self) -> None:
+        """
+        Habilita "Visualizar Relatório" conforme o PDF exista em disco.
+
+        Concentrado num método porque a mesma decisão é tomada em três
+        momentos distintos (ao montar a Tela de Resultado, ao terminar a
+        geração e ao falhar a geração), e repetir a condição em cada um deles
+        seria a forma mais fácil de eles divergirem.
+        """
+        pdf_path = self._session_pdf_candidate()
+        self._btn_result_view_pdf.setEnabled(
+            bool(pdf_path and os.path.exists(pdf_path))
+        )
+
+    def _close_pdf_viewer(self) -> None:
+        """
+        Fecha o visualizador do relatório, se algum estiver aberto.
+
+        Fechar a janela é o que faz o closeEvent do PdfViewerDialog chamar
+        QPdfDocument.close() e soltar o arquivo. No Windows, um PDF ainda
+        aberto pelo próprio aplicativo pode bloquear os.remove() — por isso
+        todo caminho que remove ou invalida os arquivos da sessão passa por
+        aqui ANTES de tocar no disco.
+        """
+        if self._pdf_viewer_dialog is not None:
+            self._pdf_viewer_dialog.close()
+            self._pdf_viewer_dialog = None
+
+    def _on_result_view_pdf(self) -> None:
+        """
+        Abre o visualizador embutido do PDF da sessão.
+
+        Uma só janela por vez: um segundo clique com o visualizador aberto
+        traz o existente para frente em vez de criar outro. Duas janelas do
+        mesmo relatório não mostrariam nada de novo e dobrariam os handles de
+        arquivo a fechar antes de um descarte de sessão.
+        """
+        pdf_path = self._session_pdf_candidate()
+        if not pdf_path or not os.path.exists(pdf_path):
+            # O botão já deveria estar desabilitado neste caso; a checagem
+            # protege contra o arquivo sumir do disco por fora da aplicação.
+            return
+
+        if self._pdf_viewer_dialog is not None:
+            if self._pdf_viewer_dialog.isVisible():
+                self._pdf_viewer_dialog.raise_()
+                self._pdf_viewer_dialog.activateWindow()
+                return
+            # Janela já fechada pelo operador, mas o atributo ainda aponta
+            # para ela: descarta antes de abrir uma nova.
+            self._pdf_viewer_dialog = None
+
+        viewer = PdfViewerDialog(pdf_path, parent=self)
+        if viewer.load_failed:
+            # O diálogo já avisou o operador e se fechou. Guardar a
+            # referência deixaria _pdf_viewer_dialog apontando para uma
+            # janela inútil, e o próximo clique cairia no ramo de
+            # "reaproveitar" sem nunca tentar abrir de novo.
+            return
+
+        self._pdf_viewer_dialog = viewer
+        self._pdf_viewer_dialog.show()
+
     def _on_result_new_session(self) -> None:
         """
         Reinicia o sistema por completo e retorna à Tela de Configuração em IDLE.
@@ -1227,6 +1337,11 @@ class MainWindow(QMainWindow):
         """
         if not self._confirm_new_session():
             return
+
+        # 0. Fecha o visualizador do relatório: deixá-lo aberto exibiria o
+        #    PDF do paciente anterior sobre uma tela de configuração já
+        #    limpa, sem nada na interface indicando a quem ele pertence.
+        self._close_pdf_viewer()
 
         # 1. Reset do motor: para os workers, recria as threads do zero e
         #    limpa gráficos, métricas, widgets e log.
@@ -1371,6 +1486,12 @@ class MainWindow(QMainWindow):
         """
         if not self._confirm_do_not_save_session():
             return
+
+        # Fecha o visualizador ANTES de qualquer os.remove(): enquanto ele
+        # estiver aberto, o QPdfDocument segura o PDF e a remoção falharia
+        # com PermissionError no Windows — o visualizador quebraria esta
+        # funcionalidade em vez de apenas conviver com ela.
+        self._close_pdf_viewer()
 
         csv_removed = False
         pdf_removed = False
@@ -1923,6 +2044,12 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Fecha um visualizador herdado da sessão anterior: o relatório de
+        # outro paciente não pode ficar na tela durante uma captura nova, e
+        # o PDF que ele exibe deixa de corresponder à sessão corrente assim
+        # que _csv_path muda, logo abaixo.
+        self._close_pdf_viewer()
+
         # Coleta dados do formulário para uso no CSV e PDF.
         session_info = self.session_header.get_session_info()
         patient_name: str = session_info["patient_name"]
@@ -2109,6 +2236,13 @@ class MainWindow(QMainWindow):
 
         session_info = self.session_header.get_session_info()
 
+        # Fecha o visualizador antes de começar: generate_pdf_report()
+        # sobrescreve silenciosamente o arquivo de destino, e no Windows um
+        # PDF aberto pelo QPdfDocument bloqueia essa escrita. Desabilitar o
+        # botão impede abrir um novo visualizador, mas não fecha um que já
+        # esteja na tela desde a geração anterior.
+        self._close_pdf_viewer()
+
         # Desabilita o botão durante a geração para evitar duplos cliques.
         self._btn_result_pdf.setEnabled(False)
         self._btn_result_pdf.setText("Gerando PDF...")
@@ -2117,6 +2251,10 @@ class MainWindow(QMainWindow):
         # geração em curso. O tooltip troca junto para explicar o bloqueio.
         self._btn_result_do_not_save.setEnabled(False)
         self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP_PDF_BUSY)
+        # "Visualizar Relatório" pelo mesmo motivo: o worker está reescrevendo
+        # o arquivo neste instante, e abri-lo agora mostraria um PDF pela
+        # metade — ou o da geração anterior, já parcialmente sobrescrito.
+        self._btn_result_view_pdf.setEnabled(False)
         self._status_bar.showMessage("Gerando relatório PDF... Aguarde.")
         self.log_widget.log("Iniciando geração do relatório PDF...")
 
@@ -2151,6 +2289,9 @@ class MainWindow(QMainWindow):
         self._btn_result_pdf.setText("Gerar Relatório PDF")
         self._btn_result_do_not_save.setEnabled(True)
         self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
+        # Reavalia pela existência do arquivo, não por "a geração terminou":
+        # é o PDF em disco que o visualizador abre.
+        self._refresh_view_pdf_enabled()
         self._status_bar.showMessage(f"PDF gerado: {pdf_path}")
         self.log_widget.log_success(f"Relatório PDF gerado: {pdf_path}")
 
@@ -2178,6 +2319,10 @@ class MainWindow(QMainWindow):
         self._btn_result_pdf.setText("Gerar Relatório PDF")
         self._btn_result_do_not_save.setEnabled(True)
         self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
+        # Mesma reavaliação pela existência do arquivo: numa falha o PDF
+        # normalmente não existe, e reabilitar o botão incondicionalmente
+        # ofereceria ao operador um relatório que não está lá.
+        self._refresh_view_pdf_enabled()
         self._status_bar.showMessage("Falha ao gerar relatório PDF.")
         self.log_widget.log_error(f"Falha ao gerar PDF: {error_message}")
 
