@@ -427,7 +427,7 @@ class MainWindow(QMainWindow):
         self.log_widget = LogWidget()
 
         # Botão para alternar a gaveta de logs (Fase 4B)
-        self.btn_toggle_logs = QPushButton("📋  Exibir Logs do Sistema")
+        self.btn_toggle_logs = QPushButton("Exibir Logs do Sistema")
         self.btn_toggle_logs.setFixedHeight(28)
         self.btn_toggle_logs.setToolTip("Exibe ou oculta a gaveta de logs do sistema.")
         self.btn_toggle_logs.setStyleSheet(
@@ -450,7 +450,7 @@ class MainWindow(QMainWindow):
         # --- Botões de controle de sessão ---
         # Botão Encerrar Sessão — estilo vermelho para ação destrutiva/final.
         # Fica na barra fixa superior (_assessment_bar), visível durante RUNNING.
-        self.btn_end = QPushButton("■  Encerrar Sessão")
+        self.btn_end = QPushButton("Encerrar Sessão")
         self.btn_end.setStyleSheet(BUTTON_DANGER_STYLE)
         self.btn_end.setMinimumHeight(42)
         self.btn_end.setToolTip("Encerra a captura e finaliza o arquivo CSV.")
@@ -854,7 +854,7 @@ class MainWindow(QMainWindow):
         card_layout.addSpacing(8)
 
         # Botão: Iniciar Avaliação
-        self._setup_btn_start = QPushButton("▶  Iniciar Avaliação")
+        self._setup_btn_start = QPushButton("Iniciar Avaliação")
         self._setup_btn_start.setStyleSheet(BUTTON_PRIMARY_STYLE)
         self._setup_btn_start.setMinimumHeight(44)
         self._setup_btn_start.setEnabled(False)
@@ -1028,7 +1028,7 @@ class MainWindow(QMainWindow):
         btn_action_row = QHBoxLayout()
         btn_action_row.setSpacing(10)
 
-        self._btn_result_pdf = QPushButton("📄  Gerar Relatório PDF")
+        self._btn_result_pdf = QPushButton("Gerar Relatório PDF")
         self._btn_result_pdf.setMinimumHeight(42)
         self._btn_result_pdf.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_result_pdf.setToolTip("Gera o relatório clínico em PDF a partir do CSV da sessão encerrada.")
@@ -1055,7 +1055,7 @@ class MainWindow(QMainWindow):
         self._btn_result_pdf.clicked.connect(self._gerar_relatorio)
         btn_action_row.addWidget(self._btn_result_pdf)
 
-        self._btn_result_csv = QPushButton("💾  Exportar CSV")
+        self._btn_result_csv = QPushButton("Exportar CSV")
         self._btn_result_csv.setMinimumHeight(42)
         self._btn_result_csv.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_result_csv.setToolTip("Copia o arquivo CSV da sessão para um local escolhido.")
@@ -1085,7 +1085,7 @@ class MainWindow(QMainWindow):
         card_layout.addLayout(btn_action_row)
 
         # Botão: Abrir Pasta de Sessões
-        self._btn_result_history = QPushButton("📁  Abrir Pasta de Sessões")
+        self._btn_result_history = QPushButton("Abrir Pasta de Sessões")
         self._btn_result_history.setMinimumHeight(38)
         self._btn_result_history.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_result_history.setToolTip("Abre a pasta onde os arquivos de sessão são salvos.")
@@ -1114,7 +1114,7 @@ class MainWindow(QMainWindow):
         # exportação, enquanto o reset age sobre a tela. Hover em
         # COLOR_DANGER, como "Nova Avaliação": ambos são irreversíveis, e a
         # proteção real é o diálogo de confirmação, não a cor.
-        self._btn_result_do_not_save = QPushButton("🗂️  Não Salvar Esta Sessão")
+        self._btn_result_do_not_save = QPushButton("Não Salvar Esta Sessão")
         self._btn_result_do_not_save.setMinimumHeight(42)
         self._btn_result_do_not_save.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
@@ -1145,7 +1145,7 @@ class MainWindow(QMainWindow):
         # em tela; no estado normal permanece neutro, para não competir com os
         # botões de exportação logo acima. A proteção real continua sendo o
         # diálogo de confirmação, não a cor.
-        self._btn_result_next = QPushButton("🔄  Nova Avaliação")
+        self._btn_result_next = QPushButton("Nova Avaliação")
         self._btn_result_next.setMinimumHeight(42)
         self._btn_result_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_result_next.setToolTip(
@@ -1460,9 +1460,9 @@ class MainWindow(QMainWindow):
         self._logs_visible = visible
         self.log_widget.setVisible(visible)
         if visible:
-            self.btn_toggle_logs.setText("📋  Ocultar Logs do Sistema")
+            self.btn_toggle_logs.setText("Ocultar Logs do Sistema")
         else:
-            self.btn_toggle_logs.setText("📋  Exibir Logs do Sistema")
+            self.btn_toggle_logs.setText("Exibir Logs do Sistema")
 
     # =========================================================================
     # MÁQUINA DE ESTADOS
@@ -1779,19 +1779,19 @@ class MainWindow(QMainWindow):
         )
 
         if state == "off":
-            self.btn_robot_hand.setText("●  MÃO ROBÓTICA: DESLIGADA")
+            self.btn_robot_hand.setText("MÃO ROBÓTICA: DESLIGADA")
             self.btn_robot_hand.setStyleSheet(style_off)
             self.btn_robot_hand.setEnabled(True)
         elif state == "connecting":
-            self.btn_robot_hand.setText("●  CONECTANDO...")
+            self.btn_robot_hand.setText("CONECTANDO...")
             self.btn_robot_hand.setStyleSheet(style_connecting)
             self.btn_robot_hand.setEnabled(False)
         elif state == "on":
-            self.btn_robot_hand.setText("●  MÃO ROBÓTICA: LIGADA")
+            self.btn_robot_hand.setText("MÃO ROBÓTICA: LIGADA")
             self.btn_robot_hand.setStyleSheet(style_on)
             self.btn_robot_hand.setEnabled(True)
         elif state == "error":
-            self.btn_robot_hand.setText("●  ERRO: ARDUINO NÃO CONECTADO")
+            self.btn_robot_hand.setText("ERRO: ARDUINO NÃO CONECTADO")
             self.btn_robot_hand.setStyleSheet(style_off)
             self.btn_robot_hand.setEnabled(True)
 
@@ -2111,7 +2111,7 @@ class MainWindow(QMainWindow):
 
         # Desabilita o botão durante a geração para evitar duplos cliques.
         self._btn_result_pdf.setEnabled(False)
-        self._btn_result_pdf.setText("⏳  Gerando PDF...")
+        self._btn_result_pdf.setText("Gerando PDF...")
         # "Não Salvar" também sai de cena enquanto o PDF é gerado: o worker
         # está lendo o CSV nesse instante, e removê-lo no meio quebraria a
         # geração em curso. O tooltip troca junto para explicar o bloqueio.
@@ -2148,7 +2148,7 @@ class MainWindow(QMainWindow):
         """
         # Restaura o botão ao estado original.
         self._btn_result_pdf.setEnabled(True)
-        self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
+        self._btn_result_pdf.setText("Gerar Relatório PDF")
         self._btn_result_do_not_save.setEnabled(True)
         self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
         self._status_bar.showMessage(f"PDF gerado: {pdf_path}")
@@ -2158,7 +2158,7 @@ class MainWindow(QMainWindow):
         msg = QMessageBox(self)
         msg.setWindowTitle("Relatório Gerado")
         msg.setIcon(QMessageBox.Icon.Information)
-        msg.setText("✅ Relatório PDF gerado com sucesso!")
+        msg.setText("Relatório PDF gerado com sucesso!")
         msg.setInformativeText(f"Arquivo salvo em:\n{pdf_path}")
         msg.exec()
 
@@ -2175,7 +2175,7 @@ class MainWindow(QMainWindow):
         # Restaura o botão e reporta o erro: sem isso a interface ficaria
         # presa em "Gerando PDF..." e o operador não teria como tentar de novo.
         self._btn_result_pdf.setEnabled(True)
-        self._btn_result_pdf.setText("📄  Gerar Relatório PDF")
+        self._btn_result_pdf.setText("Gerar Relatório PDF")
         self._btn_result_do_not_save.setEnabled(True)
         self._btn_result_do_not_save.setToolTip(_DO_NOT_SAVE_TOOLTIP)
         self._status_bar.showMessage("Falha ao gerar relatório PDF.")
@@ -2229,7 +2229,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Exportação Concluída",
-                f"✅ CSV exportado com sucesso para:\n{destination}",
+                f"CSV exportado com sucesso para:\n{destination}",
             )
 
         except (OSError, shutil.Error) as exc:

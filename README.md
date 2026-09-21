@@ -73,16 +73,16 @@ A interface do sistema é organizada em torno de um fluxo clínico intuitivo e s
 ```text
 Tela 1 — Configuração
        │
-       ▼ [▶ Iniciar Avaliação]
+       ▼ [Iniciar Avaliação]
 Tela 2 — Avaliação em Andamento (Gravação contínua em CSV)
        │
-       ▼ [■ Encerrar Sessão com confirmação modal]
+       ▼ [Encerrar Sessão com confirmação modal]
 Tela 3 — Resultado da Sessão
        │
-       ├─► [📄 Gerar Relatório PDF] (sob demanda via thread dedicada)
-       ├─► [💾 Exportar CSV] (diálogo nativo para salvar em qualquer pasta)
-       ├─► [📁 Abrir Pasta de Sessões] (abre a pasta logs/)
-       └─► [🔄 Nova Avaliação] (reset completo com confirmação → Tela 1 em IDLE)
+       ├─► [Gerar Relatório PDF] (sob demanda via thread dedicada)
+       ├─► [Exportar CSV] (diálogo nativo para salvar em qualquer pasta)
+       ├─► [Abrir Pasta de Sessões] (abre a pasta logs/)
+       └─► [Nova Avaliação] (reset completo com confirmação → Tela 1 em IDLE)
 ```
 
 1. **Tela de Configuração da Sessão (Página 1)**:
@@ -93,12 +93,12 @@ Tela 3 — Resultado da Sessão
      - Mão avaliada (Direita ou Esquerda);
      - Número da sessão (sequencial);
      - **Modo de filtro** aplicado à sessão (ver [Modo de filtro](#modo-de-filtro));
-   - Ação: botão **"▶ Iniciar Avaliação"** (ou tecla Enter) valida os dados, inicializa as threads de captura e IA e transiciona para a tela de avaliação.
+   - Ação: botão **"Iniciar Avaliação"** (ou tecla Enter) valida os dados, inicializa as threads de captura e IA e transiciona para a tela de avaliação.
 
 2. **Tela de Avaliação em Andamento (Página 0)**:
 
    ![Tela de Avaliação em Andamento](assets/screenshots/tela-avaliacao.jpg)
-   - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"■ Encerrar Sessão"** sempre visível e acessível.
+   - **Barra fixa externa superior**: permanece fixa no topo da janela (fora da área rolável), exibindo o status da avaliação e o botão **"Encerrar Sessão"** sempre visível e acessível.
    - **Área de rolagem clínica (`QScrollArea`)**:
      - *SessionHeaderWidget*: dados da sessão, mão avaliada e cronômetro em tempo real;
      - *VideoWidget*: transmissão da câmera HD com renderização de esqueleto anatômico e vetores goniométricos;
@@ -107,7 +107,7 @@ Tela 3 — Resultado da Sessão
      - *FingerCardsPanel*: cartões de amplitude detalhada por dedo;
      - *LogWidget recolhível*: painel de eventos do sistema com botão para expandir ou recolher logs técnicos.
    - **Gravação automática**: todos os quadros processados são gravados continuamente no arquivo CSV da sessão (`logs/`).
-   - **Encerramento seguro**: o clique em "■ Encerrar Sessão" aciona um diálogo modal de confirmação defensiva antes de parar as threads e fechar o arquivo CSV. Durante a avaliação, botões de exportação, nova sessão e relatório PDF permanecem ocultos.
+   - **Encerramento seguro**: o clique em "Encerrar Sessão" aciona um diálogo modal de confirmação defensiva antes de parar as threads e fechar o arquivo CSV. Durante a avaliação, botões de exportação, nova sessão e relatório PDF permanecem ocultos.
 
 3. **Tela de Resultado da Sessão (Página 2)**:
 
@@ -121,11 +121,11 @@ Tela 3 — Resultado da Sessão
      - Duração total da coleta;
      - Caminho completo do arquivo CSV gerado.
    - **Ações disponíveis**:
-     - **📄 Gerar Relatório PDF**: gera sob demanda o relatório clínico com métricas consolidadas via `_PdfGeneratorWorker` em background, sem travar a interface gráfica.
-     - **💾 Exportar CSV**: abre diálogo nativo do sistema operacional permitindo salvar uma cópia do CSV da sessão em qualquer pasta.
-     - **📁 Abrir Pasta de Sessões**: abre o explorador de arquivos diretamente no diretório `logs/`.
-     - **🗂️ Não Salvar Esta Sessão**: remove definitivamente do disco o CSV da sessão e o relatório PDF, se já tiver sido gerado — para quando o atendimento não deve ficar arquivado (sessão de teste, erro de operação, pedido do paciente). O diálogo de confirmação lista os nomes reais dos arquivos antes de remover, tem *Cancelar* como botão padrão e avisa que `logs/app.log` pode manter o nome do paciente. A falha ao remover um arquivo (por exemplo, CSV aberto no Excel) não impede a remoção do outro e nunca interrompe a aplicação: o operador é avisado e o arquivo permanece. O registro da ação não repete nome de paciente nem caminho. Cópias já exportadas para outras pastas não são afetadas. O botão fica bloqueado enquanto o PDF está sendo gerado, com tooltip explicando o motivo.
-     - **🔄 Nova Avaliação**: único caminho de reset do sistema. Com confirmação defensiva (botão padrão *Cancelar*), para e recria os workers, limpa gráficos, métricas, widgets e log, apaga a identificação do paciente (nome em branco, mão Direita, sessão 1), devolve o modo de filtro ao padrão (EMA + Kalman) e retorna à Tela 1 no estado `IDLE`. Os arquivos CSV e PDF já salvos **não** são apagados.
+     - **Gerar Relatório PDF**: gera sob demanda o relatório clínico com métricas consolidadas via `_PdfGeneratorWorker` em background, sem travar a interface gráfica.
+     - **Exportar CSV**: abre diálogo nativo do sistema operacional permitindo salvar uma cópia do CSV da sessão em qualquer pasta.
+     - **Abrir Pasta de Sessões**: abre o explorador de arquivos diretamente no diretório `logs/`.
+     - **Não Salvar Esta Sessão**: remove definitivamente do disco o CSV da sessão e o relatório PDF, se já tiver sido gerado — para quando o atendimento não deve ficar arquivado (sessão de teste, erro de operação, pedido do paciente). O diálogo de confirmação lista os nomes reais dos arquivos antes de remover, tem *Cancelar* como botão padrão e avisa que `logs/app.log` pode manter o nome do paciente. A falha ao remover um arquivo (por exemplo, CSV aberto no Excel) não impede a remoção do outro e nunca interrompe a aplicação: o operador é avisado e o arquivo permanece. O registro da ação não repete nome de paciente nem caminho. Cópias já exportadas para outras pastas não são afetadas. O botão fica bloqueado enquanto o PDF está sendo gerado, com tooltip explicando o motivo.
+     - **Nova Avaliação**: único caminho de reset do sistema. Com confirmação defensiva (botão padrão *Cancelar*), para e recria os workers, limpa gráficos, métricas, widgets e log, apaga a identificação do paciente (nome em branco, mão Direita, sessão 1), devolve o modo de filtro ao padrão (EMA + Kalman) e retorna à Tela 1 no estado `IDLE`. Os arquivos CSV e PDF já salvos **não** são apagados.
 
 ---
 
@@ -145,7 +145,7 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 |                        (Orquestrador Principal da UI)                         |
 |                                                                               |
 |   +-----------------------------------------------------------------------+   |
-|   | Barra Fixa de Avaliação (Rótulo de Status + Botão ■ Encerrar Sessão)  |   |
+|   | Barra Fixa de Avaliação (Rótulo de Status + Botão Encerrar Sessão)  |   |
 |   +-----------------------------------------------------------------------+   |
 |                                                                               |
 |   +-----------------------------------------------------------------------+   |
@@ -156,7 +156,7 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 |   |  - Mão avaliada          - VideoWidget (Câmera+Overlay)- Gerar PDF (dem.) |   |
 |   |  - Número da sessão      - MetricsWidget (Clínico)     - Exportar CSV     |   |
 |   |  - Modo de filtro        - GoniometryPlotWidget        - Abrir Pasta      |   |
-|   |  - ▶ Iniciar Avaliação   - FingerCardsPanel            - Nova Avaliação   |   |
+|   |  - Iniciar Avaliação     - FingerCardsPanel            - Nova Avaliação   |   |
 |   |                          - LogWidget (Recolhível)                         |   |
 |   +-----------------------------------------------------------------------+   |
 +---------------------------------------+---------------------------------------+
@@ -374,7 +374,7 @@ A goniometria pode, opcionalmente, comandar uma mão robótica de 5 servos conec
 via Arduino (StandardFirmata + pyFirmata). A câmera e o cálculo de TAM continuam
 pertencendo exclusivamente a este sistema — a mão robótica é apenas um atuador
 externo, ligado/desligado por um único botão na barra fixa superior durante uma
-avaliação em andamento (**● MÃO ROBÓTICA: DESLIGADA / LIGADA**).
+avaliação em andamento (**MÃO ROBÓTICA: DESLIGADA / LIGADA**).
 
 Resumo rápido:
 - Fluxo: `angles_smooth[<dedo>]["TAM"]` → `outputs/tam_to_servo.py` (mapeamento
@@ -399,14 +399,14 @@ Durante e após a avaliação clínica, o sistema gerencia os dados coletados de
    - Localização: `logs/session_<paciente>_<timestamp>_s<num>.csv`
    - O arquivo é fechado com segurança antes de qualquer navegação pós-sessão.
 
-2. **Geração de Relatório em PDF sob Demanda** — Ao encerrar a sessão e transicionar para a Tela 3 (Resultado), o profissional pode emitir o relatório clínico completo clicando no botão **"📄 Gerar Relatório PDF"**.
+2. **Geração de Relatório em PDF sob Demanda** — Ao encerrar a sessão e transicionar para a Tela 3 (Resultado), o profissional pode emitir o relatório clínico completo clicando no botão **"Gerar Relatório PDF"**.
    - Gerado via [`session_report.py`](session_report.py) com a biblioteca FPDF2 em thread secundária assíncrona (`_PdfGeneratorWorker`), impedindo qualquer congelamento da interface visual.
    - Contém metadados da sessão, faixas de normalidade ASSH, amplitudes mínimas, máximas e médias por articulação e visualizações gráficas das curvas de flexão/extensão.
    - Localização: `logs/session_<paciente>_<timestamp>_s<num>_report.pdf`
 
 3. **Exportação e Gestão de Arquivos**:
-   - **Exportar CSV**: botão **"💾 Exportar CSV"** na Tela de Resultado abre uma caixa de diálogo nativa do sistema operacional para copiar o arquivo CSV para diretórios externos (como pendrives, prontuários eletrônicos ou pastas compartilhadas de rede).
-   - **Abrir Pasta de Sessões**: botão **"📁 Abrir Pasta de Sessões"** abre o gerenciador de arquivos nativo diretamente na pasta `logs/`.
+   - **Exportar CSV**: botão **"Exportar CSV"** na Tela de Resultado abre uma caixa de diálogo nativa do sistema operacional para copiar o arquivo CSV para diretórios externos (como pendrives, prontuários eletrônicos ou pastas compartilhadas de rede).
+   - **Abrir Pasta de Sessões**: botão **"Abrir Pasta de Sessões"** abre o gerenciador de arquivos nativo diretamente na pasta `logs/`.
 
 ---
 
