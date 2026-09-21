@@ -78,17 +78,20 @@ def _write_new_format_csv(path, filter_mode: str, tam_index: float = 200.0) -> N
 
 def _write_old_format_csv(path, tam_index: float = 180.0) -> None:
     """
-    Constrói um CSV sem a coluna filter_mode: o cabeçalho é CSV_FIELDS sem
-    essa única coluna. A coluna demo_mode permanece no cabeçalho e fica
-    vazia na linha gravada.
+    Constrói um CSV sem as colunas filter_mode e demo_mode: o cabeçalho é
+    CSV_FIELDS sem essas duas colunas.
 
-    GoniometryCSVLogger não serve para simular isso — ele sempre grava
-    filter_mode (com default "EMA_KALMAN" quando não informado, ver
-    test_csv_logger_without_filter_mode_defaults_to_ema_kalman em
+    GoniometryCSVLogger não serve para simular isso — ele grava as duas
+    colunas em toda linha, com defaults próprios quando o chamador não as
+    informa ("EMA_KALMAN" para filter_mode e False para demo_mode, ver
+    test_csv_logger_without_filter_mode_defaults_to_ema_kalman e
+    test_csv_logger_without_demo_mode_defaults_to_false em
     test_kinematic_assessment.py). Por isso o arquivo é escrito diretamente
     com csv.DictWriter.
     """
-    old_fieldnames = [name for name in CSV_FIELDS if name != "filter_mode"]
+    old_fieldnames = [
+        name for name in CSV_FIELDS if name not in ("filter_mode", "demo_mode")
+    ]
     angles = _synthetic_angles(tam_index=tam_index)
 
     row = {"timestamp": 1600000000.0, "frame_id": 1}
@@ -106,23 +109,28 @@ def _write_old_format_csv(path, tam_index: float = 180.0) -> None:
 
 
 # =============================================================================
-# D. CSV antigo, sem a coluna filter_mode
+# D. CSV antigo, sem as colunas filter_mode e demo_mode
 # =============================================================================
 
 
 class TestLoadSessionCsvOldFormatWithoutFilterMode:
-    def test_old_format_csv_has_no_filter_mode_column(self, tmp_path):
-        """Confirma que o CSV gerado pelo helper não tem a coluna
-        filter_mode, em vez de supor que não tem.
+    def test_old_format_csv_has_neither_filter_mode_nor_demo_mode_column(
+        self, tmp_path
+    ):
+        """Confirma que o CSV gerado pelo helper não tem as colunas
+        filter_mode e demo_mode, em vez de supor que não tem.
 
-        Não usa GoniometryCSVLogger: ele sempre grava filter_mode (com
-        default "EMA_KALMAN"), então não produz um CSV sem essa coluna — por
-        isso o arquivo é escrito diretamente (_write_old_format_csv)."""
+        Não usa GoniometryCSVLogger: ele grava as duas colunas em toda
+        linha, então não produz um CSV sem elas — por isso o arquivo é
+        escrito diretamente (_write_old_format_csv)."""
         csv_path = tmp_path / "old_session.csv"
         _write_old_format_csv(csv_path)
 
         with open(csv_path, newline="", encoding="utf-8") as f:
-            assert "filter_mode" not in csv.DictReader(f).fieldnames
+            fieldnames = csv.DictReader(f).fieldnames
+
+        assert "filter_mode" not in fieldnames
+        assert "demo_mode" not in fieldnames
 
     def test_load_session_csv_reads_clinical_data_from_old_format_without_error(self, tmp_path):
         csv_path = tmp_path / "old_session.csv"
@@ -242,16 +250,15 @@ class TestGeneratePdfReportWithFilterModeColumn:
 # Coluna demo_mode e aviso de demonstração no PDF
 # =============================================================================
 #
-# demo_mode NÃO tem um estado "assumido" como filter_mode: um CSV sem
-# demo_mode preenchido não é uma sessão de demonstração, então False é
-# sempre a leitura correta — não uma suposição que precise ser marcada à
-# parte.
+# demo_mode NÃO tem um estado "assumido" como filter_mode: um CSV sem a
+# coluna demo_mode não é uma sessão de demonstração, então False é sempre a
+# leitura correta — não uma suposição que precise ser marcada à parte.
 #
 # O helper abaixo escreve o CSV diretamente com csv.DictWriter, usando
 # CSV_FIELDS como cabeçalho: a lista canônica inclui "demo_mode" como última
 # coluna, então o arquivo de teste tem exatamente o schema real, sem coluna
 # repetida. Mesma técnica de _write_old_format_csv() (acima), que subtrai
-# uma coluna do cabeçalho.
+# as colunas filter_mode e demo_mode do cabeçalho.
 
 
 def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 200.0) -> None:
@@ -296,14 +303,18 @@ class TestLoadSessionCsvReadsDemoModeColumn:
     def test_old_csv_without_the_column_reads_as_false_not_assumed(self, tmp_path):
         """Diferente de filter_mode_assumed: não existe um
         "demo_mode_assumed", porque não há ambiguidade a marcar — um CSV sem
-        demo_mode preenchido é, por definição, uma sessão clínica. False é
+        a coluna demo_mode é, por definição, uma sessão clínica. False é
         fato, não suposição."""
         csv_path = tmp_path / "old_session.csv"
-        _write_old_format_csv(csv_path)  # sem filter_mode; demo_mode vazio na linha
+        _write_old_format_csv(csv_path)  # sem as colunas filter_mode e demo_mode
+
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            assert "demo_mode" not in csv.DictReader(f).fieldnames
 
         data = load_session_csv(str(csv_path))
 
         assert data["demo_mode"] is False
+        assert "demo_mode_assumed" not in data
 
 
 class TestFooterDemoModeWarning:
