@@ -679,7 +679,7 @@ def test_new_evaluation_cancelled_changes_nothing(
 #
 # O caso que exige rede de verdade é o btn_pdf. Ele não é código morto puro:
 # _gerar_relatorio(), _on_pdf_finished() e _on_pdf_error() escrevem nele
-# ("⏳  Gerando PDF..." e a restauração). Só que o botão VISÍVEL da Tela de
+# ("Gerando PDF..." e a restauração). Só que o botão VISÍVEL da Tela de
 # Resultado — _btn_result_pdf — já recebe exatamente o mesmo tratamento nas
 # linhas seguintes de cada um desses três métodos. Os testes abaixo travam o
 # comportamento do botão visível, que é o que o operador enxerga: se a

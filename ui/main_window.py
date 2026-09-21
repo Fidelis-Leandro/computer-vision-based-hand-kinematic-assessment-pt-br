@@ -16,7 +16,7 @@ Telas do sistema (QStackedWidget):
 
 Barra fixa superior de avaliação (_assessment_bar):
     - Localizada fora da área de rolagem clínica, no topo da janela principal.
-    - Exibe o status da avaliação e o botão "■ Encerrar Sessão", garantindo
+    - Exibe o status da avaliação e o botão "Encerrar Sessão", garantindo
       acesso visual permanente e encerramento seguro com diálogo de confirmação.
     - Visível exclusivamente durante a avaliação clínica (Página 0 e estado RUNNING).
 
@@ -37,7 +37,7 @@ Responsabilidades do MainWindow:
 
 Máquina de estados:
     IDLE    → Estado inicial na Tela de Configuração. Câmera desligada.
-    READY   → Nome do paciente preenchido. Botão "▶ Iniciar Avaliação" habilitado.
+    READY   → Nome do paciente preenchido. Botão "Iniciar Avaliação" habilitado.
     RUNNING → Avaliação ativa na Tela 2. Gravação em CSV e barra fixa visível.
     STOPPED → Sessão encerrada. Transição para Tela 3 com ações pós-sessão disponíveis.
 

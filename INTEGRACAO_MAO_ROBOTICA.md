@@ -172,7 +172,7 @@ na prática, desconecte os demais dispositivos seriais durante o uso da mão rob
 
 ## O botão liga/desliga
 
-Único controle na interface: **● MÃO ROBÓTICA: DESLIGADA / CONECTANDO... / LIGADA /
+Único controle na interface: **MÃO ROBÓTICA: DESLIGADA / CONECTANDO... / LIGADA /
 ERRO: ARDUINO NÃO CONECTADO**, na barra fixa superior, visível apenas durante uma
 avaliação em andamento (estado `RUNNING`).
 
@@ -246,7 +246,7 @@ e não há responsividade a preservar. Ver comentários cruzados nos dois métod
 | `module 'inspect' has no attribute 'getargspec'` | Ambiente sem o polyfill aplicado, ou `pyfirmata` importado antes de `outputs/__init__.py` rodar | Confirmar que está usando o Python do `.venv` do projeto (3.11.x) e que os arquivos de `outputs/` não foram alterados |
 | `Falha ao conectar em todas as portas candidatas` | Nenhuma porta com descrição correspondente às palavras-chave, ou porta ocupada por outro processo | Verificar se `Mão robo/main.py` não está aberto; verificar cabo USB; rodar `Mão robo/detect_ports.py` para listar portas visíveis ao sistema |
 | `could not open port 'COMx': PermissionError... Acesso negado` | Outro processo (inclusive uma instância anterior travada desta própria aplicação) já tem a porta aberta | Fechar todos os processos Python pendentes, desconectar/reconectar o cabo USB, tentar novamente |
-| Botão fica em "● ERRO: ARDUINO NÃO CONECTADO" | Falha de conexão ou de configuração de algum dos 5 pinos | Consultar `logs/app.log` (linhas de `outputs.robot_hand_output`) para a mensagem exata; o botão permite nova tentativa a qualquer momento |
+| Botão fica em "ERRO: ARDUINO NÃO CONECTADO" | Falha de conexão ou de configuração de algum dos 5 pinos | Consultar `logs/app.log` (linhas de `outputs.robot_hand_output`) para a mensagem exata; o botão permite nova tentativa a qualquer momento |
 | Mão liga mas não fecha totalmente | Ver seção seguinte — pode ser TAM que não atinge o teto configurado para aquele dedo, ou limitação mecânica/elétrica | Consultar a tabela de amplitude por dedo (achados já documentados internamente); testar fisicamente conforme a seção anterior |
 | Mão fecha e reabre sozinha repetidamente durante um fechamento sustentado | Possível perda momentânea de detecção da mão pelo MediaPipe durante oclusão em fechamento total, combinada com `HAND_LOST_TIMEOUT_S` | Ver `HAND_LOST_TIMEOUT_S` em `outputs/robot_hand_output.py`; não é necessariamente um bug de suavização |
 
