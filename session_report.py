@@ -134,7 +134,9 @@ ASSH_COLORS_RGB: Dict[str, Tuple[int, int, int]] = {
     "Ruim":      (239, 68, 68),
 }
 
-REPORT_TITLE = "Goniometria Digital da Mão — Relatório de Sessão"
+REPORT_TITLE = "Avaliação Cinemática da Mão"
+REPORT_SUBTITLE = "Baseada em Visão Computacional"
+REPORT_DOCUMENT_LABEL = "Relatório de Sessão"
 
 # Rótulo legível de cada modo de filtro (smoothing.py) para o rodapé do PDF.
 # Dicionário simples em vez de Enum/classe — são só 4 rótulos fixos.
@@ -744,18 +746,33 @@ class _ReportPDF(FPDF):
             except Exception:
                 pass
 
-        # Título do relatório
+        # Título do relatório em três linhas centralizadas: o nome do método,
+        # o complemento em destaque menor e a identificação do documento.
+        # Largura 0 estende cada linha até a margem direita; com logotipo, o
+        # centro fica no espaço à direita dele, sem sobrepô-lo.
         self.set_text_color(30, 50, 80)
-        self.set_font("Helvetica", "B", 11)
-        self.set_xy(x_text, 12)
-        _cell(self, 0, 5, REPORT_TITLE, align="L")
+        self.set_font("Helvetica", "B", 13)
+        self.set_xy(x_text, 5)
+        _cell(self, 0, 6, REPORT_TITLE, align="C")
+
+        self.set_text_color(90, 110, 140)
+        self.set_font("Helvetica", "", 9)
+        self.set_xy(x_text, 11.5)
+        _cell(self, 0, 5, REPORT_SUBTITLE, align="C")
+
+        self.set_text_color(30, 50, 80)
+        self.set_font("Helvetica", "B", 9)
+        self.set_xy(x_text, 17.5)
+        _cell(self, 0, 5, REPORT_DOCUMENT_LABEL, align="C")
 
         # Linha decorativa
         self.set_draw_color(100, 150, 220)
         self.set_line_width(0.8)
         self.line(10, 28, 200, 28)
 
-        self.ln(32)
+        # O conteúdo da página começa em y=44 mm, abaixo da faixa do
+        # cabeçalho, independentemente de quantas linhas o título ocupa.
+        self.set_y(44)
 
     def footer(self):
         self.set_y(-15)
