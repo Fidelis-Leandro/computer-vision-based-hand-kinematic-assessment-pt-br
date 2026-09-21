@@ -26,6 +26,10 @@ numpy>=1.24.0,<2.0.0
 fpdf2>=2.7.0
 matplotlib>=3.7.0
 
+# Texto com acentos no overlay de vídeo (goniometry_overlay.py), com a fonte
+# DejaVu Sans do matplotlib. Sem o Pillow, o overlay usa texto ASCII.
+Pillow>=9.3.0
+
 # Comunicação com a mão robótica (Arduino via StandardFirmata) — outputs/
 # pyfirmata 1.1.0 chama inspect.getargspec() internamente, removido do
 # Python 3.11+. outputs/__init__.py e outputs/robot_hand_output.py aplicam um

@@ -210,6 +210,7 @@ O sistema foi construído no padrão **Produtor-Consumidor com Workers Qt**, gar
 | **Cálculos Matemáticos** | NumPy | 1.24-1.x |
 | **Relatórios em PDF** | FPDF2 | 2.7+ |
 | **Visualização de Dados** | Matplotlib | 3.7+ |
+| **Texto com Acentos no Vídeo** | Pillow | 9.3+ |
 | **Monitoramento / Logs** | Logging (stdlib) | native |
 | **Monitoramento de Recursos** | psutil | 5.9+ |
 
@@ -246,6 +247,7 @@ O projeto foi executado e testado com as versões abaixo. Versões diferentes po
 | PyQtGraph | 0.14.0 |
 | FPDF2 | 2.8.8 |
 | Matplotlib | 3.11.1 |
+| Pillow | 12.3.0 |
 | psutil | 7.2.2 |
 | PyFirmata | 1.1.0 |
 | PySerial | 3.5 |

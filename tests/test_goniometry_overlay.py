@@ -353,6 +353,21 @@ class TestUnicodeText:
     def test_title_constant_is_the_accented_name(self):
         assert goniometry_overlay.OVERLAY_TITLE[0] == "AVALIAÇÃO CINEMÁTICA DA MÃO"
 
+    def test_declared_unicode_text_dependencies_are_installed(self, text_state):
+        """Pillow e a DejaVu Sans do matplotlib são dependências declaradas em
+        requirements.txt: numa instalação feita a partir dele, o texto com
+        acentos está sempre disponível. Este teste falha, e não pula, quando
+        falta alguma delas. O fallback ASCII continua coberto à parte, como
+        comportamento de execução."""
+        from PIL import Image, ImageDraw, ImageFont  # noqa: F401
+
+        path = goniometry_overlay._unicode_font_path()
+
+        assert path is not None, "Pillow, matplotlib ou DejaVuSans.ttf indisponível"
+        assert os.path.basename(path) == "DejaVuSans.ttf"
+        assert os.path.isfile(path)
+        assert goniometry_overlay._unicode_fallback_logged is False
+
     def test_title_and_mobile_label_go_through_the_unicode_helper(self, text_state):
         _require_unicode_font()
         calls = _spy_text(text_state, "_blit_unicode_text")
