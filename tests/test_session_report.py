@@ -1,19 +1,18 @@
 """
-tests/test_session_report.py — Regressão para filter_mode no CSV/PDF (Fase 5)
+tests/test_session_report.py — Regressão para filter_mode no CSV/PDF
 ===============================================================================
 
-Este arquivo é novo porque não existe, em nenhum lugar do projeto, nenhum
-teste automatizado para session_report.py (confirmado por busca antes de
-criar este arquivo). Misturar esses testes em test_kinematic_assessment.py
-(foco em cálculo goniométrico/CSV) ou test_processing_worker.py (foco no
-worker) seria um encaixe forçado para um módulo com responsabilidade própria
-(carregamento de CSV e geração de relatório).
+Este arquivo reúne os testes de session_report.py. Misturá-los em
+test_kinematic_assessment.py (foco em cálculo goniométrico/CSV) ou
+test_processing_worker.py (foco no worker) seria um encaixe forçado para um
+módulo com responsabilidade própria (carregamento de CSV e geração de
+relatório).
 
-Testa o comportamento da Fase 5b (implementada):
+Testa o comportamento do módulo quanto ao filter_mode:
   - load_session_csv() reconhece a presença/ausência da coluna
     filter_mode em CSVs de sessão, sem exigi-la;
   - o rodapé técnico do relatório menciona o modo real usado, ou deixa
-    explícito quando o modo foi apenas assumido (CSV antigo).
+    explícito quando o modo foi apenas assumido (CSV sem a coluna).
 
 Nenhum PDF é renderizado ou lido para testar o texto do rodapé — isso é
 testado através de uma função pura (build_footer_method_text). Isso evita
@@ -53,12 +52,12 @@ def _synthetic_angles(tam_index: float = 180.0) -> dict:
 
 def _write_new_format_csv(path, filter_mode: str, tam_index: float = 200.0) -> None:
     """
-    Constrói um CSV no formato atual (filter_mode como última coluna),
+    Constrói um CSV no formato atual (com a coluna filter_mode),
     escrevendo diretamente com csv.DictWriter em vez de usar
     GoniometryCSVLogger — mantém este teste independente de qual valor
     default o logger usa, focando só no schema do arquivo.
 
-    CSV_FIELDS já inclui "filter_mode" como última entrada (Fase 5b).
+    CSV_FIELDS inclui "filter_mode" imediatamente antes de "demo_mode".
     """
     angles = _synthetic_angles(tam_index=tam_index)
 
@@ -79,15 +78,15 @@ def _write_new_format_csv(path, filter_mode: str, tam_index: float = 200.0) -> N
 
 def _write_old_format_csv(path, tam_index: float = 180.0) -> None:
     """
-    Constrói um CSV no formato ANTERIOR à Fase 5: só as 24 colunas
-    originais, sem filter_mode.
+    Constrói um CSV sem a coluna filter_mode: o cabeçalho é CSV_FIELDS sem
+    essa única coluna. A coluna demo_mode permanece no cabeçalho e fica
+    vazia na linha gravada.
 
-    GoniometryCSVLogger não serve mais para simular isso — desde a
-    Fase 5b ele sempre grava filter_mode (com default "EMA_KALMAN" quando
-    não informado, ver test_csv_logger_without_filter_mode_defaults_to_
-    ema_kalman em test_kinematic_assessment.py). Por isso, para obter um
-    CSV genuinamente sem essa coluna, escrevemos o arquivo diretamente com
-    o schema antigo.
+    GoniometryCSVLogger não serve para simular isso — ele sempre grava
+    filter_mode (com default "EMA_KALMAN" quando não informado, ver
+    test_csv_logger_without_filter_mode_defaults_to_ema_kalman em
+    test_kinematic_assessment.py). Por isso o arquivo é escrito diretamente
+    com csv.DictWriter.
     """
     old_fieldnames = [name for name in CSV_FIELDS if name != "filter_mode"]
     angles = _synthetic_angles(tam_index=tam_index)
@@ -113,13 +112,12 @@ def _write_old_format_csv(path, tam_index: float = 180.0) -> None:
 
 class TestLoadSessionCsvOldFormatWithoutFilterMode:
     def test_old_format_csv_has_no_filter_mode_column(self, tmp_path):
-        """Confirma o formato 'antigo' (schema anterior à Fase 5), não uma
-        suposição sobre como ele deveria ser.
+        """Confirma que o CSV gerado pelo helper não tem a coluna
+        filter_mode, em vez de supor que não tem.
 
-        Não usa GoniometryCSVLogger: desde a Fase 5b ele sempre grava
-        filter_mode (com default "EMA_KALMAN"), então não é mais capaz de
-        produzir um CSV sem essa coluna — por isso o arquivo é escrito
-        diretamente com o schema antigo (_write_old_format_csv)."""
+        Não usa GoniometryCSVLogger: ele sempre grava filter_mode (com
+        default "EMA_KALMAN"), então não produz um CSV sem essa coluna — por
+        isso o arquivo é escrito diretamente (_write_old_format_csv)."""
         csv_path = tmp_path / "old_session.csv"
         _write_old_format_csv(csv_path)
 
@@ -136,8 +134,8 @@ class TestLoadSessionCsvOldFormatWithoutFilterMode:
         assert data["fingers"]["INDEX"]["TAM"] == [180.0]
 
     def test_load_session_csv_reports_filter_mode_absent_for_old_csv(self, tmp_path):
-        """Comportamento da Fase 5b: identificar explicitamente a ausência
-        de registro de modo, em vez de assumir algo silenciosamente."""
+        """Identifica explicitamente a ausência de registro de modo, em vez
+        de assumir algo silenciosamente."""
         csv_path = tmp_path / "old_session.csv"
         _write_old_format_csv(csv_path)
 
@@ -218,18 +216,15 @@ class TestFooterMethodText:
 
 
 # =============================================================================
-# Guarda de regressão (já verdadeiro hoje, não uma falha esperada)
+# Tolerância a colunas extras no CSV
 # =============================================================================
 
 
-class TestGeneratePdfReportToleratesFutureCsvFormat:
+class TestGeneratePdfReportWithFilterModeColumn:
     def test_generate_pdf_report_does_not_crash_on_csv_with_extra_filter_mode_column(self, tmp_path):
         """
-        Este teste já passa HOJE, sem nenhuma mudança de produção — é uma
-        garantia de retrocompatibilidade para frente: como
-        load_session_csv() lê por nome de coluna (csv.DictReader), uma
-        coluna futura desconhecida (filter_mode) não quebra a geração do
-        PDF mesmo antes da Fase 5b existir.
+        Como load_session_csv() lê por nome de coluna (csv.DictReader), uma
+        coluna adicional como filter_mode não quebra a geração do PDF.
         """
         from session_report import generate_pdf_report
 
@@ -244,19 +239,19 @@ class TestGeneratePdfReportToleratesFutureCsvFormat:
 
 
 # =============================================================================
-# Fase 7E-a — coluna demo_mode e aviso de demonstração no PDF (subfase de testes)
+# Coluna demo_mode e aviso de demonstração no PDF
 # =============================================================================
 #
-# demo_mode NÃO tem um estado "assumido" como filter_mode: um CSV antigo sem
-# essa coluna nunca foi uma sessão de demonstração de verdade (o perfil
-# Evento não existia), então False é sempre a leitura correta para CSVs
-# antigos — não uma suposição que precise ser marcada à parte.
+# demo_mode NÃO tem um estado "assumido" como filter_mode: um CSV sem
+# demo_mode preenchido não é uma sessão de demonstração, então False é
+# sempre a leitura correta — não uma suposição que precise ser marcada à
+# parte.
 #
 # O helper abaixo escreve o CSV diretamente com csv.DictWriter, usando
-# CSV_FIELDS como cabeçalho: desde a 7E-e a lista canônica já inclui
-# "demo_mode" como última coluna, então o arquivo de teste tem exatamente o
-# schema real, sem coluna repetida. Mesma técnica de _write_old_format_csv()
-# (acima), que subtrai uma coluna para simular o formato antigo.
+# CSV_FIELDS como cabeçalho: a lista canônica inclui "demo_mode" como última
+# coluna, então o arquivo de teste tem exatamente o schema real, sem coluna
+# repetida. Mesma técnica de _write_old_format_csv() (acima), que subtrai
+# uma coluna do cabeçalho.
 
 
 def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 200.0) -> None:
@@ -278,11 +273,9 @@ def _write_csv_with_demo_mode_column(path, demo_mode: str, tam_index: float = 20
         writer.writerow(row)
 
 
-class TestLoadSessionCsvWillReadDemoModeColumn:
+class TestLoadSessionCsvReadsDemoModeColumn:
     def test_demo_mode_true_is_read_as_bool(self, tmp_path):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        load_session_csv() devolve a chave "demo_mode" no dicionário,
+        """load_session_csv() devolve a chave "demo_mode" no dicionário,
         lida da coluna do CSV como bool."""
         csv_path = tmp_path / "evento_session.csv"
         _write_csv_with_demo_mode_column(csv_path, demo_mode="True")
@@ -292,7 +285,7 @@ class TestLoadSessionCsvWillReadDemoModeColumn:
         assert data["demo_mode"] is True
 
     def test_demo_mode_false_is_read_as_bool(self, tmp_path):
-        """Guarda de regressão permanente (não é mais uma transição)."""
+        """O valor "False" da coluna demo_mode é lido como o bool False."""
         csv_path = tmp_path / "clinical_session.csv"
         _write_csv_with_demo_mode_column(csv_path, demo_mode="False")
 
@@ -301,14 +294,12 @@ class TestLoadSessionCsvWillReadDemoModeColumn:
         assert data["demo_mode"] is False
 
     def test_old_csv_without_the_column_reads_as_false_not_assumed(self, tmp_path):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        Diferente de filter_mode_assumed: não existe um "demo_mode_assumed"
-        proposto, porque não há ambiguidade a marcar — todo CSV gravado
-        antes do perfil Evento existir é, por definição, uma sessão
-        clínica. False é fato, não suposição."""
+        """Diferente de filter_mode_assumed: não existe um
+        "demo_mode_assumed", porque não há ambiguidade a marcar — um CSV sem
+        demo_mode preenchido é, por definição, uma sessão clínica. False é
+        fato, não suposição."""
         csv_path = tmp_path / "old_session.csv"
-        _write_old_format_csv(csv_path)  # formato sem filter_mode NEM demo_mode
+        _write_old_format_csv(csv_path)  # sem filter_mode; demo_mode vazio na linha
 
         data = load_session_csv(str(csv_path))
 
@@ -324,7 +315,7 @@ class TestFooterDemoModeWarning:
     """
 
     def test_warning_text_exists_and_mentions_demonstration_when_true(self):
-        """Guarda de regressão permanente (não é mais uma transição)."""
+        """O aviso de demonstração existe e menciona demonstração ou evento."""
         from session_report import build_demo_mode_warning_text
 
         texto = build_demo_mode_warning_text(demo_mode=True)
@@ -333,9 +324,7 @@ class TestFooterDemoModeWarning:
         assert "demonstra" in texto.lower() or "evento" in texto.lower()
 
     def test_warning_text_is_empty_when_not_demo(self):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        Uma sessão clínica normal não deve ganhar nenhuma linha extra no
+        """Uma sessão clínica normal não deve ganhar nenhuma linha extra no
         rodapé — o aviso é exclusivo do perfil Evento."""
         from session_report import build_demo_mode_warning_text
 
@@ -343,29 +332,25 @@ class TestFooterDemoModeWarning:
 
 
 # =============================================================================
-# Fase 10a — unidades ° / °/s no PDF e sessão Evento (subfase de testes)
+# Unidades ° e °/s no PDF e sanitização do texto
 # =============================================================================
 #
-# O relatório hoje imprime "54 deg" e "75 deg/s" onde deveria imprimir "54°"
-# e "75°/s". A causa não está espalhada pelo módulo: o código-fonte já escreve
-# "°" em todas as tabelas, na legenda e na interpretação clínica. Quem troca o
-# símbolo é UMA entrada do dicionário interno de sanitize_for_pdf(),
-# {"°": " deg"} — e todo texto do PDF passa por lá, via _cell/_multi_cell.
+# O relatório deve imprimir "54°" e "75°/s", e não "54 deg" e "75 deg/s". O
+# código-fonte escreve "°" em todas as tabelas, na legenda e na interpretação
+# clínica, e todo texto do PDF passa por sanitize_for_pdf(), via
+# _cell/_multi_cell. O sanitizador não pode converter "°" em " deg".
 #
-# POR QUE A ENTRADA PODE SAIR: as fontes core do FPDF2 (Helvetica, usada em
-# todo o relatório) codificam em Latin-1, e "°" é U+00B0, dentro do Latin-1.
-# Não é preciso registrar fonte TTF nem mudar encoding. Já "—", "…", "≤", "≥"
-# e as aspas curvas estão FORA do Latin-1 e quebrariam a geração com
-# FPDFUnicodeEncodingException — por isso as demais entradas do dicionário
-# continuam sendo necessárias, e os testes abaixo as protegem explicitamente.
+# POR QUE "°" NÃO PRECISA DE CONVERSÃO: as fontes core do FPDF2 (Helvetica,
+# usada em todo o relatório) codificam em Latin-1, e "°" é U+00B0, dentro do
+# Latin-1. Não é preciso registrar fonte TTF nem mudar encoding. Já "—", "…",
+# "≤", "≥" e as aspas curvas estão FORA do Latin-1 e quebrariam a geração com
+# FPDFUnicodeEncodingException — por isso essas conversões continuam sendo
+# necessárias, e os testes abaixo as protegem explicitamente.
 #
-# BUG SEPARADO, MESMA CAUSA: o aviso do perfil Evento começa com "⚠"
-# (U+26A0), que também está fora do Latin-1 e NÃO tem entrada no dicionário.
-# Hoje, gerar o relatório de qualquer sessão do perfil Evento levanta
-# FPDFUnicodeEncodingException — nenhuma sessão de demonstração consegue
-# produzir PDF. Os testes da classe TestEventProfileReportGenerates fixam esse
-# contrato; eles falham hoje por um defeito de produção, não por uma
-# funcionalidade ausente.
+# O aviso do perfil Evento começa com "⚠" (U+26A0), também fora do Latin-1;
+# o sanitizador precisa convertê-lo para que o relatório de uma sessão do
+# perfil Evento seja gerado. Os testes da classe TestEventProfileReportGenerates
+# fixam esse contrato.
 #
 # Todos os CSVs e PDFs vivem em tmp_path. Os helpers de CSV são os que já
 # existem neste arquivo (_write_new_format_csv e _write_csv_with_demo_mode_
@@ -413,7 +398,7 @@ def _extract_pdf_text(pdf_path: str) -> str:
 
 class TestDegreeSymbolSurvivesSanitization:
     """
-    O contrato mais direto da fase: o símbolo de grau precisa chegar ao PDF
+    O contrato mais direto: o símbolo de grau precisa chegar ao PDF
     como "°", não como " deg". Testado na função pura, que é o único ponto
     onde a conversão acontece.
     """
@@ -431,7 +416,7 @@ class TestDegreeSymbolSurvivesSanitization:
         assert sanitize_for_pdf("75°/s") == "75°/s"
 
 
-class TestUnsupportedCharactersStillConverted:
+class TestUnsupportedCharactersAreConverted:
     """
     Proteção contra o excesso de zelo na direção oposta: remover a entrada
     do grau não pode virar "remover o sanitizador". Estes caracteres estão
@@ -452,7 +437,8 @@ class TestUnsupportedCharactersStillConverted:
         ],
     )
     def test_character_outside_latin1_is_converted(self, original, esperado):
-        """3. Guarda de regressão: já passa hoje e deve continuar passando."""
+        """3. Cada caractere fora do Latin-1 é convertido para o equivalente
+        ASCII esperado."""
         from session_report import sanitize_for_pdf
 
         assert sanitize_for_pdf(original) == esperado
@@ -507,20 +493,19 @@ class TestGeneratedPdfUsesDegreeSymbol:
 
 class TestEventProfileReportGenerates:
     """
-    Defeito de produção descoberto durante a investigação da Fase 10, não uma
-    funcionalidade nova: build_demo_mode_warning_text() começa com "⚠"
-    (U+26A0), fora do Latin-1 e sem entrada no dicionário do sanitizador.
-    Qualquer sessão do perfil Evento falha ao gerar o relatório.
+    Guarda contra uma falha de geração: build_demo_mode_warning_text() começa
+    com "⚠" (U+26A0), fora do Latin-1, e o sanitizador precisa convertê-lo.
+    Sem isso, qualquer sessão do perfil Evento falharia ao gerar o relatório.
 
-    Passou despercebido porque o único teste ponta a ponta existente usa
-    _write_new_format_csv(), que não escreve demo_mode=True, e os testes de
-    demonstração verificam o aviso como string pura, sem nunca passar pelo
-    FPDF.
+    O teste ponta a ponta com _write_new_format_csv() não cobre esse caso,
+    porque não escreve demo_mode=True, e os testes de demonstração verificam
+    o aviso como string pura, sem passar pelo FPDF. Por isso esta classe gera
+    o relatório de uma sessão Evento.
     """
 
     def test_demo_warning_text_is_encodable_in_latin1(self):
         """
-        6a. Localiza o defeito na função, antes do PDF.
+        6a. Localiza o problema na função, antes do PDF.
 
         Separado do teste ponta a ponta porque um relatório que falha inteiro
         não diz QUAL caractere o derrubou; este diz.

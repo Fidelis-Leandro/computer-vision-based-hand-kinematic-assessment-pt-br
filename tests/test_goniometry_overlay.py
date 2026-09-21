@@ -2,24 +2,24 @@
 tests/test_goniometry_overlay.py — Rede de segurança do overlay de vídeo
 =========================================================================
 
-Este arquivo é novo porque nenhum teste do projeto cobria goniometry_overlay.py
-até aqui. Ele existe para proteger a Fase 7D-b (remoção de código morto): antes
-de apagar qualquer coisa desse módulo, é preciso ter prova de que o caminho que
-a aplicação realmente usa continua funcionando.
+Estes testes cobrem goniometry_overlay.py, que não tinha cobertura própria.
+Eles protegem o caminho que a aplicação realmente usa e impedem a volta de
+código já removido do módulo.
 
 Por que só `_build_skeleton()` é testado como funcional:
     É o ÚNICO símbolo de goniometry_overlay.py importado em todo o projeto
-    (workers/processing_worker.py, linha 52), e o único que desenha algo que
-    chega à tela. `draw_goniometry_overlay()` e o painel de dados nunca são
-    chamados por ninguém — testá-los como funcionais daria a impressão errada
-    de que fazem parte do produto, e ainda travaria a remoção deles.
+    (workers/processing_worker.py), e o único que desenha algo que chega à
+    tela. O painel de dados e `draw_goniometry_overlay()` foram removidos
+    porque ninguém os chamava; testá-los como funcionais daria a impressão
+    errada de que fazem parte do produto.
 
-Por que o painel antigo NÃO deve ser testado como funcional:
-    Além de morto, ele contém um defeito real: usa `data.get("TAM", 0.0)`, mas
-    smooth_all() grava a chave com valor None quando não há histórico válido —
-    o default nunca entra em ação e o None segue para classify_tam(None),
-    f"{None:.1f}" e None/270.0, todos TypeError. Escrever teste funcional para
-    esse código seria consertar o que a Fase 7D-b vai remover.
+Por que o painel removido não é testado como funcional:
+    Ele não tinha chamador e continha um defeito real: usava
+    `data.get("TAM", 0.0)`, mas smooth_all() grava a chave com valor None
+    quando não há histórico válido — o default nunca entrava em ação e o None
+    seguia para classify_tam(None), f"{None:.1f}" e None/270.0, todos
+    TypeError. Por isso a ausência dos símbolos é verificada, e não o
+    comportamento do painel.
 
 Nenhum teste aqui usa câmera, MediaPipe, Arduino ou interface PyQt6 —
 `_build_skeleton()` opera sobre arrays NumPy e objetos simples de landmark.
@@ -108,14 +108,14 @@ def _assert_valid_panel(canvas) -> None:
 
 
 # =============================================================================
-# Caminho ativo — precisa continuar funcionando depois da Fase 7D-b
+# Caminho ativo — precisa continuar funcionando sem o código removido
 # =============================================================================
 
 
 class TestActiveOverlayPath:
     def test_module_imports_without_error(self):
-        """1. O módulo continua importável. Se a remoção da Fase 7D-b deixar
-        um import órfão ou uma referência pendurada, isto falha primeiro."""
+        """1. O módulo é importável. Se uma remoção deixar um import órfão
+        ou uma referência pendurada, isto falha primeiro."""
         assert goniometry_overlay is not None
 
     def test_build_skeleton_exists(self):
@@ -137,7 +137,7 @@ class TestActiveOverlayPath:
 
     def test_build_skeleton_tolerates_all_angles_none(self):
         """4b. Todas as articulações sem valor: nenhum arco é desenhado, mas o
-        painel ainda é produzido."""
+        painel é produzido."""
         angles = {
             finger: {joint: None for joint in joints}
             for finger, joints in FINGER_JOINTS.items()
@@ -161,7 +161,7 @@ class TestActiveOverlayPath:
 
     @pytest.mark.parametrize("status", ["sem_filtro", "suavizacao_ema"])
     def test_build_skeleton_accepts_modes_without_kalman(self, status):
-        """6. Os status introduzidos na Fase 7A (RAW e EMA) são aceitos e
+        """6. Os status dos modos RAW e EMA (sem Kalman) são aceitos e
         produzem overlay válido."""
         _assert_valid_panel(_render(stability_map=_stability_map(status)))
 
@@ -169,7 +169,7 @@ class TestActiveOverlayPath:
         "status", ["estavel", "convergindo", "instavel", "nao_inicializado"]
     )
     def test_build_skeleton_accepts_kalman_states(self, status):
-        """7. Os status históricos continuam aceitos — regressão."""
+        """7. Os status do filtro de Kalman são aceitos."""
         _assert_valid_panel(_render(stability_map=_stability_map(status)))
 
     def test_build_skeleton_accepts_unknown_status(self):
@@ -183,8 +183,8 @@ class TestActiveOverlayPath:
 
 
 class TestStabilityColorMapping:
-    """_stability_color() é o helper vivo que traduz status em cor. Ele
-    permanece depois da Fase 7D-b."""
+    """_stability_color() é o helper que traduz status em cor e é usado por
+    _build_skeleton()."""
 
     @pytest.mark.parametrize(
         "status",
@@ -206,7 +206,7 @@ class TestStabilityColorMapping:
 
 
 # =============================================================================
-# Guardas de limpeza — símbolos removidos na Fase 7D-b
+# Guardas de ausência — símbolos removidos do módulo
 # =============================================================================
 #
 # O painel de dados clínicos lado a lado foi removido: ficou sem nenhum
@@ -218,7 +218,7 @@ class TestStabilityColorMapping:
 # contexto de por que saiu.
 
 
-class TestSymbolsRemovedInPhase7Db:
+class TestRemovedOverlaySymbolsRemainAbsent:
     @pytest.mark.parametrize(
         "symbol",
         [

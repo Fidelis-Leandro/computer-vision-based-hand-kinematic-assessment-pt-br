@@ -258,7 +258,7 @@ def test_toggle_logs_drawer(app_window: MainWindow, qtbot):
 
 
 # =============================================================================
-# Fase 4b — robustez de None/NaN/infinito nos widgets (plot_widget, finger_card_widget)
+# Robustez de None/NaN/infinito nos widgets (plot_widget, finger_card_widget)
 # =============================================================================
 #
 # Reutiliza o mesmo app_window (MainWindow real, com plot_widget e
@@ -347,11 +347,11 @@ def test_finger_card_widget_valid_data_still_displayed_normally(app_window, qtbo
 
 
 # =============================================================================
-# Fase 6 — seletor de modo de filtro e consolidação do botão de reset
+# Seletor de modo de filtro e botão de reset
 # =============================================================================
 #
 # Cobrem o seletor de modo de filtro da Tela de Configuração e o botão único
-# de reset da Tela de Resultado (Fase 6b, implementada).
+# de reset da Tela de Resultado.
 #
 # Dois pontos de desenho, ambos deliberados:
 #
@@ -420,9 +420,9 @@ def test_filter_combo_has_the_four_modes_recommended_first(app_window: MainWindo
     """14. O seletor expõe os quatro modos de smoothing.py nos primeiros
     quatro índices, com o recomendado em primeiro e RAW por último — a ordem
     afasta o modo de risco do clique acidental de quem abre o combo com
-    pressa. Um quinto item (Evento, Fase 7E-d) vem depois, sem modo próprio
-    em smoothing.py — por isso o teste verifica os quatro primeiros índices,
-    não o total de itens (ver test_filter_combo_will_have_five_items_with_evento_last)."""
+    pressa. Um quinto item (Evento) vem depois, sem modo próprio em
+    smoothing.py — por isso o teste verifica os quatro primeiros índices, não
+    o total de itens (ver test_filter_combo_has_five_items_with_evento_last)."""
     combo = app_window._setup_combo_filter
 
     assert [combo.itemData(i) for i in range(4)] == ["EMA_KALMAN", "EMA", "KALMAN", "RAW"]
@@ -439,9 +439,9 @@ def test_filter_combo_labels_are_readable_for_the_operator(app_window: MainWindo
     """16. Os rótulos visíveis identificam o modo sem exigir conhecimento do
     código, e o recomendado se anuncia como tal.
 
-    Lê por ÍNDICE, não por um dicionário chaveado por itemData(): desde a
-    Fase 7E-d, o item Evento também tem itemData() == "EMA" (mesmo filtro
-    real do item 2, por design) — um dicionário {mode: label} colapsaria os
+    Lê por ÍNDICE, não por um dicionário chaveado por itemData(): o item
+    Evento também tem itemData() == "EMA" (mesmo filtro real do item 2, por
+    design) — um dicionário {mode: label} colapsaria os
     dois no mesmo valor e o rótulo do Evento sobrescreveria o do EMA
     clínico."""
     combo = app_window._setup_combo_filter
@@ -454,8 +454,8 @@ def test_filter_combo_labels_are_readable_for_the_operator(app_window: MainWindo
 
 def test_every_filter_mode_has_its_own_tooltip(app_window: MainWindow, qtbot):
     """17. Cada opção traz explicação própria (ToolTipRole), não um texto
-    genérico repetido. Cinco itens desde a Fase 7E-d (Evento incluído) —
-    cinco tooltips distintos e não vazios, nenhum deles reaproveitado."""
+    genérico repetido. São cinco itens (Evento incluído) — cinco tooltips
+    distintos e não vazios, nenhum deles reaproveitado."""
     combo = app_window._setup_combo_filter
     tooltips = [
         combo.itemData(i, Qt.ItemDataRole.ToolTipRole) for i in range(combo.count())
@@ -563,11 +563,11 @@ def test_filter_mode_is_applied_before_the_csv_session_opens(
     assert chamadas == ["set_filter_mode", "start_session"]
 
 
-def test_untouched_combo_keeps_the_historical_ema_kalman_pipeline(
+def test_untouched_combo_keeps_the_default_ema_kalman_pipeline(
     app_window: MainWindow, qtbot
 ):
-    """24. Regressão do comportamento invisível: quem nunca tocar no seletor
-    continua rodando exatamente o pipeline clínico de sempre."""
+    """24. Comportamento invisível: quem nunca tocar no seletor roda o
+    pipeline clínico padrão (EMA_KALMAN)."""
     app_window._setup_input_patient.setText("Paciente Teste")
     app_window._setup_btn_start.click()
     qtbot.waitUntil(lambda: app_window._state == "RUNNING", timeout=3000)
@@ -665,25 +665,24 @@ def test_new_evaluation_cancelled_changes_nothing(
 
 
 # =============================================================================
-# Fase 7D-a — rede de segurança para a remoção de código morto
+# Guardas de ausência — botões e métodos legados removidos
 # =============================================================================
 #
-# A Fase 7D-b vai remover cinco botões que existem em memória mas nunca são
-# inseridos em nenhum layout visível: btn_new_session, btn_start, btn_pdf,
-# btn_csv e btn_historico (criados em _create_widgets(), conectados em
-# _connect_signals(), geridos por _set_state(), e reunidos apenas em
-# _build_button_row(), método que ninguém chama).
+# Cinco botões que nunca eram inseridos em nenhum layout visível foram
+# removidos: btn_new_session, btn_start, btn_pdf, btn_csv e btn_historico
+# (criados em _create_widgets(), conectados em _connect_signals(), geridos
+# por _set_state() e reunidos apenas em _build_button_row(), método que
+# ninguém chamava).
 #
-# Todos foram removidos na Fase 7D-b. Os testes ao final desta seção são as
-# guardas que impedem a reintrodução acidental deles.
+# Os testes ao final desta seção impedem a reintrodução acidental deles.
 #
-# O caso que exige rede de verdade é o btn_pdf. Ele não é código morto puro:
-# _gerar_relatorio(), _on_pdf_finished() e _on_pdf_error() escrevem nele
+# O caso que exige atenção é o btn_pdf. Ele não era código morto puro:
+# _gerar_relatorio(), _on_pdf_finished() e _on_pdf_error() escreviam nele
 # ("Gerando PDF..." e a restauração). Só que o botão VISÍVEL da Tela de
-# Resultado — _btn_result_pdf — já recebe exatamente o mesmo tratamento nas
+# Resultado — _btn_result_pdf — recebe exatamente o mesmo tratamento nas
 # linhas seguintes de cada um desses três métodos. Os testes abaixo travam o
-# comportamento do botão visível, que é o que o operador enxerga: se a
-# remoção do btn_pdf quebrar o feedback de progresso, eles acusam.
+# comportamento do botão visível, que é o que o operador enxerga: se um
+# ajuste quebrar o feedback de progresso, eles acusam.
 #
 # Nada aqui gera PDF de verdade: _PdfGeneratorWorker.start é substituído por
 # um no-op, então nenhuma thread roda e nenhum arquivo é escrito. Os diálogos
@@ -782,7 +781,7 @@ def test_set_state_runs_for_every_state_without_error(
 )
 def test_visible_widgets_still_exist(app_window: MainWindow, qtbot, widget_name):
     """34. Guarda contra remoção excessiva: estes seis são os controles que o
-    operador realmente vê e usa. Nenhum deles pode sair na Fase 7D-b."""
+    operador realmente vê e usa. Nenhum deles pode ser removido."""
     assert hasattr(app_window, widget_name)
 
 
@@ -805,7 +804,7 @@ def test_new_session_recreates_both_workers(app_window: MainWindow, qtbot):
     assert app_window.processing_worker is not processing_antes
 
 
-# --- Guardas de limpeza: símbolos removidos na Fase 7D-b --------------------
+# --- Guardas de ausência: símbolos removidos ---------------------------------
 
 
 @pytest.mark.parametrize(
@@ -832,31 +831,28 @@ def test_build_button_row_no_longer_exists(app_window: MainWindow, qtbot):
 
 
 # =============================================================================
-# Fase 7E-a — perfil "Evento" no seletor de filtro (subfase de testes)
+# Perfil "Evento" no seletor de filtro
 # =============================================================================
 #
 # "Evento" é um QUINTO ITEM do mesmo QComboBox "Modo de Filtro" — não um
 # controle novo, não um quinto algoritmo de smoothing.py. Ele usa o filtro
-# EMA de sempre (já válido em VALID_FILTER_MODES/CSV_VALID_FILTER_MODES, sem
-# nenhuma mudança de validação em smoothing.py ou goniometry_csv.py) e
+# EMA (já válido em VALID_FILTER_MODES/CSV_VALID_FILTER_MODES, sem
+# nenhuma validação adicional em smoothing.py ou goniometry_csv.py) e
 # acrescenta um PERFIL de operação (CLINICAL vs DEMO), carregado num segundo
 # papel de dado do próprio item do combo — Qt.ItemDataRole.UserRole continua
-# guardando só o filtro real (como hoje, para os 5 itens), e um papel
-# customizado (UserRole + 1) guarda o perfil. Essa separação é o que garante
-# que os quatro chamadores já existentes de currentData()/findData() (o
-# combo em si, set_filter_mode(), a coluna filter_mode do CSV) não precisem
-# mudar uma linha sequer para os 4 modos clínicos, e recebam "EMA" — um modo
-# genuinamente válido — mesmo quando o item selecionado é o Evento.
+# guardando só o filtro real (para os 5 itens), e um papel customizado
+# (UserRole + 1) guarda o perfil. Essa separação faz com que os chamadores de
+# currentData()/findData() (o combo em si, set_filter_mode(), a coluna
+# filter_mode do CSV) recebam "EMA" — um modo genuinamente válido — mesmo
+# quando o item selecionado é o Evento, e não dependam do papel de perfil
+# para os 4 modos clínicos.
 #
-# Estes testes nasceram na subfase 7E-a, antes da implementação, e hoje
-# passam todos: o quinto item, o papel de perfil e o reset já existem em
-# produção (7E-d). Permanecem como guardas de regressão permanentes do
-# comportamento do Evento no seletor.
+# Estes testes protegem o comportamento do Evento no seletor: o quinto item,
+# o papel de perfil e o reset.
 
-# Espelha o papel customizado definido em ui/main_window.py (_PROFILE_ROLE,
-# Fase 7E-d). Definido aqui, e não importado, porque nasceu antes de o
-# símbolo existir em produção; foi mantido assim por simplicidade. Qt já está
-# importado no topo deste arquivo; nenhum import novo é necessário aqui.
+# Espelha o papel customizado definido em ui/main_window.py (_PROFILE_ROLE).
+# Definido aqui, e não importado, por simplicidade. Qt já está importado no
+# topo deste arquivo; nenhum import adicional é necessário aqui.
 _PROFILE_ROLE = Qt.ItemDataRole(int(Qt.ItemDataRole.UserRole) + 1)
 
 
@@ -868,7 +864,7 @@ def test_clinical_items_keep_their_mode_in_the_first_four_slots(
 ):
     """
     Os 4 modos clínicos devem ocupar os índices 0-3 do combo com o mesmo
-    filtro real de sempre, com o Evento como 5º item no fim da lista. Não
+    filtro real correspondente, com o Evento como 5º item no fim da lista. Não
     afirma o total de itens (isso é o teste do quinto item, abaixo) — só que
     os 4 primeiros não mudam de lugar nem de valor.
     """
@@ -892,14 +888,12 @@ def test_filter_combo_default_selection_stays_ema_kalman(
 # --- Comportamento do item Evento ---------------------------------------------
 
 
-def test_filter_combo_will_have_five_items_with_evento_last(
+def test_filter_combo_has_five_items_with_evento_last(
     app_window: MainWindow, qtbot
 ):
-    """Guarda de regressão permanente (não é mais uma transição).
-
-    O combo tem 5 itens. "⚡ Evento — resposta rápida da mão robótica" é o
-    quinto, por último — mesma lógica de posicionamento já usada
-    para RAW: o item de uso não-clínico fica longe do clique apressado."""
+    """O combo tem 5 itens. "⚡ Evento — resposta rápida da mão robótica" é o
+    quinto, por último — mesma lógica de posicionamento usada para RAW: o
+    item de uso não-clínico fica longe do clique apressado."""
     combo = app_window._setup_combo_filter
 
     assert combo.count() == 5
@@ -907,9 +901,7 @@ def test_filter_combo_will_have_five_items_with_evento_last(
 
 
 def test_evento_item_carries_ema_as_its_real_filter(app_window: MainWindow, qtbot):
-    """Guarda de regressão permanente (não é mais uma transição).
-
-    O UserRole do item Evento é "EMA" — o mesmo filtro válido que os
+    """O UserRole do item Evento é "EMA" — o mesmo filtro válido que os
     demais itens usam. Isto é o que permite ao Evento atravessar
     set_filter_mode() e a coluna filter_mode do CSV sem nenhuma mudança de
     validação: para essas duas peças do sistema, Evento simplesmente "é"
@@ -920,12 +912,10 @@ def test_evento_item_carries_ema_as_its_real_filter(app_window: MainWindow, qtbo
 
 
 @pytest.mark.parametrize("index", range(4))
-def test_clinical_items_have_no_profile_role_yet(
+def test_clinical_items_carry_the_clinical_profile_role(
     app_window: MainWindow, qtbot, index
 ):
-    """Guarda de regressão permanente (não é mais uma transição).
-
-    Os 4 itens clínicos (índices 0-3) carregam ("CLINICAL", None) no papel
+    """Os 4 itens clínicos (índices 0-3) carregam ("CLINICAL", None) no papel
     customizado de perfil. Testa os itens clínicos, não o Evento: garante
     que o mecanismo do papel cobre todos os itens, e não só o quinto."""
     combo = app_window._setup_combo_filter
@@ -936,12 +926,10 @@ def test_clinical_items_have_no_profile_role_yet(
 def test_evento_item_profile_is_demo_with_1_5s_timeout(
     app_window: MainWindow, qtbot
 ):
-    """Guarda de regressão permanente (não é mais uma transição).
-
-    O perfil do Evento é ("DEMO", 1.5): perfil de servo DEMO e tolerância de
+    """O perfil do Evento é ("DEMO", 1.5): perfil de servo DEMO e tolerância de
     1.5s sem detecção de mão antes da reabertura de segurança (contra 1.0s
-    do modo clínico) — valor escolhido a partir da investigação de
-    amplitude/oclusão já documentada em INTEGRACAO_MAO_ROBOTICA.md."""
+    do modo clínico) — valor manual de demonstração, não validado; ver
+    INTEGRACAO_MAO_ROBOTICA.md."""
     combo = app_window._setup_combo_filter
 
     assert combo.itemData(4, _PROFILE_ROLE) == ("DEMO", 1.5)
@@ -950,9 +938,7 @@ def test_evento_item_profile_is_demo_with_1_5s_timeout(
 def test_new_evaluation_resets_combo_from_evento_to_clinical_default(
     app_window: MainWindow, qtbot, monkeypatch
 ):
-    """Guarda de regressão permanente (não é mais uma transição).
-
-    Seleciona Evento e aciona diretamente o mesmo reset que o botão "Nova
+    """Seleciona Evento e aciona diretamente o mesmo reset que o botão "Nova
     Avaliação" usa (_on_result_new_session(), com o diálogo de confirmação
     interceptado) — sem passar por _start_session(), que não é necessário
     para provar o reset. Depois do reset, o combo volta ao índice de
@@ -969,11 +955,11 @@ def test_new_evaluation_resets_combo_from_evento_to_clinical_default(
 
 
 # =============================================================================
-# Fase 7E-f — ativação real do perfil Evento (congelamento, robô, badge)
+# Ativação real do perfil Evento (congelamento, robô, badge)
 # =============================================================================
 #
-# Estes testes exercitam o comportamento que a Fase 7E-d apenas preparou:
-# selecionar Evento agora tem efeito real sobre o worker de processamento
+# Estes testes exercitam o efeito do perfil Evento: selecionar Evento tem
+# efeito real sobre o worker de processamento
 # (set_demo_mode), o mapeamento de servo (tam_max_table) e o timeout de
 # segurança do RobotHandWorker — tudo lido do perfil CONGELADO em
 # self._session_demo_mode/self._session_hand_lost_timeout_s, nunca de uma
@@ -1043,8 +1029,7 @@ def test_starting_session_with_clinical_item_keeps_clinical_profile(
 ):
     """Qualquer item clínico deve manter demo_mode=False, timeout de sessão
     None, e instalar o filtro real correspondente — sem nenhum efeito do
-    mecanismo de perfil sobre o comportamento já validado nas fases
-    anteriores."""
+    mecanismo de perfil sobre o comportamento dos itens clínicos."""
     combo = app_window._setup_combo_filter
     combo.setCurrentIndex(index)
 
@@ -1093,7 +1078,7 @@ def test_on_result_uses_clinical_table_outside_evento_profile(
     app_window: MainWindow, qtbot, monkeypatch
 ):
     """Fora do perfil Evento, tam_max_table deve ser None — preservando
-    exatamente o mapeamento clínico de sempre (TAM_MAX interno do módulo,
+    exatamente o mapeamento clínico (TAM_MAX interno do módulo,
     não a tabela paralela TAM_MAX_DEMO)."""
     app_window._session_demo_mode = False
     app_window._robot_hand_worker = MagicMock()
@@ -1221,19 +1206,18 @@ def test_new_evaluation_resets_demo_profile_and_badge(
 
 
 # =============================================================================
-# Fase 8a — "Não Salvar Esta Sessão" na Tela de Resultado (subfase de testes)
+# "Não Salvar Esta Sessão" — remoção opcional dos arquivos da sessão
 # =============================================================================
 #
-# Hoje o CSV da sessão nasce em _start_session() e permanece em logs/ para
-# sempre; não existe nenhum caminho na interface para descartá-lo. Esta fase
-# acrescenta um botão na Tela 3 que remove do disco o CSV e, se já tiver sido
-# gerado, o relatório PDF daquela sessão.
+# O CSV da sessão nasce em _start_session() e permanece em logs/. O botão
+# "Não Salvar Esta Sessão" da Tela 3 remove do disco o CSV e, se já tiver
+# sido gerado, o relatório PDF daquela sessão.
 #
-# Nomes contratados por estes testes (produção ainda não os tem):
+# Nomes exercitados por estes testes:
 #   _btn_result_do_not_save      botão na Tela de Resultado
 #   _confirm_do_not_save_session()  diálogo de confirmação
 #   _on_result_do_not_save_session()  handler que remove os arquivos
-#   _session_pdf_path            caminho do PDF gerado nesta sessão
+#   _session_pdf_candidate()     caminho do PDF desta sessão
 #
 # Isolamento: a fixture app_window já redireciona config.LOG_DIR para
 # tmp_path, então _start_session() cria o CSV real DENTRO do tmp_path do
@@ -1494,19 +1478,18 @@ def test_new_evaluation_works_after_do_not_save(
 
 
 # =============================================================================
-# Fase 9a — Visualizador de PDF embutido na Tela de Resultado (subfase de testes)
+# Visualizador de PDF embutido na Tela de Resultado
 # =============================================================================
 #
-# Hoje o relatório PDF só pode ser visto fora da aplicação: nada na interface
-# o abre. Esta fase acrescenta um botão na Tela 3 que exibe o PDF da sessão
-# num QDialog não modal, usando QPdfView/QPdfDocument (já disponíveis no
-# PyQt6 6.11 instalado, sem dependência nova).
+# O botão "Visualizar Relatório" da Tela 3 exibe o PDF da sessão num QDialog
+# não modal, usando QPdfView/QPdfDocument (parte do PyQt6, sem dependência
+# adicional).
 #
-# Nomes contratados por estes testes (produção ainda não os tem):
+# Nomes exercitados por estes testes:
 #   _btn_result_view_pdf     botão "Visualizar Relatório" na Tela 3
 #   _on_result_view_pdf()    handler que abre o visualizador
 #   _pdf_viewer_dialog       instância aberta, ou None se nenhuma
-#   ui/pdf_viewer_dialog.py  módulo novo com a classe PdfViewerDialog
+#   ui/pdf_viewer_dialog.py  módulo com a classe PdfViewerDialog
 #
 # DECISÃO DE DESIGN (caso 4): com o visualizador já aberto, um segundo
 # clique NÃO cria outra instância — reaproveita a existente e a traz para
@@ -1515,8 +1498,7 @@ def test_new_evaluation_works_after_do_not_save(
 # justamente o risco que o caso 5 protege.
 #
 # Nenhum PDF real é renderizado: QPdfDocument.load é sempre substituído por
-# monkeypatch (a classe do PyQt6 aceita, verificado antes de escrever estes
-# testes). Todos os arquivos vivem em tmp_path, nunca em logs/.
+# monkeypatch. Todos os arquivos vivem em tmp_path, nunca em logs/.
 
 
 def _fake_pdf_load(result=None):
@@ -1586,7 +1568,7 @@ def test_second_click_reuses_the_open_viewer(
     assert app_window._pdf_viewer_dialog is primeira
 
 
-# --- 5: o teste mais crítico — não regredir a Fase 8 -------------------------
+# --- 5: o teste mais crítico — a remoção da sessão depende do visualizador fechado ---
 
 
 def test_do_not_save_closes_viewer_before_removing_files(
@@ -1597,7 +1579,7 @@ def test_do_not_save_closes_viewer_before_removing_files(
 
     No Windows, um PDF aberto pelo próprio aplicativo pode bloquear
     os.remove() e transformar o descarte num PermissionError — ou seja, o
-    visualizador quebraria a funcionalidade da Fase 8. O espião em
+    visualizador quebraria o "Não Salvar Esta Sessão". O espião em
     os.remove registra o estado do visualizador no INSTANTE da remoção, que
     é o que prova a ordem correta; conferir depois não provaria nada."""
     csv_path, pdf_path = _session_with_files(
@@ -1642,8 +1624,8 @@ def test_new_evaluation_closes_the_viewer(
 def test_starting_a_session_closes_a_leftover_viewer(
     app_window: MainWindow, qtbot, monkeypatch
 ):
-    """7. Iniciar uma avaliação nova com o visualizador da anterior ainda
-    aberto deixaria na tela um relatório de outro paciente durante a
+    """7. Iniciar uma avaliação nova com o visualizador da anterior aberto
+    deixaria na tela um relatório de outro paciente durante a
     captura."""
     _session_with_files(app_window, qtbot, monkeypatch, with_pdf=True)
     _open_viewer(app_window, monkeypatch)

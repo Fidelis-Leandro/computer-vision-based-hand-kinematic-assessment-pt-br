@@ -240,18 +240,18 @@ def test_dashboard_utils_classify_hand_state():
 
 
 # =============================================================================
-# Fase 5 — testes de regressão para filter_mode no CSV
+# filter_mode no CSV
 # =============================================================================
 #
-# GoniometryCSVLogger.log() aceita filter_mode (default "EMA_KALMAN" para
-# preservar chamadas antigas sem esse parâmetro) e grava a coluna sempre
-# como a última do cabeçalho.
+# GoniometryCSVLogger.log() aceita filter_mode (default "EMA_KALMAN", para
+# que chamadas sem esse parâmetro continuem válidas) e grava a coluna
+# imediatamente antes de demo_mode.
 
 @pytest.mark.parametrize("mode", ["RAW", "EMA", "KALMAN", "EMA_KALMAN"])
 def test_csv_logger_writes_filter_mode_as_last_column(mode):
     # A. filter_mode deve aparecer imediatamente antes de demo_mode — a
-    # verdadeira última coluna do cabeçalho desde a Fase 7E-e — com o valor
-    # exato do modo informado, sem afetar nenhuma coluna existente.
+    # última coluna do cabeçalho — com o valor exato do modo informado, sem
+    # afetar nenhuma outra coluna.
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_path = os.path.join(tmpdir, "test_filter_mode.csv")
         logger = GoniometryCSVLogger(csv_path)
@@ -278,7 +278,7 @@ def test_csv_logger_writes_filter_mode_as_last_column(mode):
 
             row = list(reader)[0]
             assert row["filter_mode"] == mode
-            # Continua sendo o mesmo valor clínico de sempre, sem mudança de precisão.
+            # O valor clínico é gravado sem mudança de precisão.
             assert float(row["THUMB_TAM"]) == angles["THUMB"]["TAM"]
 
 
@@ -302,11 +302,10 @@ def test_csv_logger_filter_mode_is_not_written_as_numeric_data():
 
 
 def test_csv_logger_without_filter_mode_defaults_to_ema_kalman():
-    # B. Retrocompatibilidade da API Python: chamar log() sem informar
-    # filter_mode (como todo o código anterior à Fase 5 já faz) deve
-    # continuar funcionando, e a coluna nova deve assumir "EMA_KALMAN" —
+    # B. Compatibilidade da API Python: chamar log() sem informar
+    # filter_mode deve funcionar, e a coluna deve assumir "EMA_KALMAN" —
     # o modo padrão seguro. Isto testa o DEFAULT DO MÉTODO, não uma
-    # afirmação sobre como CSVs já gravados no passado devem ser lidos
+    # afirmação sobre como CSVs de outros formatos devem ser lidos
     # (isso é responsabilidade de load_session_csv(), testado em
     # tests/test_session_report.py).
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -326,12 +325,12 @@ def test_csv_logger_without_filter_mode_defaults_to_ema_kalman():
 
 
 # =============================================================================
-# Fase 7E-e — testes de integração real para demo_mode no CSV
+# Integração real para demo_mode no CSV
 # =============================================================================
 #
 # GoniometryCSVLogger.log() aceita demo_mode (default False, mesmo motivo
-# do default de filter_mode: preservar toda chamada anterior à Fase 7E) e
-# grava a coluna sempre como a última do cabeçalho, depois de filter_mode.
+# do default de filter_mode: chamadas sem esse parâmetro continuam válidas)
+# e grava a coluna sempre como a última do cabeçalho, depois de filter_mode.
 #
 # Sem MagicMock: é o GoniometryCSVLogger real escrevendo em arquivo real
 # (tmpdir), a mesma técnica já usada pelos testes de filter_mode acima —
@@ -365,11 +364,9 @@ def test_csv_logger_writes_demo_mode_as_last_column(demo_mode):
 
 
 def test_csv_logger_without_demo_mode_defaults_to_false():
-    # Retrocompatibilidade da API Python: chamar log() sem informar
-    # demo_mode (como todo o código anterior à Fase 7E faz, inclusive as
-    # próprias chamadas de filter_mode acima) deve continuar funcionando
-    # sem TypeError, e a coluna nova deve assumir "False" — o valor clínico
-    # seguro.
+    # Compatibilidade da API Python: chamar log() sem informar demo_mode
+    # (como fazem as chamadas de filter_mode acima) deve funcionar sem
+    # TypeError, e a coluna deve assumir "False" — o valor clínico seguro.
     with tempfile.TemporaryDirectory() as tmpdir:
         csv_path = os.path.join(tmpdir, "test_no_demo_mode_arg.csv")
         logger = GoniometryCSVLogger(csv_path)

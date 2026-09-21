@@ -2,10 +2,11 @@
 tests/test_smoothing.py — Testes de regressão do pipeline EMA -> Kalman
 =========================================================================
 
-Esta suíte protege o comportamento clínico ATUAL de smoothing.py (pipeline
-obrigatório EMA seguido de Kalman, usado por todo o sistema — UI, CSV, PDF e
-mão robótica) antes de qualquer refatoração futura relacionada a modos de
-filtro (RAW / EMA / KALMAN / EMA_KALMAN, ver INTEGRACAO_MAO_ROBOTICA.md).
+Esta suíte protege o comportamento clínico de smoothing.py (pipeline
+EMA seguido de Kalman, padrão do sistema — UI, CSV, PDF e mão robótica) e os
+modos de filtro (RAW / EMA / KALMAN / EMA_KALMAN, ver
+INTEGRACAO_MAO_ROBOTICA.md), servindo de referência para qualquer alteração
+nesse módulo.
 
 Os valores numéricos usados como referência foram capturados executando o
 código real de SeriesFilter/GoniometryFilterBank (não foram calculados à mão),
@@ -391,8 +392,8 @@ class TestDefaultPipelineMatchesProductionConfig:
         é passado) devem coincidir com as constantes reais de config.py
         (EMA_ALPHA, KALMAN_Q, KALMAN_R) — as mesmas usadas em produção por
         workers/processing_worker.py. Este teste não altera config.py; só lê
-        os valores existentes para detectar divergência futura entre os
-        dois arquivos."""
+        os valores existentes para detectar divergência entre os dois
+        arquivos."""
         f = SeriesFilter()
 
         assert f.ema_alpha == pytest.approx(config.EMA_ALPHA)
@@ -424,14 +425,13 @@ class TestDefaultPipelineMatchesProductionConfig:
 
 
 # =============================================================================
-# Fase 2 — modos de filtro (RAW / EMA / KALMAN / EMA_KALMAN)
+# Modos de filtro (RAW / EMA / KALMAN / EMA_KALMAN)
 # =============================================================================
 #
-# Os testes abaixo cobrem os modos introduzidos em smoothing.py na Fase 2.
-# Nenhum deles é usado pelo pipeline de produção ainda — workers/
-# processing_worker.py continua instanciando GoniometryFilterBank() sem
-# informar `mode`, o que resulta em FILTER_MODE_EMA_KALMAN (o default),
-# preservando o comportamento já protegido pelos testes acima.
+# Os testes abaixo cobrem os modos de filtro de smoothing.py. O
+# ProcessingWorker instala o modo de filtro do banco (_make_filter_bank e
+# set_filter_mode) e o padrão, FILTER_MODE_EMA_KALMAN, preserva o
+# comportamento já protegido pelos testes acima.
 
 
 class TestFilterModeRaw:
@@ -611,8 +611,7 @@ class TestGoniometryFilterBankModes:
         assert bank.mode == mode
 
     def test_bank_default_mode_is_ema_kalman(self):
-        """Sem informar `mode`, o banco continua usando EMA_KALMAN — o
-        mesmo default de antes da Fase 2, agora nomeado explicitamente."""
+        """Sem informar `mode`, o banco usa EMA_KALMAN, o pipeline padrão."""
         bank = GoniometryFilterBank()
         assert bank.mode == FILTER_MODE_EMA_KALMAN
 
@@ -638,8 +637,8 @@ class TestGoniometryFilterBankModes:
     def test_series_remain_independent_per_finger_joint_in_stateful_modes(self, mode):
         """Nos modos com estado (EMA, KALMAN, EMA_KALMAN), uma série que já
         acumulou histórico não deve influenciar uma série vizinha recebendo
-        sua primeira amostra — mesma garantia de independência já validada
-        para o modo padrão, agora repetida para os modos novos."""
+        sua primeira amostra — mesma garantia de independência validada
+        para o modo padrão, repetida aqui para os demais modos."""
         bank = GoniometryFilterBank(mode=mode)
         bank.update("INDEX", "MCP", 10.0)
         bank.update("INDEX", "MCP", 90.0)
@@ -652,15 +651,13 @@ class TestGoniometryFilterBankModes:
 
 
 # =============================================================================
-# Fase 4a — testes de regressão para robustez de None / NaN / infinito
+# Robustez de None / NaN / infinito
 # =============================================================================
 #
-# Estes testes descrevem o comportamento AINDA NÃO IMPLEMENTADO (Fase 4b) e
-# devem falhar hoje: smoothing.py não valida a entrada de update() ainda.
-# Servem como a rede de segurança que prova que a implementação futura fez
-# exatamente o que foi decidido, nem mais nem menos.
+# Estes testes descrevem como update() trata entradas inválidas: smoothing.py
+# valida a entrada e rejeita None, NaN e ±infinito (_is_valid_measurement).
 #
-# Política aprovada (não implementada nesta fase):
+# Política verificada:
 #   - None/NaN/+inf/-inf nunca atualizam _ema_value, _x, _p ou _k_gain;
 #   - em EMA/KALMAN/EMA_KALMAN, com histórico válido: retorna o último valor
 #     válido; sem histórico: retorna None;
@@ -717,7 +714,8 @@ class TestInvalidValueRejection:
     def test_invalid_value_does_not_touch_internal_state(self, mode):
         """Nenhum dos quatro campos de estado interno pode ser alterado por
         um valor inválido — a contaminação (o problema original que esta
-        fase resolve) significa exatamente algum desses campos mudando."""
+        tratamento de entrada inválida evita) significa exatamente algum
+        desses campos mudando."""
         f = SeriesFilter(mode=mode)
         f.update(20.0)
         f.update(50.0)
@@ -770,8 +768,8 @@ class TestGoniometryFilterBankInvalidValues:
     @pytest.mark.parametrize("mode", STATEFUL_MODES)
     def test_invalid_value_in_one_series_does_not_affect_sibling_series(self, mode):
         """Um valor inválido em INDEX_MCP não pode influenciar MIDDLE_MCP —
-        mesma garantia de independência já validada para entradas válidas,
-        agora também sob entrada inválida."""
+        mesma garantia de independência validada para entradas válidas,
+        aqui sob entrada inválida."""
         bank = GoniometryFilterBank(mode=mode)
         bank.update("INDEX", "MCP", 20.0)
         bank.update("INDEX", "MCP", float("nan"))
@@ -839,30 +837,30 @@ class TestInvalidValueLogging:
 
 
 # =============================================================================
-# Fase 7A — semântica do indicador de estabilidade por modo
+# Semântica do indicador de estabilidade por modo
 # =============================================================================
 #
-# PROBLEMA QUE ESTES TESTES DESCREVEM (correção ainda NÃO implementada):
+# O QUE ESTES TESTES DESCREVEM:
 #
 # `SeriesFilter.stability` classifica a série a partir de `self._k_gain`, o
-# ganho do filtro de Kalman. Só que RAW e EMA nunca executam a etapa Kalman,
-# então nesses dois modos o ganho permanece no valor de __init__ (1.0) para
-# sempre. Como o limiar de "instavel" é >= 0.40, a consequência é que RAW e
-# EMA reportam "instavel" durante a sessão inteira, mesmo com a mão parada e
-# os dados perfeitos.
+# ganho do filtro de Kalman. RAW e EMA nunca executam a etapa Kalman, então
+# nesses dois modos o ganho permanece no valor de __init__ (1.0) para
+# sempre. Como o limiar de "instavel" é >= 0.40, classificar RAW e EMA pelo
+# ganho os faria reportar "instavel" durante a sessão inteira, mesmo com a
+# mão parada e os dados perfeitos.
 #
-# Isso não é falha de RAW nem de EMA: é o indicador visual usando uma métrica
-# que não existe nesses modos. Quem vê a tela conclui que a medição está ruim.
+# Isso não é falha de RAW nem de EMA: seria o indicador visual usando uma
+# métrica que não existe nesses modos, e quem vê a tela concluiria que a
+# medição está ruim.
 #
-# A correção pretendida é APENAS SEMÂNTICA. Cada modo passa a reportar o que é
-# verdade sobre ele:
+# A semântica é APENAS de status. Cada modo reporta o que é verdade sobre ele:
 #
 #     RAW         -> "sem_filtro"        (não há filtragem a avaliar)
 #     EMA         -> "suavizacao_ema"    (há suavização, mas não há Kalman)
-#     KALMAN      -> lógica de ganho atual, INALTERADA
-#     EMA_KALMAN  -> lógica de ganho atual, INALTERADA
+#     KALMAN      -> lógica de ganho (limiares do ganho de Kalman)
+#     EMA_KALMAN  -> lógica de ganho (limiares do ganho de Kalman)
 #
-# NADA de matemática muda: `stability` é uma property somente de leitura, sem
+# `stability` é uma property somente de leitura, sem
 # efeito sobre o valor filtrado, EMA, Kalman, TAM, ASSH, CSV, PDF ou servos.
 #
 # Os testes comparam contra as strings literais ("sem_filtro" etc.) e não
@@ -871,8 +869,9 @@ class TestInvalidValueLogging:
 #
 # NOTA SOBRE O ESTADO VERDE: o limiar de "estavel" (< 0.15) é inalcançável com
 # Q=0.01 e R=0.10 (o ganho converge para ~0.2702). Isso está documentado no
-# teste de caracterização ao final desta seção, mas NÃO é corrigido aqui:
-# recalibrar limiar é decisão científica, reservada para uma fase própria.
+# teste de caracterização ao final desta seção. Não há correção neste
+# arquivo: recalibrar o limiar é uma decisão científica que exige validação
+# experimental.
 
 
 class TestStabilityInRawMode:
@@ -896,9 +895,8 @@ class TestStabilityInRawMode:
         assert f.stability == "sem_filtro"
 
     def test_raw_never_reports_instavel(self):
-        """Regressão central da Fase 7A: é exatamente este 'instavel'
-        permanente que hoje pinta todas as articulações de vermelho no
-        overlay durante uma sessão RAW inteira."""
+        """Caso central: um 'instavel' permanente pintaria todas as
+        articulações de vermelho no overlay durante uma sessão RAW inteira."""
         f = SeriesFilter(mode=FILTER_MODE_RAW)
 
         estados = set()
@@ -949,11 +947,12 @@ class TestStabilityInEmaMode:
 
 class TestStabilityInKalmanModesUnchanged:
     """
-    KALMAN e EMA_KALMAN devem sair da Fase 7A EXATAMENTE como entraram.
+    KALMAN e EMA_KALMAN usam a lógica de ganho de Kalman, sem o status
+    específico de RAW e EMA.
 
-    A correção é restrita a RAW e EMA; se algum destes testes falhar depois
-    da implementação, a mudança vazou para os modos com Kalman — que são os
-    únicos onde o ganho realmente significa alguma coisa.
+    O status semântico é restrito a RAW e EMA; se algum destes testes
+    falhar, a mudança vazou para os modos com Kalman — que são os únicos
+    onde o ganho realmente significa alguma coisa.
     """
 
     @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
@@ -976,9 +975,9 @@ class TestStabilityInKalmanModesUnchanged:
 
     @pytest.mark.parametrize("mode", [FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN])
     def test_kalman_gain_converges_to_the_current_steady_state(self, mode):
-        """Fotografia do regime permanente atual (Q=0.01, R=0.10). Se este
-        número mudar, algum parâmetro do filtro foi alterado — o que a
-        Fase 7A proíbe explicitamente."""
+        """Fotografia do regime permanente (Q=0.01, R=0.10). Se este
+        número mudar, algum parâmetro do filtro foi alterado — o que não deve
+        acontecer por causa da lógica de estabilidade."""
         f = SeriesFilter(mode=mode)
         for _ in range(500):
             f.update(45.0)
@@ -1002,8 +1001,8 @@ class TestStabilityDoesNotAffectFilterMath:
     O status é somente leitura. Consultá-lo não pode mover o filtro.
 
     Esta é a garantia que separa "correção visual" de "alteração científica":
-    se ler `stability` alterasse qualquer estado interno, a Fase 7A deixaria
-    de ser apenas visual.
+    se ler `stability` alterasse qualquer estado interno, o indicador
+    deixaria de ser apenas visual.
     """
 
     @pytest.mark.parametrize(
@@ -1041,7 +1040,8 @@ class TestStabilityDoesNotAffectFilterMath:
         assert (f._ema_value, f._x, f._p, f._k_gain, f._n_updates) == antes
 
     def test_filter_parameters_still_come_from_config(self):
-        """Trava os parâmetros que a Fase 7A não pode encostar."""
+        """Trava os parâmetros do filtro, que vêm de config.py e não podem
+        ser alterados pela lógica de estabilidade."""
         f = SeriesFilter()
 
         assert f.ema_alpha == pytest.approx(config.EMA_ALPHA)
@@ -1056,8 +1056,8 @@ class TestStabilityDoesNotAffectFilterMath:
         ],
     )
     def test_numeric_output_snapshot_for_stateless_and_ema_modes(self, mode, esperado):
-        """Fotografia numérica: a saída dos filtros precisa ser idêntica
-        antes e depois da Fase 7A."""
+        """Fotografia numérica: a saída dos filtros RAW e EMA não depende
+        da lógica de estabilidade."""
         f = SeriesFilter(mode=mode)
         saida = [f.update(v) for v in (10.0, 25.0, 18.0)]
 
@@ -1066,9 +1066,9 @@ class TestStabilityDoesNotAffectFilterMath:
 
 class TestStabilityInvalidValuesUnchanged:
     """
-    Valores inválidos continuam sendo tratados exatamente como antes: o
-    estado interno não é tocado, nada vira 0.0, e agora também o status de
-    estabilidade não pode ser corrompido por eles.
+    Valores inválidos são tratados como em update(): o estado interno não
+    é tocado, nada vira 0.0, e o status de estabilidade também não pode ser
+    corrompido por eles.
     """
 
     @pytest.mark.parametrize(
@@ -1164,10 +1164,10 @@ class TestStableStateReachability:
 
     Documenta que o estado "estavel" (ganho < 0.15) é inalcançável com os
     parâmetros atuais: o ganho de Kalman converge monotonicamente para
-    ~0.27016 e nunca desce abaixo disso. Esta é a evidência que sustenta a
-    fase científica futura sobre recalibrar o limiar.
+    ~0.27016 e nunca desce abaixo disso. Esta é a evidência que sustenta uma
+    eventual recalibração do limiar.
 
-    A Fase 7A NÃO corrige isso — mexer em limiar, Q ou R exige validação
+    Este arquivo não corrige isso — mexer em limiar, Q ou R exige validação
     experimental. O teste existe para que o fato fique registrado e para
     detectar se alguém alterar Q/R sem perceber a consequência.
     """

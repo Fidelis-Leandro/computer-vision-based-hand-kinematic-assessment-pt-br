@@ -107,33 +107,29 @@ class TestMapAll:
 
 
 # =============================================================================
-# Fase 7E-a — teto de TAM do perfil Evento (subfase de testes)
+# Teto de TAM do perfil Evento (TAM_MAX_DEMO)
 # =============================================================================
 #
 # TAM_MAX_DEMO é uma tabela PARALELA a TAM_MAX, nunca usada pelo caminho
 # padrão — nenhum teste desta classe deve afetar TAM_MAX nem o comportamento
-# de tam_to_servo()/map_all() quando chamados sem o parâmetro novo (ver
-# TestTamToServo e TestMapAll acima, que continuam cobrindo esse contrato
-# sem nenhuma mudança).
+# de tam_to_servo()/map_all() quando chamados sem o parâmetro opcional (ver
+# TestTamToServo e TestMapAll acima, que cobrem esse contrato).
 #
-# Os valores abaixo (70/150/150/150/150) foram definidos manualmente para
-# demonstração e ficam bem abaixo dos 100/200/230 sugeridos pela análise de
-# amplitude dos CSVs reais em logs/ (ver INTEGRACAO_MAO_ROBOTICA.md). Isso é
-# proposital: tetos baixos fazem a mão robótica fechar por completo com
-# pouco esforço do visitante, que é o objetivo do perfil Evento. São valores
-# de teste manual, não validados contra os CSVs.
+# Os valores abaixo (70/150/150/150/150) são valores manuais de
+# demonstração, não validados e não clínicos. Ficam abaixo da referência
+# aproximada de 100/200/230/230/230 descrita em "Limitações conhecidas e
+# amplitude observada" em INTEGRACAO_MAO_ROBOTICA.md, que também não é
+# calibração validada. Tetos baixos fazem a mão robótica fechar por completo
+# com pouco esforço do visitante, que é o objetivo do perfil Evento.
 #
 # Os imports de TAM_MAX_DEMO são feitos dentro de cada teste, e não no topo
-# do arquivo. Isso vem da subfase de testes (7E-a), quando o símbolo ainda
-# não existia e um import de módulo quebraria a coleta do arquivo inteiro;
-# foi mantido por simplicidade e é inofensivo.
+# do arquivo, de modo que uma falha de import afeta apenas o teste
+# correspondente.
 
 
 class TestTamMaxDemoProfile:
     def test_tam_max_demo_exists_with_the_current_values(self):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        Trava os valores atuais, definidos manualmente para demonstração:
+        """Trava os valores atuais, definidos manualmente para demonstração:
         polegar 70, indicador/médio/anelar/mínimo 150. Se forem alterados
         de propósito, este teste deve ser atualizado junto."""
         import outputs.tam_to_servo as tam_to_servo_module
@@ -147,9 +143,7 @@ class TestTamMaxDemoProfile:
         }
 
     def test_tam_max_demo_never_exceeds_the_clinical_ceiling(self):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        Guarda de sanidade: o teto de
+        """Guarda de sanidade: o teto de
         demonstração deve ser sempre <= o teto clínico (TAM_MAX) para cada
         dedo — ele existe para SATURAR mais cedo, nunca mais tarde. Se algum
         dia alguém alterar TAM_MAX_DEMO para um valor maior que TAM_MAX,
@@ -165,10 +159,11 @@ class TestTamMaxDemoProfile:
 
 class TestTamToServoAcceptsOptionalTamMaxTable:
     def test_tam_to_servo_accepts_a_custom_tam_max_table(self):
-        """Guarda de regressão permanente (não é mais uma transição).
+        """Confirma que a tabela de teto informada pela chamada controla a
+        saturação.
 
         Com um teto customizado bem menor que o padrão, o mesmo TAM de
-        entrada deve saturar em SERVO_CLOSED mais cedo do que satura hoje
+        entrada deve saturar em SERVO_CLOSED mais cedo do que satura
         com TAM_MAX — prova de que a tabela passada é a que está sendo
         usada, não TAM_MAX por baixo dos panos."""
         custom_table = {"indicador": 50.0}
@@ -177,10 +172,8 @@ class TestTamToServoAcceptsOptionalTamMaxTable:
 
         assert posicao == SERVO_CLOSED["indicador"]
 
-    def test_tam_to_servo_default_call_is_unaffected_by_the_new_parameter(self):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        TestTamToServo, acima, já cobre o contrato de 2 argumentos; este
+    def test_tam_to_servo_default_call_is_unaffected_by_the_optional_parameter(self):
+        """TestTamToServo, acima, já cobre o contrato de 2 argumentos; este
         prova que o parâmetro opcional tem o default certo (TAM_MAX),
         chamando explicitamente com a palavra-chave."""
         posicao_com_default_explicito = tam_to_servo(
@@ -191,9 +184,7 @@ class TestTamToServoAcceptsOptionalTamMaxTable:
         assert posicao_com_default_explicito == posicao_sem_parametro_novo
 
     def test_map_all_accepts_a_custom_tam_max_table(self):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        map_all() deve repassar tam_max_table para cada chamada interna de
+        """map_all() deve repassar tam_max_table para cada chamada interna de
         tam_to_servo(), não só aceitar e ignorar o parâmetro."""
         custom_table = {
             "polegar": 50.0, "indicador": 50.0, "medio": 50.0,

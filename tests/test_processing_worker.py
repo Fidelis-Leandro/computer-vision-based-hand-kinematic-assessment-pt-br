@@ -3,9 +3,8 @@ tests/test_processing_worker.py — Integração mínima ProcessingWorker <-> fi
 ===================================================================================
 
 Confirma que ProcessingWorker conecta explicitamente o banco de filtros
-(GoniometryFilterBank) ao modo definido em config.FILTER_MODE_DEFAULT (Fase 3
-da evolução dos modos de filtro), sem alterar o comportamento padrão
-histórico (EMA_KALMAN).
+(GoniometryFilterBank) ao modo definido em config.FILTER_MODE_DEFAULT,
+mantendo EMA_KALMAN como comportamento padrão.
 
 Nenhum teste aqui usa câmera, Arduino, porta serial ou uma janela real do
 PyQt6. Instanciar ProcessingWorker carrega o MediaPipe real em memória (é
@@ -45,9 +44,8 @@ class TestProcessingWorkerFilterMode:
         """Os modos alternativos (RAW, EMA, KALMAN) continuam existindo e
         funcionais em GoniometryFilterBank, independentemente do que
         ProcessingWorker usa por padrão. Este teste não toca config.py nem
-        ProcessingWorker — apenas confirma, na fronteira entre as duas
-        fases, que a "ponte" para modos alternativos continua disponível
-        para quando uma fase futura decidir conectá-la de fato."""
+        ProcessingWorker — apenas confirma que GoniometryFilterBank aceita
+        os modos alternativos quando construído diretamente."""
         for mode in (FILTER_MODE_RAW, FILTER_MODE_KALMAN, FILTER_MODE_EMA_KALMAN):
             bank = GoniometryFilterBank(mode=mode)
             assert bank.mode == mode
@@ -74,7 +72,7 @@ class TestProcessingWorkerFilterMode:
 
 class TestUpdateBuffersInvalidValues:
     """
-    Fase 4b: _update_buffers() deve ignorar TAM inválido (None/NaN/inf) sem
+    _update_buffers() deve ignorar TAM inválido (None/NaN/inf) sem
     levantar exceção, sem inserir 0.0 no lugar, e sem apagar o histórico
     válido já acumulado no buffer.
     """
@@ -123,7 +121,7 @@ class TestUpdateBuffersInvalidValues:
 
 class TestProcessingWorkerForwardsFilterModeToCsvLogger:
     """
-    Fase 5: ProcessingWorker encaminha self._filter_bank.mode ao
+    ProcessingWorker encaminha self._filter_bank.mode ao
     GoniometryCSVLogger em cada linha registrada. Usa um logger fake
     (MagicMock) — nenhum arquivo CSV real é criado, nenhuma
     câmera/Arduino/interface é usada.
@@ -173,11 +171,11 @@ class TestProcessingWorkerForwardsFilterModeToCsvLogger:
 
 
 # =============================================================================
-# Fase 7D-a — transição para a remoção de reset_state()
+# Guarda de ausência — reset_state() não existe mais
 # =============================================================================
 
 
-class TestResetStateRemovedInPhase7Db:
+class TestResetStateRemainsAbsent:
     """
     reset_state() foi escrito para reaproveitar o worker entre sessões, mas o
     sistema seguiu outro caminho: MainWindow._new_session() destrói e recria
@@ -191,8 +189,8 @@ class TestResetStateRemovedInPhase7Db:
     dele afirma "Chamado quando uma nova sessão é iniciada", o que nunca foi
     verdade.
 
-    O método foi removido na Fase 7D-b. O teste abaixo permanece como guarda
-    permanente contra sua reintrodução acidental.
+    O método foi removido. O teste abaixo protege contra sua reintrodução
+    acidental.
 
     Não instancia ProcessingWorker — hasattr na classe basta, e assim nenhum
     MediaPipe é carregado neste teste.
@@ -209,17 +207,17 @@ class TestResetStateRemovedInPhase7Db:
 
 
 # =============================================================================
-# Fase 7E-a — perfil Evento: set_demo_mode() no worker (subfase de testes)
+# Perfil Evento — set_demo_mode() no worker
 # =============================================================================
 #
 # demo_mode é uma informação de REGISTRO (o que vai para a linha do CSV),
 # não um segundo estado do banco de filtros — o filtro real do Evento já é
 # "EMA", aplicado pelo set_filter_mode() de sempre. set_demo_mode() só
-# grava um bool que _try_log_csv() repassa a cada linha, mesmo mecanismo já
+# grava um bool que _try_log_csv() repassa a cada linha, mesmo mecanismo
 # usado para filter_mode (ver TestProcessingWorkerForwardsFilterModeToCsvLogger
-# acima) — inclusive o motivo de existir um default (False) é o mesmo:
-# preservar qualquer chamada antiga a start_session()/_try_log_csv() sem
-# esse argumento.
+# acima) — o motivo de existir um default (False) também é o mesmo: manter
+# válida qualquer chamada a start_session()/_try_log_csv() sem esse
+# argumento.
 
 
 class TestSetDemoModeForwardsToCsvLogger:
@@ -232,13 +230,11 @@ class TestSetDemoModeForwardsToCsvLogger:
         return worker, fake_logger
 
     def test_set_demo_mode_method_exists(self):
-        """Guarda de regressão permanente (não é mais uma transição)."""
+        """ProcessingWorker expõe o método set_demo_mode()."""
         assert hasattr(ProcessingWorker, "set_demo_mode")
 
     def test_demo_mode_defaults_to_false(self):
-        """Guarda de regressão permanente (não é mais uma transição).
-
-        Sem nenhuma chamada a set_demo_mode(), toda sessão é clínica por
+        """Sem nenhuma chamada a set_demo_mode(), toda sessão é clínica por
         padrão — o mesmo raciocínio de segurança de config.FILTER_MODE_DEFAULT:
         o modo de exibição precisa ser escolhido explicitamente, nunca
         herdado por omissão."""
@@ -250,7 +246,8 @@ class TestSetDemoModeForwardsToCsvLogger:
         assert kwargs.get("demo_mode") is False
 
     def test_set_demo_mode_true_is_forwarded_to_every_logged_row(self):
-        """Guarda de regressão permanente (não é mais uma transição)."""
+        """Com set_demo_mode(True), todas as linhas registradas recebem
+        demo_mode=True."""
         worker, fake_logger = self._worker_with_fake_logger()
         worker.set_demo_mode(True)
 
