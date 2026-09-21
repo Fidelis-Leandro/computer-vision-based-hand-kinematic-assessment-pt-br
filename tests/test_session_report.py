@@ -300,6 +300,23 @@ class TestLoadSessionCsvReadsDemoModeColumn:
 
         assert data["demo_mode"] is False
 
+    def test_empty_demo_mode_cell_is_read_as_false(self, tmp_path):
+        """Célula vazia de demo_mode é lida como False.
+
+        A coluna existe no cabeçalho, mas não traz valor. Como não há um
+        estado "assumido" para demo_mode, o carregador resolve a célula
+        vazia pelo mesmo valor clínico seguro da coluna ausente. A asserção
+        de cabeçalho é o que separa este caso do CSV sem a coluna."""
+        csv_path = tmp_path / "empty_demo_mode.csv"
+        _write_csv_with_demo_mode_column(csv_path, demo_mode="")
+
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            assert "demo_mode" in csv.DictReader(f).fieldnames
+
+        data = load_session_csv(str(csv_path))
+
+        assert data["demo_mode"] is False
+
     def test_old_csv_without_the_column_reads_as_false_not_assumed(self, tmp_path):
         """Diferente de filter_mode_assumed: não existe um
         "demo_mode_assumed", porque não há ambiguidade a marcar — um CSV sem
