@@ -21,8 +21,7 @@ mexer no seletor da interface obtém exatamente esse caminho.
 As classes aqui presentes são independentes de OpenCV e MediaPipe.
 Operam exclusivamente sobre valores numéricos, o que simplifica testes e reutilização.
 
-Onde este módulo se encaixa no pipeline (estado real do código, não uma
-proposta futura):
+Onde este módulo se encaixa no pipeline:
     workers/processing_worker.py::_process_frame() calcula `angles_raw`
     chamando DigitalGoniometer.compute_all() (goniometry.py). `angles_raw` é
     uma VARIÁVEL LOCAL e TRANSITÓRIA dentro desse método — existe apenas
@@ -122,10 +121,9 @@ class SeriesFilter:
     para manter seu próprio histórico e estado de Kalman.
 
     O parâmetro `mode` decide quais etapas update() executa (ver constantes
-    FILTER_MODE_* no topo do módulo). O default (FILTER_MODE_EMA_KALMAN)
-    preserva exatamente o comportamento histórico deste arquivo — qualquer
-    código que já cria SeriesFilter() sem informar `mode` continua se
-    comportando de forma idêntica a antes desta classe ganhar o parâmetro.
+    FILTER_MODE_* no topo do módulo). O modo padrão é EMA + Kalman
+    (FILTER_MODE_EMA_KALMAN): código que cria SeriesFilter() sem informar
+    `mode` executa EMA seguido de Kalman.
     """
 
     def __init__(
@@ -190,15 +188,14 @@ class SeriesFilter:
             Aplica o filtro de Kalman diretamente sobre o valor bruto (sem
             passar por EMA antes) e atualiza somente o estado de Kalman.
 
-        FILTER_MODE_EMA_KALMAN (default, entrada válida, comportamento histórico):
+        FILTER_MODE_EMA_KALMAN (default, entrada válida):
             Etapa 1 — EMA:
                 Reduz oscilações rápidas (jitter) entre quadros.
             Etapa 2 — Kalman:
                 Modela a estimativa recursiva do valor real a partir da
                 saída do EMA (não do valor bruto) e sua incerteza residual.
-            Este ramo reproduz literalmente o código original deste método,
-            antes da introdução dos demais modos — nenhuma conta foi
-            reescrita, só isolada dentro do `elif` correspondente.
+            Este ramo encadeia as duas etapas: a saída do EMA é a entrada do
+            Kalman.
         """
         self._n_updates += 1
 
@@ -318,8 +315,8 @@ class SeriesFilter:
         que torna "estavel" inalcançável na prática — fato registrado em
         TestStableStateReachability (tests/test_smoothing.py). Recalibrar
         esse limiar mexeria em como o sistema declara a qualidade de uma
-        medição clínica, então depende de validação experimental e ficou
-        fora desta mudança, que é apenas semântica.
+        medição clínica, então depende de validação experimental. O rótulo
+        apenas descreve o modo de filtragem.
         """
         if self.mode == FILTER_MODE_RAW:
             return "sem_filtro"
@@ -385,11 +382,9 @@ class GoniometryFilterBank:
     e fornece uma API unificada para suavizar o dicionário completo de ângulos.
 
     O parâmetro `mode` (ver constantes FILTER_MODE_* no topo do módulo) é
-    repassado a cada SeriesFilter criado pelo banco. O default
-    (FILTER_MODE_EMA_KALMAN) preserva o comportamento histórico — código
-    existente que cria GoniometryFilterBank() sem informar `mode` (como
-    workers/processing_worker.py faz hoje) continua funcionando de forma
-    idêntica a antes desta fase.
+    repassado a cada SeriesFilter criado pelo banco. O modo padrão é EMA +
+    Kalman (FILTER_MODE_EMA_KALMAN): chamadas que não informam `mode` usam
+    esse valor.
     """
 
     def __init__(

@@ -263,7 +263,7 @@ class MetricsWidget(QGroupBox):
 
     Organiza cards individuais em uma grade dinâmica e conecta as fontes de dados
     (ProcessingResult e psutil) a cada card correspondente. Suporta dois modos de operação:
-    modo técnico completo e modo clínico simplificado (Fase 3).
+    modo técnico completo e modo clínico simplificado.
 
     Hierarquia padrão (Modo Técnico completo, set_clinical_mode(False)):
         MetricsWidget (QGroupBox: "Métricas do Sistema")

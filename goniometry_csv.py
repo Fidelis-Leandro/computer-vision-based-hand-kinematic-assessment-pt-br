@@ -5,7 +5,9 @@ goniometry_csv.py — Registrador de dados de sessão goniométrica (CSV)
 Este módulo grava uma linha por quadro contendo:
 - timestamp;
 - frame_id;
-- ângulos suavizados por dedo e articulação.
+- ângulos suavizados por dedo e articulação;
+- filter_mode e demo_mode: metadados da sessão, sempre as últimas colunas do
+  cabeçalho.
 """
 
 import csv
@@ -65,16 +67,17 @@ CSV_FIELDS = [
     "THUMB_IP",
     "THUMB_TAM",
     # filter_mode fica por último, nunca no meio: assim, qualquer ferramenta
-    # externa que leia as colunas antigas por posição continua funcionando
-    # sem mudança — só quem já espera a coluna nova precisa procurá-la.
+    # externa que leia por posição as colunas que o precedem continua
+    # funcionando sem mudança — só quem espera essa coluna precisa procurá-la.
     "filter_mode",
-    # demo_mode vem depois de filter_mode, pelo mesmo motivo (Fase 7E):
-    # identifica sessões do perfil Evento (demonstração em estande), nunca
-    # reordenando as colunas que já existiam antes dela.
+    # demo_mode permanece após filter_mode pelo mesmo motivo: preserva a ordem
+    # das colunas existentes e a compatibilidade com ferramentas que leem o CSV
+    # por posição. Identifica sessões do perfil Evento (demonstração em
+    # estande).
     "demo_mode",
 ]
 
-# Os únicos modos que smoothing.py implementa hoje. Mantido aqui como uma
+# Modos de filtragem implementados por smoothing.py. Mantido aqui como uma
 # tupla simples (não um Enum importado de smoothing.py) para este arquivo
 # não depender de outro módulo só para validar uma string.
 CSV_VALID_FILTER_MODES = ("RAW", "EMA", "KALMAN", "EMA_KALMAN")
@@ -112,16 +115,15 @@ class GoniometryCSVLogger:
         DigitalGoniometer.compute_all() / GoniometryFilterBank.smooth_all()
 
         filter_mode identifica qual modo de smoothing.py produziu os
-        ângulos desta linha. O default "EMA_KALMAN" existe para que
-        chamadas antigas a log(frame_id, angles) — de antes da Fase 5 —
-        continuem funcionando sem alteração, gravando o único modo que
-        o sistema já usava.
+        ângulos desta linha. O default "EMA_KALMAN" (o pipeline clínico
+        padrão) preserva a compatibilidade com chamadas que não informam
+        filter_mode, como log(frame_id, angles).
 
         demo_mode identifica se a sessão é o perfil Evento (demonstração
         em estande) — metadado de registro, nunca altera angles. O default
-        False existe pelo mesmo motivo do default de filter_mode: preservar
-        toda chamada anterior à Fase 7E sem exigir alteração, gravando
-        sempre o valor clínico seguro quando o chamador não informa nada.
+        False preserva a compatibilidade com chamadas que não informam
+        demo_mode, gravando sempre o valor clínico seguro quando o
+        chamador não informa nada.
         Gravado como "True"/"False" por extenso, nunca célula vazia — ao
         contrário de um ângulo ausente, aqui não existe "sem dado": toda
         sessão é ou não é o perfil Evento, sem ambiguidade a marcar.

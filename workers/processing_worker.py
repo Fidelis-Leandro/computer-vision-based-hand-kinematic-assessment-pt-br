@@ -221,8 +221,8 @@ class ProcessingWorker(QThread):
         self._gonio: DigitalGoniometer = DigitalGoniometer()
 
         # Banco de filtros — modo definido explicitamente por
-        # config.FILTER_MODE_DEFAULT (hoje "EMA_KALMAN", preservando o
-        # pipeline clínico validado: EMA -> Kalman). Uma instância de
+        # config.FILTER_MODE_DEFAULT (padrão "EMA_KALMAN", o pipeline
+        # clínico validado: EMA -> Kalman). Uma instância de
         # SeriesFilter por série (ex.: "INDEX_MCP", "THUMB_IP").
         # A interface pode substituir esse banco antes de cada sessão,
         # via set_filter_mode().
@@ -333,8 +333,9 @@ class ProcessingWorker(QThread):
         a sessão não é clínica. Não instala filtro, não chama
         set_filter_mode(), não troca o banco de filtros e não altera TAM,
         angles_raw/angles_smooth ou qualquer cálculo científico — o perfil
-        Evento usa o filtro EMA de sempre, aplicado pelo mecanismo de sempre;
-        esta chamada não sabe nem precisa saber disso.
+        Evento usa o filtro EMA, instalado pelo mecanismo normal de seleção
+        de modo (set_filter_mode()); esta chamada não sabe nem precisa saber
+        disso.
 
         Mesma regra de ordem que set_filter_mode(): deve ser chamada antes
         de start_session(), para que a primeira linha gravada já reflita o
@@ -815,13 +816,12 @@ class ProcessingWorker(QThread):
         Parâmetros:
             angles_smooth: Dicionário de ângulos suavizados para o quadro atual.
 
-        filter_mode (self._filter_bank.mode) é registrado em toda linha do
-        CSV desta sessão, para que seja possível saber depois qual modo de
-        smoothing.py gerou os dados (Fase 5). demo_mode (self._demo_mode) é
-        registrado do mesmo jeito, para que fique explícito no CSV/PDF se a
-        sessão é o perfil Evento (demonstração) ou uma sessão clínica normal
-        (Fase 7E) — ambos são metadado de registro, nenhum dos dois altera
-        angles_smooth.
+        filter_mode (self._filter_bank.mode) e demo_mode (self._demo_mode)
+        são metadados da sessão registrados em toda linha do CSV: o primeiro
+        identifica qual modo de smoothing.py gerou os dados; o segundo
+        indica se a sessão é do perfil Evento (demonstração) ou uma sessão
+        clínica. Nenhum dos dois altera angles_smooth neste ponto do
+        processamento.
         """
         with self._session_lock:
             if self._session_active and self._csv_logger is not None:

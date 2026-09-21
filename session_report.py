@@ -66,9 +66,9 @@ def sanitize_for_pdf(text: str) -> str:
 
     Todo texto do PDF passa por aqui, via _cell/_multi_cell. Um caractere
     fora do Latin-1 que não esteja nesta tabela não degrada a aparência do
-    relatório: ele impede a geração inteira, com exceção. Foi o que
-    aconteceu com o sinal de aviso (U+26A0) entre as Fases 7E e 10 —
-    nenhuma sessão do perfil Evento conseguia produzir PDF.
+    relatório: ele impede a geração inteira, com exceção. É o caso do sinal
+    de aviso (U+26A0) do perfil Evento, que precisa de entrada nesta tabela
+    para que o relatório dessas sessões seja gerado.
     """
     if not isinstance(text, str):
         return text
@@ -150,16 +150,16 @@ def build_footer_method_text(filter_mode: Optional[str], assumed: bool) -> str:
     """
     Monta a frase de método do rodapé técnico do PDF.
 
-    Antes da Fase 5, o sistema só usava EMA_KALMAN, então um texto fixo
-    ("... + suavização EMA/Kalman.") era sempre verdade. Agora que RAW,
-    EMA, KALMAN e EMA_KALMAN existem, um texto fixo mentiria sobre
-    qualquer sessão que tenha usado um modo diferente — por isso o texto
-    precisa ser montado a partir do modo real gravado no CSV da sessão.
+    O sistema oferece os modos RAW, EMA, KALMAN e EMA_KALMAN; um texto fixo
+    mentiria sobre qualquer sessão que tenha usado um modo diferente do
+    descrito. Por isso o texto é montado a partir do modo real gravado no
+    CSV da sessão.
 
-    `assumed=True` (CSV gravado antes da Fase 5, sem a coluna filter_mode)
-    é tratado à parte: sabemos que só existia EMA_KALMAN até aqui, mas
-    isso é uma suposição sobre o passado, não um dado medido — o relatório
-    nunca pode apresentar essa suposição como se fosse um fato confirmado.
+    `assumed=True` (CSV sem a coluna filter_mode, de um formato anterior ao
+    registro do modo) é tratado à parte: o único pipeline existente nesse
+    formato era EMA_KALMAN, mas isso é uma suposição sobre o passado, não um
+    dado medido — o relatório nunca pode apresentar essa suposição como se
+    fosse um fato confirmado.
     """
     base = "Método: webcam + rastreamento de marcos anatômicos (MediaPipe Hands)"
 
@@ -241,17 +241,17 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
         "demo_mode": bool,              # True = sessão do perfil Evento
     }
 
-    filter_mode vem da coluna "filter_mode" (Fase 5), a mesma em toda linha
-    da sessão — basta ler uma vez. CSVs gravados antes da Fase 5 não têm
-    essa coluna; nesse caso, filter_mode fica None e filter_mode_assumed
-    fica True, para que quem gera o relatório saiba que o modo não foi
+    filter_mode vem da coluna "filter_mode", a mesma em toda linha da
+    sessão — basta ler uma vez. CSVs de um formato anterior não têm essa
+    coluna; nesse caso, filter_mode fica None e filter_mode_assumed fica
+    True, para que quem gera o relatório saiba que o modo não foi
     registrado e não pode ser afirmado como fato.
 
-    demo_mode vem da coluna "demo_mode" (Fase 7E), lida como texto
-    "True"/"False". Ao contrário de filter_mode, não existe aqui um
-    "demo_mode_assumed": um CSV sem essa coluna é sempre de antes do perfil
-    Evento existir, então False é um FATO sobre esse CSV, não uma suposição
-    — a ausência da coluna já responde a pergunta.
+    demo_mode vem da coluna "demo_mode", lida como texto "True"/"False". Ao
+    contrário de filter_mode, não existe aqui um "demo_mode_assumed": um CSV
+    sem essa coluna é anterior ao registro do perfil Evento, então False é
+    um FATO sobre esse CSV, não uma suposição — a ausência da coluna já
+    responde a pergunta.
     """
     timestamps: List[float] = []
     frame_ids: List[int] = []
@@ -284,10 +284,10 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
             filter_mode_from_csv = row.get("filter_mode") or None
 
             # demo_mode é gravado como texto ("True"/"False") em toda linha
-            # de CSVs a partir da Fase 7E. Um CSV sem a coluna (row.get()
+            # dos CSVs que têm a coluna. Um CSV sem a coluna (row.get()
             # devolve None) ou com célula vazia cai no default "" -> False,
-            # que é exatamente o comportamento correto: nunca existiu perfil
-            # Evento antes desta fase.
+            # que é o comportamento correto: um CSV sem a coluna é anterior
+            # ao registro do perfil Evento.
             demo_mode_from_csv = (row.get("demo_mode") or "").strip().lower() == "true"
 
             # Dedos longos

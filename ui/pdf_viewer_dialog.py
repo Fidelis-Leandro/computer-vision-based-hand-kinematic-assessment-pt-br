@@ -7,11 +7,10 @@ relatório PDF gerado ao final da avaliação, sem depender de nenhum leitor
 externo instalado na máquina.
 
 Por que um visualizador embutido?
-    Até aqui o relatório só podia ser conferido fora da aplicação: o clínico
-    gerava o PDF e precisava abrir a pasta de sessões num leitor externo para
-    saber se o resultado estava correto. Isso tira o operador da tela de
-    resultado justamente no momento em que ele decide manter ou descartar a
-    sessão.
+    Conferir o relatório num leitor externo exigiria abrir a pasta de
+    sessões e tiraria o operador da tela de resultado justamente no momento
+    em que ele decide manter ou descartar a sessão. O visualizador permite
+    essa conferência sem sair da aplicação.
 
 Por que não modal?
     A Tela de Resultado continua utilizável com o relatório aberto ao lado:
@@ -20,9 +19,9 @@ Por que não modal?
     inteira enquanto o relatório estivesse na tela.
 
 Por que QPdfView e não QWebEngineView ou um leitor externo?
-    QPdfView e QPdfDocument já vêm no PyQt6 instalado (módulos PyQt6.QtPdf e
-    PyQt6.QtPdfWidgets) — nenhuma dependência nova, nenhum processo externo
-    e nenhum navegador embutido de dezenas de megabytes.
+    QPdfView e QPdfDocument fazem parte do PyQt6 (módulos PyQt6.QtPdf e
+    PyQt6.QtPdfWidgets) — sem dependência adicional, sem processo externo
+    e sem navegador embutido de dezenas de megabytes.
 
 Liberação do arquivo (crítico):
     No Windows, um PDF mantido aberto pelo próprio aplicativo pode bloquear
@@ -137,8 +136,8 @@ class PdfViewerDialog(QDialog):
         """Libera o handle do arquivo ao fechar a janela.
 
         Sem este fechamento explícito, o QPdfDocument continuaria segurando o
-        PDF aberto enquanto o objeto não fosse coletado — e o descarte da
-        sessão (Fase 8) falharia com PermissionError no Windows.
+        PDF aberto enquanto o objeto não fosse coletado — e a remoção dos
+        arquivos da sessão poderia falhar com PermissionError no Windows.
         """
         if self._doc is not None:
             self._doc.close()

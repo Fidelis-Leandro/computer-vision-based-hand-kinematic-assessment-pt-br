@@ -16,15 +16,15 @@ Responsabilidades:
     - Manter um loop de envio à taxa definida por SEND_INTERVAL_S (ver
       constante abaixo), independente da taxa de vídeo (~30 Hz).
     - Aplicar suavização (limite de variação por ciclo) e a regra de segurança
-      "mão não detectada por >1s -> posição aberta".
+      "mão não detectada além do timeout de perda de mão -> posição aberta".
     - Encerrar de forma segura: posição aberta -> liberação da porta.
 
 A escrita na porta serial NUNCA ocorre na thread da interface (Qt). Toda
 comunicação com o Arduino acontece dentro de run(), executado pela QThread.
 
-AVISOS DE SEGURANÇA (recomendações preventivas — ver INTEGRACAO_MAO_ROBOTICA.md
-para o detalhamento completo; ainda pendentes de validação com multímetro
-nesta bancada específica):
+AVISOS DE SEGURANÇA (recomendações preventivas, não verificadas com
+instrumento de medição — ver INTEGRACAO_MAO_ROBOTICA.md para o detalhamento
+completo):
     - Os servos devem ser alimentados por fonte externa dedicada, nunca pelo
       USB do Arduino (o USB não fornece corrente suficiente para 5 servos
       fechando ao mesmo tempo).
@@ -53,8 +53,8 @@ from typing import Dict, List, Optional
 # outputs/__init__.py primeiro), a cópia em __init__.py já seria suficiente
 # no fluxo padrão da aplicação — mas isso deixa de ser garantido se este
 # arquivo for importado de outra forma (ex.: um script de teste isolado que
-# manipula sys.path diretamente para o pacote outputs/). Por isso a aplicação
-# do polyfill aqui não foi removida.
+# manipula sys.path diretamente para o pacote outputs/). Por isso o polyfill
+# também é aplicado aqui.
 #
 # Remover ambas as cópias quando pyfirmata for substituído por uma alternativa
 # mantida (ex.: pyfirmata2) que já seja compatível com Python 3.11+ nativamente.
@@ -84,7 +84,7 @@ except ImportError:  # pragma: no cover - pyserial vem junto com pyfirmata
 # =============================================================================
 
 # Baud rate padrão do StandardFirmata. Não alterar sem reconfigurar o firmware
-# do Arduino (fora de escopo desta versão).
+# do Arduino.
 BAUD_RATE: int = 57600
 
 # Taxa de envio ao Arduino: ~20 Hz (atualização rápida a cada 50ms)
@@ -100,20 +100,19 @@ SEND_INTERVAL_S: float = 1.0 / 20.0
 # regra de segurança logo depois de fechar — um comportamento que pode
 # parecer "ela não fica fechada", mas é a regra de segurança agindo como
 # projetado diante de uma limitação de percepção do MediaPipe, não um bug de
-# suavização. Ver investigação de amplitude documentada em
+# suavização. Ver "Limitações conhecidas e amplitude observada" em
 # INTEGRACAO_MAO_ROBOTICA.md antes de alterar este valor.
 HAND_LOST_TIMEOUT_S: float = 1.0
 
-# Variação máxima de posição de servo por ciclo de envio. Com o valor atual
-# (180), a diferença máxima possível entre SERVO_OPEN (0) e qualquer
-# SERVO_CLOSED (no máximo 180) sempre cabe em um único ciclo — ou seja,
-# _step_towards() se torna uma função identidade e este limitador deixa de
-# restringir a velocidade na prática (histórico: já foi 6, depois 25, antes de
-# chegar a 180 — ver INTEGRACAO_MAO_ROBOTICA.md para o motivo de cada mudança).
+# Variação máxima de posição de servo por ciclo de envio. Com o valor 180, a
+# diferença máxima possível entre SERVO_OPEN (0) e qualquer SERVO_CLOSED (no
+# máximo 180) sempre cabe em um único ciclo — ou seja, _step_towards() é uma
+# função identidade e este limitador não restringe a velocidade. Um valor
+# menor limita o deslocamento por ciclo, o que é útil em testes iniciais.
 #
 # IMPORTANTE: responsividade total do servo (este valor) NÃO garante, por si
-# só, que a mão feche completamente. A investigação de amplitude (mesmo
-# documento) mostrou que, para esta mão física, o TAM medido pela goniometria
+# só, que a mão feche completamente. A amplitude observada (ver
+# INTEGRACAO_MAO_ROBOTICA.md) mostra que o TAM medido pela goniometria
 # para indicador e polegar frequentemente não chega perto do teto configurado
 # em outputs/tam_to_servo.TAM_MAX — nesse caso, tam_to_servo() nunca calcula a
 # posição de "fechado" para esses dedos, e nenhum valor de
@@ -214,13 +213,13 @@ class RobotHandWorker(QThread):
         Parâmetros:
             parent: pai Qt (ver QThread).
             hand_lost_timeout_s: tolerância sem detecção de mão antes da
-                reabertura de segurança. Default preserva exatamente
-                HAND_LOST_TIMEOUT_S (1.0s, comportamento clínico de sempre)
-                para todo chamador que não informar este argumento. O
-                perfil "Evento" (demonstração em estande) passa um valor
-                maior (1.5s) para tolerar mais a oclusão do MediaPipe
-                durante o punho fechado — ver investigação de amplitude em
-                INTEGRACAO_MAO_ROBOTICA.md. Guardado por instância, nunca
+                reabertura de segurança. O default é HAND_LOST_TIMEOUT_S
+                (1.0s, perfil clínico) para todo chamador que não informar
+                este argumento. O perfil "Evento" (demonstração em estande)
+                passa um valor maior (1.5s, valor manual de demonstração)
+                para tolerar mais a oclusão do MediaPipe durante o punho
+                fechado — ver "Limitações conhecidas e amplitude observada"
+                em INTEGRACAO_MAO_ROBOTICA.md. Guardado por instância, nunca
                 escrito na constante de módulo: uma instância com timeout
                 customizado não pode vazar esse valor para outra.
         """

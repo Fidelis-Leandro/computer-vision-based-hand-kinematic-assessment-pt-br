@@ -416,8 +416,9 @@ class SessionHeaderWidget(QWidget):
         """
         Redefine o formulário e o cronômetro para o estado inicial.
 
-        Chamado pelo MainWindow ao iniciar uma nova sessão após uma anterior
-        ter terminado, ou ao clicar no botão "Nova Sessão".
+        Chamado pelo MainWindow (em _new_session()) ao reiniciar o sistema
+        para uma nova avaliação, a partir de "Nova Avaliação" na Tela de
+        Resultado.
         Não incrementa o número de sessão — isso deve ser feito manualmente
         pelo clínico para manter controle sobre a numeração das sessões.
 

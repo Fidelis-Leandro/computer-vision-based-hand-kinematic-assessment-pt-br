@@ -7,14 +7,15 @@ Motion) de cada dedo, já calculado e suavizado pelo pipeline goniométrico
 existente (goniometry.py + smoothing.py), em uma posição de servo (0-180)
 para a mão robótica.
 
-IMPORTANTE — limites iniciais de referência:
-    Os valores de TAM_MAX e SERVO_CLOSED abaixo foram copiados dos parâmetros
-    já usados pelo projeto "Mão robo" (src/outputs/arduino_output.py,
-    VALORES_FECHADOS) para ESTA MESMA mão física. São um ponto de partida,
-    não uma calibração validada para todo hardware. Devem ser testados
-    cuidadosamente (um servo por vez, ver roteiro de teste manual) antes de
-    uso contínuo. Esta versão não implementa calibração nem tela de ajuste —
-    qualquer mudança nesses limites é feita editando as constantes abaixo.
+IMPORTANTE — limites de referência:
+    Os valores de TAM_MAX e SERVO_CLOSED abaixo provêm dos parâmetros do
+    projeto "Mão robo" (src/outputs/arduino_output.py, VALORES_FECHADOS)
+    para ESTA MESMA mão física. São um ponto de partida, não uma calibração
+    validada para todo hardware. Devem ser testados cuidadosamente (um
+    servo por vez, ver "Como testar um servo por vez" em
+    INTEGRACAO_MAO_ROBOTICA.md) antes de uso contínuo. O módulo não
+    implementa calibração nem tela de ajuste — qualquer mudança nesses
+    limites é feita editando as constantes abaixo.
 
 Este módulo não conhece pyfirmata, threads ou o Arduino. Isso o torna
 testável isoladamente (ver tests/test_tam_to_servo.py).
@@ -46,7 +47,7 @@ PIN_MAP: Dict[str, int] = {
 }
 
 # =============================================================================
-# LIMITES FIXOS INICIAIS (SEM CALIBRAÇÃO POR USUÁRIO NESTA VERSÃO)
+# LIMITES FIXOS (SEM CALIBRAÇÃO POR USUÁRIO)
 # =============================================================================
 
 # TAM máximo esperado por dedo, em graus. Acima disso, satura em SERVO_CLOSED.
@@ -55,12 +56,12 @@ PIN_MAP: Dict[str, int] = {
 # em config.TAM_CEILING do pipeline goniométrico (INDEX/MIDDLE/RING/PINKY:
 # 270.0; THUMB: 130.0) — ou seja, o limite anatômico máximo que a fórmula de
 # TAM da ASSH permite, não uma medição da amplitude real desta mão física.
-# A investigação de amplitude (ver INTEGRACAO_MAO_ROBOTICA.md) mostrou que,
-# na prática, indicador e polegar raramente chegam perto desse teto para esta
-# pessoa/câmera, enquanto médio e anelar já o atingiram em sessões reais —
-# ou seja, um teto uniforme para os 4 dedos longos provavelmente não reflete
-# a amplitude alcançável de cada dedo individualmente. Ajustar exige
-# validação com dados reais de sessão, não é uma mudança arbitrária de código.
+# Nos CSVs locais (ver "Amplitude observada" em INTEGRACAO_MAO_ROBOTICA.md),
+# médio e anelar atingem esse teto, enquanto indicador e polegar ficam bem
+# abaixo dele — ou seja, um teto uniforme para os 4 dedos longos provavelmente
+# não reflete a amplitude alcançável de cada dedo individualmente. Ajustar
+# exige validação com dados reais de sessão, não é uma mudança arbitrária de
+# código.
 TAM_MAX: Dict[str, float] = {
     "polegar": 130.0,
     "indicador": 270.0,
@@ -74,11 +75,12 @@ TAM_MAX: Dict[str, float] = {
 # tam_to_servo()/map_all() recebem tam_max_table=TAM_MAX_DEMO explicitamente.
 #
 # Tetos bem abaixo do clínico, para a mão robótica fechar por completo com
-# pouco esforço do visitante. Valores de teste manual, ajustados
-# empiricamente durante demonstração — NÃO foram validados contra os CSVs
-# reais de logs/ (a investigação em INTEGRACAO_MAO_ROBOTICA.md sugeria
-# 100/200/230/230/230). Recomenda-se revalidar com mais sessões reais antes
-# de uso recorrente em evento.
+# pouco esforço do visitante. Valores manuais de demonstração, ajustados
+# empiricamente — NÃO foram validados contra os CSVs reais de logs/, não são
+# parâmetros clínicos e exigem validação física e clínica antes de qualquer
+# uso formal. A seção "Amplitude observada" de INTEGRACAO_MAO_ROBOTICA.md
+# registra a distribuição observada e uma referência aproximada de
+# 100/200/230/230/230, também não validada como calibração.
 TAM_MAX_DEMO: Dict[str, float] = {
     "polegar": 70.0,
     "indicador": 150.0,
@@ -96,7 +98,7 @@ SERVO_OPEN: Dict[str, int] = {
     "minimo": 0,
 }
 
-# Posição de servo correspondente à mão fechada (valores herdados do projeto
+# Posição de servo correspondente à mão fechada (valores provenientes do projeto
 # "Mão robo" para este mesmo hardware — ver aviso no topo do arquivo).
 SERVO_CLOSED: Dict[str, int] = {
     "polegar": 150,
@@ -145,8 +147,8 @@ def tam_to_servo(
         tam_max_table: teto de TAM a usar nesta chamada. None (default) usa
             TAM_MAX, o teto clínico. Uma tabela explícita (ex.: TAM_MAX_DEMO)
             vale só para esta chamada — nenhuma tabela global é alterada, e
-            SERVO_OPEN/SERVO_CLOSED continuam vindo sempre das tabelas
-            clínicas de sempre, com ou sem esse parâmetro.
+            SERVO_OPEN/SERVO_CLOSED são sempre os mesmos, com ou sem esse
+            parâmetro.
 
     Retorna:
         Posição de servo (int) ou None se o valor de entrada for inválido

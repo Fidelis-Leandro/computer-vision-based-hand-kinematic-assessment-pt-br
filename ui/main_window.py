@@ -12,7 +12,9 @@ Telas do sistema (QStackedWidget):
     - Página 0: Tela de Avaliação em Andamento (área rolável clínica com vídeo,
       métricas clínicas, gráficos temporais, cartões por dedo e gaveta de logs).
     - Página 2: Tela de Resultado da Sessão (resumo informativo e ações pós-sessão:
-      geração de PDF sob demanda, exportação de CSV, nova avaliação e limpeza de dados).
+      geração de PDF sob demanda, visualização embutida do PDF, exportação de CSV,
+      abertura da pasta de sessões, remoção opcional dos arquivos da sessão e
+      nova avaliação).
 
 Barra fixa superior de avaliação (_assessment_bar):
     - Localizada fora da área de rolagem clínica, no topo da janela principal.
@@ -154,7 +156,7 @@ _DO_NOT_SAVE_TOOLTIP_PDF_BUSY = (
 # "EMA", o mesmo filtro válido do item 2 — só o perfil ("DEMO", 1.5) o
 # distingue. Isso significa que set_filter_mode(), a validação de
 # CSV_VALID_FILTER_MODES e tudo que já lê currentData() continuam recebendo
-# uma string que já é válida hoje, sem precisar saber que Evento existe.
+# uma string que já é válida, sem precisar saber que Evento existe.
 FILTER_MODE_OPTIONS = (
     (
         "EMA_KALMAN",
@@ -367,7 +369,7 @@ class MainWindow(QMainWindow):
         # remove ou substitui os arquivos da sessão precisa fechá-lo antes.
         self._pdf_viewer_dialog: Optional[PdfViewerDialog] = None
 
-        # Controle de visibilidade da gaveta de logs (Fase 4B)
+        # Controle de visibilidade da gaveta de logs.
         self._logs_visible: bool = False
 
         # --- Estado do worker da mão robótica (Arduino) ---
@@ -434,7 +436,7 @@ class MainWindow(QMainWindow):
         # Log de eventos do sistema com timestamps.
         self.log_widget = LogWidget()
 
-        # Botão para alternar a gaveta de logs (Fase 4B)
+        # Botão para alternar a gaveta de logs.
         self.btn_toggle_logs = QPushButton("Exibir Logs do Sistema")
         self.btn_toggle_logs.setFixedHeight(28)
         self.btn_toggle_logs.setToolTip("Exibe ou oculta a gaveta de logs do sistema.")
@@ -629,7 +631,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(cards_scroll)
 
-        # --- 5. Log de eventos com gaveta recolhível (Fase 4B) ---
+        # --- 5. Log de eventos com gaveta recolhível ---
         main_layout.addWidget(self.btn_toggle_logs)
         self.log_widget.setMinimumHeight(80)
         self.log_widget.setMaximumHeight(100)
@@ -637,7 +639,7 @@ class MainWindow(QMainWindow):
         self._set_logs_visible(False)
 
         # =========================================================
-        # Barra Fixa Superior de Avaliação (Fase 6)
+        # Barra Fixa Superior de Avaliação
         # =========================================================
         self._assessment_bar = QWidget()
         self._assessment_bar.setStyleSheet(
@@ -653,7 +655,7 @@ class MainWindow(QMainWindow):
         )
         bar_layout.addWidget(self._assessment_bar_label)
 
-        # Badge do perfil Evento (Fase 7E-f) — somente leitura, sem clique.
+        # Badge do perfil Evento — somente leitura, sem clique.
         # Oculto por padrão: só _update_demo_badge_visibility() decide quando
         # mostrá-lo, e só o faz em RUNNING com self._session_demo_mode True.
         # Nasce escondido para que nenhum estado transitório da inicialização
@@ -679,11 +681,11 @@ class MainWindow(QMainWindow):
         # Página 0: Tela de Avaliação em Andamento (painel clínico rolável)
         self._stack.addWidget(self._page_current_layout)
 
-        # Página 1: Tela de Configuração da Sessão (Fase 2)
+        # Página 1: Tela de Configuração da Sessão
         self._page_setup = self._build_setup_page()
         self._stack.addWidget(self._page_setup)
 
-        # Página 2: Tela de Resultado da Sessão (Fase 5A)
+        # Página 2: Tela de Resultado da Sessão
         self._page_result = self._build_result_page()
         self._stack.addWidget(self._page_result)
 
@@ -943,8 +945,9 @@ class MainWindow(QMainWindow):
         """
         Constrói a Tela de Resultado da Sessão (Página 2 do QStackedWidget).
 
-        Apresenta resumo informativo pós-sessão e botões de ação para
-        geração de PDF, exportação de CSV e abertura da pasta de histórico.
+        Apresenta o resumo informativo pós-sessão e os botões de ação:
+        gerar e visualizar o relatório PDF, exportar o CSV, abrir a pasta de
+        sessões, remover os arquivos da sessão e iniciar uma nova avaliação.
         """
         page = QWidget()
         page_layout = QVBoxLayout(page)
@@ -1244,8 +1247,8 @@ class MainWindow(QMainWindow):
         self._btn_result_pdf.setEnabled(has_csv)
         self._btn_result_csv.setEnabled(has_csv)
         # Mesmo critério dos botões de exportação: sem CSV em disco não há o
-        # que remover. Depois da remoção (8c), este método é chamado de novo
-        # e desabilita os três de uma vez.
+        # que remover. Depois da remoção dos arquivos, este método é chamado
+        # de novo e desabilita os três de uma vez.
         self._btn_result_do_not_save.setEnabled(has_csv)
 
         # "Visualizar Relatório" segue o PDF, não o CSV: o relatório é gerado
@@ -1317,16 +1320,14 @@ class MainWindow(QMainWindow):
 
     def _on_result_new_session(self) -> None:
         """
-        Reinicia o sistema por completo e retorna à Tela de Configuração em IDLE.
+        Reinicia a aplicação e retorna à Tela de Configuração no estado IDLE.
 
-        Este é o único caminho de reset da aplicação. Antes existiam dois
-        botões na Tela de Resultado — "Nova Avaliação" e "Limpar Dados do
-        Paciente" — visualmente idênticos e ambos executando o mesmo reset
-        completo de workers, gráficos e métricas. A única diferença entre eles
-        era preservar ou apagar a identificação do paciente, distinção
-        invisível para quem olhava a tela. Consolidar em um botão que sempre
-        limpa tudo elimina a ambiguidade na raiz: o resultado é sempre o mesmo,
-        e o diálogo de confirmação enuncia esse alcance antes de qualquer dano.
+        Este é o único caminho de reset: um botão que sempre limpa tudo evita
+        estados parciais e ambíguos. O reset encerra os recursos da sessão
+        anterior, fecha o visualizador de PDF, limpa gráficos, métricas, dados
+        transitórios e o log em tela, e apaga a identificação do paciente. Os
+        arquivos CSV e PDF existentes não são removidos por este método; o
+        diálogo de confirmação enuncia esse alcance antes de qualquer dano.
 
         A ordem das etapas abaixo é obrigatória e não deve ser simplificada:
         session_header.reset(), chamado dentro de _new_session(), deliberadamente
@@ -1562,7 +1563,7 @@ class MainWindow(QMainWindow):
         self._assessment_bar.setVisible(is_eval_active)
 
     # =========================================================================
-    # CONTROLE DA GAVETA DE LOGS (FASE 4B)
+    # CONTROLE DA GAVETA DE LOGS
     # =========================================================================
 
     def _toggle_logs(self) -> None:
@@ -1719,8 +1720,8 @@ class MainWindow(QMainWindow):
         # tam_max_table vem do perfil CONGELADO da sessão
         # (self._session_demo_mode), nunca de uma nova leitura do combo:
         # durante RUNNING o dropdown já está desabilitado, e o perfil não
-        # pode mudar no meio da sessão. Fora do perfil Evento, None preserva
-        # exatamente o comportamento clínico de sempre (TAM_MAX interno de
+        # pode mudar no meio da sessão. Fora do perfil Evento, None usa o
+        # mapeamento do perfil clínico (TAM_MAX interno de
         # outputs/tam_to_servo.py, não a tabela paralela TAM_MAX_DEMO).
         if self._robot_hand_worker is not None and self._robot_hand_state == "on":
             tam_max_table = TAM_MAX_DEMO if self._session_demo_mode else None
@@ -1788,8 +1789,7 @@ class MainWindow(QMainWindow):
         # (self._session_hand_lost_timeout_s), não de uma nova leitura do
         # combo. None (perfil clínico) omite o argumento por completo, então
         # RobotHandWorker usa seu próprio default (HAND_LOST_TIMEOUT_S,
-        # 1.0s) — o mesmo comportamento de sempre, sem precisar duplicar
-        # esse valor aqui.
+        # 1.0s), sem precisar duplicar esse valor aqui.
         worker_kwargs = {"parent": self}
         if self._session_hand_lost_timeout_s is not None:
             worker_kwargs["hand_lost_timeout_s"] = self._session_hand_lost_timeout_s

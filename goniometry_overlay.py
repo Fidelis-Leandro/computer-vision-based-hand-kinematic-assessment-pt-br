@@ -14,12 +14,9 @@ Responsabilidades:
 O ponto de entrada do módulo é _build_skeleton(), consumido por
 workers/processing_worker.py — é o único símbolo daqui que chega à tela.
 
-Até a Fase 7D existia também um painel de dados clínicos lado a lado
-(draw_goniometry_overlay e auxiliares), abandonado quando as métricas por
-dedo migraram para os widgets PyQt6 (ui/finger_card_widget.py e
-ui/metrics_widget.py). Esse código ficou anos sem nenhum chamador e foi
-removido: além de morto, presumia TAM sempre numérico e quebraria com o
-None que smooth_all() passou a produzir.
+As métricas clínicas e os cartões por dedo são responsabilidade dos widgets
+PyQt6 (ui/finger_card_widget.py e ui/metrics_widget.py); este módulo não
+desenha painéis de dados.
 """
 
 import math
