@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
 from dashboard_utils import (
     FINGER_JOINTS,
@@ -779,7 +780,7 @@ def _add_identification_block(
 
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Identificação do Paciente e da Sessão", ln=True)
+    _cell(pdf, 0, 7, "Identificação do Paciente e da Sessão", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(60, 60, 70)
@@ -803,7 +804,7 @@ def _add_identification_block(
         pdf.set_font("Helvetica", "B", 9)
         _cell(pdf, 42, 5, label)
         pdf.set_font("Helvetica", "", 9)
-        _cell(pdf, 0, 5, value, ln=True)
+        _cell(pdf, 0, 5, value, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # Observação automática
     pdf.ln(2)
@@ -827,7 +828,7 @@ def _add_main_table(
     """Adiciona a tabela principal de métricas por dedo."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Tabela Principal — Métricas por Dedo", ln=True)
+    _cell(pdf, 0, 7, "Tabela Principal — Métricas por Dedo", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     headers = [
         "Dedo", "TAM\nfinal", "TAM\nmédio", "TAM\nmáx.", "TAM\nmín.",
@@ -912,7 +913,7 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
     """Adiciona blocos explicativos de classificação funcional por dedo."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Avaliação Funcional Híbrida", ln=True)
+    _cell(pdf, 0, 7, "Avaliação Funcional Híbrida", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(2)
 
     for idx, finger in enumerate(FINGERS):
@@ -924,7 +925,7 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         # Cabeçalho do dedo
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(30, 30, 40)
-        _cell(pdf, 0, 5, f" {FINGER_LABELS[finger]}:", ln=True)
+        _cell(pdf, 0, 5, f" {FINGER_LABELS[finger]}:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         # Itens
         pdf.set_font("Helvetica", "", 8)
@@ -936,7 +937,7 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         pdf.set_font("Helvetica", "B", 8)
         color_art = _hex_to_rgb(s["articular_class"]["cor"])
         pdf.set_text_color(*color_art)
-        _cell(pdf, 0, 4, s["articular_class"]["rotulo"], ln=True)
+        _cell(pdf, 0, 4, s["articular_class"]["rotulo"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         # Funcional
         pdf.set_font("Helvetica", "", 8)
@@ -946,7 +947,7 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         pdf.set_font("Helvetica", "B", 8)
         color_func = _hex_to_rgb(s["functional_class"]["cor"])
         pdf.set_text_color(*color_func)
-        _cell(pdf, 0, 4, s["functional_class"]["rotulo"], ln=True)
+        _cell(pdf, 0, 4, s["functional_class"]["rotulo"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         # Híbrida
         pdf.set_font("Helvetica", "", 8)
@@ -956,7 +957,7 @@ def _add_functional_blocks(pdf: _ReportPDF, summary: Dict[str, Dict[str, Any]]) 
         pdf.set_font("Helvetica", "B", 8)
         color_hyb = _hex_to_rgb(s["hybrid_class"]["cor"])
         pdf.set_text_color(*color_hyb)
-        _cell(pdf, 0, 4, s["hybrid_class"]["rotulo"], ln=True)
+        _cell(pdf, 0, 4, s["hybrid_class"]["rotulo"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         # Justificativa
         pdf.set_font("Helvetica", "I", 8)
@@ -975,7 +976,7 @@ def _add_complementary_table(
     """Adiciona a tabela suplementar com médias articulares."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Tabela Suplementar — Médias Articulares", ln=True)
+    _cell(pdf, 0, 7, "Tabela Suplementar — Médias Articulares", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     headers = ["Dedo", "MCP média", "PIP / IP média", "DIP média"]
     widths = [35, 35, 35, 35]
@@ -1014,7 +1015,7 @@ def _add_legend(pdf: _ReportPDF) -> None:
     """Adiciona a legenda clínica de abreviações."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Legenda Clínica", ln=True)
+    _cell(pdf, 0, 7, "Legenda Clínica", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     legends = [
         ("TAM (Total Active Motion)",
@@ -1179,7 +1180,7 @@ def generate_pdf_report(
     # Gráfico geral
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Gráfico de TAM ao Longo da Sessão", ln=True)
+    _cell(pdf, 0, 7, "Gráfico de TAM ao Longo da Sessão", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     if os.path.isfile(tam_plot_path):
         pdf.image(tam_plot_path, x=10, w=190)
@@ -1188,7 +1189,7 @@ def generate_pdf_report(
     # Gráficos individuais
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Gráficos Individuais por Dedo", ln=True)
+    _cell(pdf, 0, 7, "Gráficos Individuais por Dedo", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # Layout de grade 2×3
     x_positions = [10, 105]
@@ -1219,7 +1220,7 @@ def generate_pdf_report(
     pdf.ln(3)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 50)
-    _cell(pdf, 0, 7, "Interpretação Clínica", ln=True)
+    _cell(pdf, 0, 7, "Interpretação Clínica", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(50, 50, 60)

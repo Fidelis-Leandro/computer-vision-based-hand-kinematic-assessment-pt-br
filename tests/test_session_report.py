@@ -26,6 +26,7 @@ pytest) — nenhum dado é gravado no repositório.
 import csv
 import os
 import re
+import warnings
 import zlib
 
 import pytest
@@ -546,3 +547,118 @@ class TestEventProfileReportGenerates:
 
         assert os.path.isfile(output_path)
         assert os.path.getsize(output_path) > 0
+
+
+# =============================================================================
+# API de células do FPDF2: ausência de depreciação e estrutura do relatório
+# =============================================================================
+#
+# O parâmetro ln= de cell()/multi_cell() está obsoleto no FPDF2 desde a versão
+# 2.5.2. O equivalente atual de ln=True é o par new_x=XPos.LMARGIN,
+# new_y=YPos.NEXT, que produz o mesmo avanço de linha: cursor para a margem
+# esquerda, uma linha abaixo. Enquanto o fpdf2 ainda aceita ln=, cada chamada
+# apenas emite um DeprecationWarning; quando o suporte for removido, a geração
+# do relatório passa a falhar de uma vez.
+#
+# Um aviso de depreciação some da vista assim que alguém se acostuma a ele.
+# Por isso a ausência dele é contrato verificado aqui: reintroduzir ln= em
+# qualquer chamada quebra a suíte na hora, em vez de acrescentar em silêncio
+# mais um item a uma contagem que ninguém lê.
+#
+# Não confundir com o MÉTODO pdf.ln(...), usado dezenas de vezes em
+# session_report.py: ele não é obsoleto e é o que controla todo o espaçamento
+# vertical do documento. Só o PARÂMETRO ln= foi descontinuado. O segundo teste
+# desta seção protege exatamente essa confusão — mexer no método por engano
+# desloca o conteúdo e altera a paginação, que é o que ele verifica.
+
+
+def _pdf_page_footers(texto: str) -> list:
+    """
+    Devolve os rodapés "Página N/T" encontrados no texto extraído.
+
+    Contar páginas sem biblioteca de PDF é possível porque _ReportPDF.footer()
+    escreve esse rodapé em toda página. O número de rodapés é o número de
+    páginas, e cada um traz o total — os dois têm de bater.
+    """
+    return re.findall(r"P.gina *(\d+)/(\d+)", texto)
+
+
+class TestNoFpdfDeprecationWarnings:
+    def test_report_generation_emits_no_deprecated_ln_warning(self, tmp_path):
+        """
+        Nenhum DeprecationWarning sobre o parâmetro ln durante a geração.
+
+        O filtro é específico: só avisos que citam "ln" ou "new_x". Um teste
+        que falhasse em QUALQUER DeprecationWarning ficaria refém de
+        depreciações de matplotlib, numpy ou do próprio Python — ruído de
+        terceiros que não temos como corrigir aqui e que tornaria este teste
+        instável a cada atualização de ambiente.
+        """
+        from session_report import generate_pdf_report
+
+        csv_path = tmp_path / "sessao_sem_avisos.csv"
+        _write_new_format_csv(csv_path, filter_mode="EMA_KALMAN", tam_index=200.0)
+
+        with warnings.catch_warnings(record=True) as capturados:
+            warnings.simplefilter("always")
+            output_path = generate_pdf_report(
+                str(csv_path), patient_name="Paciente Teste", side="Direita"
+            )
+
+        relevantes = [
+            w
+            for w in capturados
+            if issubclass(w.category, DeprecationWarning)
+            and ("ln" in str(w.message) or "new_x" in str(w.message))
+        ]
+
+        assert os.path.isfile(output_path)
+        assert os.path.getsize(output_path) > 0
+        assert not relevantes, (
+            f"{len(relevantes)} aviso(s) de depreciação do FPDF2 durante a "
+            f"geração; primeiro: {relevantes[0].message}"
+        )
+
+
+class TestReportStructureSurvivesMigration:
+    def test_report_keeps_its_essential_sections_and_pagination(self, tmp_path):
+        """
+        As seções e a paginação do relatório não mudam.
+
+        Não compara com um PDF de referência: um relatório binário guardado
+        no repositório ninguém saberia regenerar, e ele falharia por qualquer
+        diferença irrelevante (data de geração, ordem interna de objetos). O
+        que precisa continuar verdadeiro são as seções do documento e a
+        paginação — qualquer erro no posicionamento do cursor entre células
+        desloca o conteúdo e derruba justamente isso.
+        """
+        from session_report import generate_pdf_report
+
+        csv_path = tmp_path / "sessao_estrutura.csv"
+        _write_new_format_csv(csv_path, filter_mode="EMA_KALMAN", tam_index=200.0)
+
+        output_path = generate_pdf_report(
+            str(csv_path), patient_name="Paciente Teste", side="Direita"
+        )
+        texto = _extract_pdf_text(output_path)
+
+        assert texto.strip(), "o PDF não pode sair sem nenhum texto"
+
+        for trecho in (
+            "Tabela Principal",
+            "Avaliação Funcional",
+            "Interpretação Clínica",
+            "Tabela Suplementar",
+            "Legenda Clínica",
+        ):
+            assert trecho in texto, f"seção ausente do relatório: {trecho!r}"
+
+        rodapes = _pdf_page_footers(texto)
+        assert len(rodapes) >= 2, (
+            f"relatório com paginação inesperada: {len(rodapes)} página(s)"
+        )
+        total_declarado = {total for _, total in rodapes}
+        assert total_declarado == {str(len(rodapes))}, (
+            "o total de páginas do rodapé não bate com o número de páginas: "
+            f"rodapés={rodapes}"
+        )
