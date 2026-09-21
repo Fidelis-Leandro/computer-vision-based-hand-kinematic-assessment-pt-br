@@ -155,11 +155,10 @@ def build_footer_method_text(filter_mode: Optional[str], assumed: bool) -> str:
     descrito. Por isso o texto é montado a partir do modo real gravado no
     CSV da sessão.
 
-    `assumed=True` (CSV sem a coluna filter_mode, de um formato anterior ao
-    registro do modo) é tratado à parte: o único pipeline existente nesse
-    formato era EMA_KALMAN, mas isso é uma suposição sobre o passado, não um
-    dado medido — o relatório nunca pode apresentar essa suposição como se
-    fosse um fato confirmado.
+    `assumed=True` (CSV sem a coluna filter_mode) é tratado à parte:
+    EMA_KALMAN é o pipeline padrão, mas para um arquivo sem registro de modo
+    isso é uma suposição, não um dado medido — o relatório nunca pode
+    apresentar essa suposição como se fosse um fato confirmado.
     """
     base = "Método: webcam + rastreamento de marcos anatômicos (MediaPipe Hands)"
 
@@ -171,8 +170,9 @@ def build_footer_method_text(filter_mode: Optional[str], assumed: bool) -> str:
 
     label = _FILTER_MODE_LABELS.get(filter_mode)
     if label is None:
-        # Modo ausente/desconhecido sem ser um CSV antigo (ex.: valor
-        # corrompido) — texto transparente, nunca afirma EMA + Kalman.
+        # Modo ausente ou não reconhecido, sem estar marcado como assumido
+        # (ex.: valor corrompido) — texto transparente, nunca afirma
+        # EMA + Kalman.
         return f"{base}. Modo de filtragem: não identificado ({filter_mode!r})."
 
     return f"{base}. Modo de filtragem: {label}."
@@ -186,7 +186,7 @@ def build_demo_mode_warning_text(demo_mode: bool) -> str:
     a sessão foi o perfil Evento. Não os combino na mesma frase para que
     nenhuma mudança em um afete o texto do outro.
 
-    demo_mode=False (sessão clínica, ou CSV antigo sem a coluna) devolve
+    demo_mode=False (sessão clínica, ou CSV sem a coluna) devolve
     string vazia — o rodapé de uma sessão normal não deve ganhar nenhuma
     linha extra.
     """
@@ -237,21 +237,20 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
         "session_end":   float,   # último timestamp
         "n_frames":      int,
         "filter_mode": str | None,      # modo lido do CSV, ou None se ausente
-        "filter_mode_assumed": bool,    # True = CSV antigo, sem essa coluna
+        "filter_mode_assumed": bool,    # True = CSV sem essa coluna
         "demo_mode": bool,              # True = sessão do perfil Evento
     }
 
     filter_mode vem da coluna "filter_mode", a mesma em toda linha da
-    sessão — basta ler uma vez. CSVs de um formato anterior não têm essa
-    coluna; nesse caso, filter_mode fica None e filter_mode_assumed fica
-    True, para que quem gera o relatório saiba que o modo não foi
-    registrado e não pode ser afirmado como fato.
+    sessão — basta ler uma vez. Num CSV sem essa coluna, filter_mode fica
+    None e filter_mode_assumed fica True, para que quem gera o relatório
+    saiba que o modo não foi registrado e não pode ser afirmado como fato.
 
     demo_mode vem da coluna "demo_mode", lida como texto "True"/"False". Ao
-    contrário de filter_mode, não existe aqui um "demo_mode_assumed": um CSV
-    sem essa coluna é anterior ao registro do perfil Evento, então False é
-    um FATO sobre esse CSV, não uma suposição — a ausência da coluna já
-    responde a pergunta.
+    contrário de filter_mode, não existe aqui um "demo_mode_assumed": a
+    ausência da coluna identifica um arquivo sem metadado de perfil, e o
+    carregador usa False para esse caso — um FATO sobre esse CSV, não uma
+    suposição.
     """
     timestamps: List[float] = []
     frame_ids: List[int] = []
@@ -278,16 +277,16 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
 
             # filter_mode é o mesmo em toda linha da sessão — sobrescrever
             # a cada linha é inofensivo e mais simples do que só ler na
-            # primeira. row.get() devolve None se a coluna não existir
-            # (CSV antigo) ou "" se existir mas vier vazia; os dois casos
-            # devem virar None aqui.
+            # primeira. row.get() devolve None se a coluna não existir ou
+            # "" se existir mas vier vazia; os dois casos devem virar None
+            # aqui.
             filter_mode_from_csv = row.get("filter_mode") or None
 
             # demo_mode é gravado como texto ("True"/"False") em toda linha
             # dos CSVs que têm a coluna. Um CSV sem a coluna (row.get()
             # devolve None) ou com célula vazia cai no default "" -> False,
-            # que é o comportamento correto: um CSV sem a coluna é anterior
-            # ao registro do perfil Evento.
+            # que é a leitura correta: sem metadado de perfil, a sessão é
+            # clínica.
             demo_mode_from_csv = (row.get("demo_mode") or "").strip().lower() == "true"
 
             # Dedos longos
@@ -318,7 +317,7 @@ def load_session_csv(csv_path: str) -> Dict[str, Any]:
             except (ValueError, TypeError):
                 thumb_tam = 0.0
 
-            # Fallback: se um CSV mais antigo não possuir THUMB_TAM, calcula-o.
+            # Fallback: se um CSV não possuir THUMB_TAM, calcula-o.
             if thumb_tam < 0.01 and (thumb_mcp > 0.01 or thumb_ip > 0.01):
                 thumb_tam = max(thumb_mcp, 0.0) + max(thumb_ip, 0.0)
 

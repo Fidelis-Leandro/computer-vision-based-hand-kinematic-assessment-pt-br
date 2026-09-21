@@ -66,14 +66,13 @@ CSV_FIELDS = [
     "THUMB_MCP",
     "THUMB_IP",
     "THUMB_TAM",
-    # filter_mode fica por último, nunca no meio: assim, qualquer ferramenta
-    # externa que leia por posição as colunas que o precedem continua
-    # funcionando sem mudança — só quem espera essa coluna precisa procurá-la.
+    # filter_mode e demo_mode são as duas colunas de metadado e vêm depois
+    # das colunas clínicas, nunca no meio: assim, qualquer ferramenta externa
+    # que leia as colunas clínicas por posição continua funcionando sem
+    # mudança — só quem espera os metadados precisa procurá-los.
     "filter_mode",
-    # demo_mode permanece após filter_mode pelo mesmo motivo: preserva a ordem
-    # das colunas existentes e a compatibilidade com ferramentas que leem o CSV
-    # por posição. Identifica sessões do perfil Evento (demonstração em
-    # estande).
+    # demo_mode vem depois de filter_mode e fecha o cabeçalho. Identifica
+    # sessões do perfil Evento (demonstração em estande).
     "demo_mode",
 ]
 
