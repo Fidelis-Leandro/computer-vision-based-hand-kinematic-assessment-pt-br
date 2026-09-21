@@ -19,7 +19,9 @@ PyQt6 (ui/finger_card_widget.py e ui/metrics_widget.py); este módulo não
 desenha painéis de dados.
 """
 
+import logging
 import math
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
@@ -300,6 +302,265 @@ def _tw(text: str, scale: float = 0.40, thickness: int = 1) -> int:
 
 
 # =============================================================================
+# TEXTO FIXO COM ACENTOS
+# =============================================================================
+#
+# As fontes Hershey do OpenCV cobrem só ASCII: "Móvel" sairia como "M??vel".
+# Os textos fixos do painel (título, legenda e aviso de espera) são
+# rasterizados pelo Pillow com a fonte DejaVu Sans que acompanha o
+# matplotlib. Cada texto vira uma máscara uma única vez e é reaproveitado em
+# todos os quadros; por quadro, só a região do texto é composta sobre o
+# canvas. Sem Pillow, matplotlib ou a fonte, o painel segue com Hershey e a
+# versão ASCII de cada texto: a renderização de texto nunca interrompe o vídeo.
+#
+# Os rótulos das articulações ("MCP 45") são ASCII e continuam em Hershey.
+
+# Textos fixos do painel: (versão com acentos, versão ASCII do fallback).
+OVERLAY_TITLE = ("AVALIAÇÃO CINEMÁTICA DA MÃO", "AVALIACAO CINEMATICA DA MAO")
+WAITING_TEXT = ("Aguardando detecção da mão...", "Aguardando deteccao da mao...")
+LEGEND_FIXED = ("Fixo", "Fixo")
+LEGEND_MOBILE = ("Móvel", "Movel")
+LEGEND_AXIS = ("Eixo", "Eixo")
+
+# Aviso de quadro congelado, desenhado em Hershey. A legenda usa as mesmas
+# medidas para ficar acima dele.
+FROZEN_TEXT = "[ QUADRO CONGELADO ]"
+FROZEN_SCALE = 0.38
+FROZEN_BASELINE_OFFSET = 14
+
+# Pixels de altura de uma linha Hershey na escala 1.0: converte o tamanho em
+# pixels da fonte TrueType para a escala equivalente do fallback.
+_HERSHEY_PX_PER_SCALE = 30.0
+
+# O painel usa poucos textos fixos em poucas resoluções; o limite só impede
+# que o cache cresça sem controle.
+_TEXT_CACHE_MAX = 64
+
+_FONT_UNRESOLVED = object()
+_unicode_font_path_cache: Any = _FONT_UNRESOLVED
+_unicode_fallback_logged = False
+_font_cache: Dict[int, Any] = {}
+_text_cache: Dict[Tuple[str, int, Tuple[int, int, int]], Tuple[np.ndarray, np.ndarray]] = {}
+
+logger = logging.getLogger(__name__)
+
+
+def _disable_unicode_text(reason: str) -> None:
+    """Passa os textos fixos para o fallback ASCII e registra o motivo uma vez."""
+    global _unicode_font_path_cache, _unicode_fallback_logged
+    _unicode_font_path_cache = None
+    if not _unicode_fallback_logged:
+        _unicode_fallback_logged = True
+        logger.warning("Overlay sem texto acentuado (%s); usando fallback ASCII.", reason)
+
+
+def _unicode_font_path() -> Optional[str]:
+    """Caminho da DejaVu Sans do matplotlib, ou None se o texto acentuado estiver indisponível."""
+    global _unicode_font_path_cache
+    if _unicode_font_path_cache is _FONT_UNRESOLVED:
+        try:
+            import matplotlib
+            from PIL import ImageFont  # noqa: F401  (confirma que o Pillow está disponível)
+            path = os.path.join(matplotlib.get_data_path(), "fonts", "ttf", "DejaVuSans.ttf")
+        except Exception as exc:
+            _disable_unicode_text("Pillow ou matplotlib indisponível: %s" % exc)
+            return None
+        if not os.path.isfile(path):
+            _disable_unicode_text("DejaVuSans.ttf não encontrada")
+            return None
+        _unicode_font_path_cache = path
+    return _unicode_font_path_cache
+
+
+def _unicode_font(px: int) -> Any:
+    """Fonte DejaVu Sans no tamanho pedido, carregada uma vez por tamanho."""
+    font = _font_cache.get(px)
+    if font is None:
+        from PIL import ImageFont
+        font = ImageFont.truetype(_unicode_font_path(), px)
+        _font_cache[px] = font
+    return font
+
+
+def _unicode_text_sprite(
+    text: str,
+    px: int,
+    color: Tuple[int, int, int],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Máscara do texto pronta para composição, em cache por (texto, tamanho, cor).
+
+    O tamanho em pixels é derivado da resolução do painel, então a chave
+    distingue o mesmo texto em resoluções diferentes. O Pillow desenha só a
+    cobertura do texto (imagem em tons de cinza, modo "L"), e a cor BGR do
+    OpenCV é aplicada sobre ela: não há conversão entre RGB e BGR. Devolve
+    (1 - alfa, cor * alfa) em float32, de modo que a composição por quadro
+    seja uma multiplicação e uma soma.
+    """
+    key = (text, px, color)
+    sprite = _text_cache.get(key)
+    if sprite is not None:
+        return sprite
+
+    from PIL import Image, ImageDraw
+
+    font = _unicode_font(px)
+    left, _, right, _ = font.getbbox(text)
+    ascent, descent = font.getmetrics()
+    # A altura vem da métrica da fonte, e a folga superior cobre os acentos
+    # das maiúsculas: todos os textos do mesmo tamanho compartilham a mesma
+    # linha de base, com ou sem acento.
+    top_pad = max(0, -font.getbbox("ÁÃÇ")[1])
+    mask = Image.new("L", (max(1, right - left), max(1, top_pad + ascent + descent)), 0)
+    ImageDraw.Draw(mask).text((-left, top_pad), text, font=font, fill=255)
+
+    alpha = np.asarray(mask, dtype=np.float32)[:, :, None] / 255.0
+    sprite = (1.0 - alpha, alpha * np.array(color, dtype=np.float32))
+    if len(_text_cache) >= _TEXT_CACHE_MAX:
+        _text_cache.clear()
+    _text_cache[key] = sprite
+    return sprite
+
+
+def _blit_unicode_text(
+    canvas: np.ndarray,
+    text: str,
+    x: int,
+    y: int,
+    px: int,
+    color: Tuple[int, int, int],
+) -> None:
+    """Compõe o texto com o canto superior esquerdo em (x, y), só na região dele.
+
+    A região é recortada aos limites do canvas: um texto parcial ou totalmente
+    fora do painel nunca acessa memória fora dele.
+    """
+    inv_alpha, colored = _unicode_text_sprite(text, px, color)
+    h, w = inv_alpha.shape[:2]
+    img_h, img_w = canvas.shape[:2]
+    x1, y1 = max(0, x), max(0, y)
+    x2, y2 = min(img_w, x + w), min(img_h, y + h)
+    if x2 <= x1 or y2 <= y1:
+        return
+    region = np.s_[y1 - y:y2 - y, x1 - x:x2 - x]
+    roi = canvas[y1:y2, x1:x2]
+    roi[:] = (roi * inv_alpha[region] + colored[region] + 0.5).astype(np.uint8)
+
+
+def _hershey_params(px: int) -> Tuple[float, int]:
+    """Escala e espessura Hershey equivalentes a um tamanho em pixels (fallback)."""
+    scale = px / _HERSHEY_PX_PER_SCALE
+    return scale, (1 if scale < 1.2 else 2)
+
+
+def _text_extent(
+    text: Tuple[str, str],
+    px: int,
+    color: Tuple[int, int, int],
+) -> Tuple[int, int]:
+    """Largura e altura do texto fixo como ele será desenhado (acentuado ou fallback)."""
+    unicode_text, ascii_text = text
+    if _unicode_font_path() is not None:
+        try:
+            inv_alpha, _ = _unicode_text_sprite(unicode_text, px, color)
+            return inv_alpha.shape[1], inv_alpha.shape[0]
+        except Exception as exc:
+            _disable_unicode_text("falha ao rasterizar texto: %s" % exc)
+    scale, thickness = _hershey_params(px)
+    (w, h), baseline = cv2.getTextSize(ascii_text, cv2.FONT_HERSHEY_DUPLEX, scale, thickness)
+    return w, h + baseline
+
+
+def _draw_text(
+    canvas: np.ndarray,
+    text: Tuple[str, str],
+    x: int,
+    y: int,
+    px: int,
+    color: Tuple[int, int, int],
+) -> None:
+    """Desenha um texto fixo com o canto superior esquerdo em (x, y)."""
+    unicode_text, ascii_text = text
+    if _unicode_font_path() is not None:
+        try:
+            _blit_unicode_text(canvas, unicode_text, x, y, px, color)
+            return
+        except Exception as exc:
+            _disable_unicode_text("falha ao desenhar texto: %s" % exc)
+    scale, thickness = _hershey_params(px)
+    (_, h), _ = cv2.getTextSize(ascii_text, cv2.FONT_HERSHEY_DUPLEX, scale, thickness)
+    _put(canvas, ascii_text, x, y + h, color, scale, thickness)
+
+
+def _draw_centered_text(
+    canvas: np.ndarray,
+    text: Tuple[str, str],
+    y: int,
+    px: int,
+    color: Tuple[int, int, int],
+) -> None:
+    """Desenha um texto fixo centralizado na largura do canvas, com topo em y."""
+    w, _ = _text_extent(text, px, color)
+    _draw_text(canvas, text, (canvas.shape[1] - w) // 2, y, px, color)
+
+
+def _panel_scale(pw: int, ph: int) -> float:
+    """Fator de escala do painel em relação à referência de 640x480."""
+    return min(pw / 640.0, ph / 480.0)
+
+
+def _draw_legend(canvas: np.ndarray, pw: int, ph: int, frozen: bool) -> None:
+    """
+    Legenda dos marcadores do goniômetro no canto inferior esquerdo.
+
+    As medidas são proporcionais ao painel (referência 640x480), com limites
+    para a fonte. Cada item começa depois da largura real do anterior, então
+    os itens nunca se sobrepõem; se a legenda não couber na largura do
+    painel, a escala é reduzida. Com o quadro congelado, a legenda sobe para
+    ficar acima do aviso "[ QUADRO CONGELADO ]".
+    """
+    items = (
+        (LEGEND_FIXED, COLOR_STAT, "line"),
+        (LEGEND_MOBILE, COLOR_MOB, "line"),
+        (LEGEND_AXIS, COLOR_AXIS, "dot"),
+    )
+    s = _panel_scale(pw, ph)
+    for _ in range(3):
+        px = int(np.clip(round(16 * s), 12, 34))
+        line_len = max(16, round(28 * s))
+        thickness = max(2, round(3 * s))
+        radius = max(4, round(6 * s))
+        gap_mark = max(6, round(8 * s))
+        gap_item = max(16, round(28 * s))
+        margin_x = max(10, round(16 * s))
+        margin_y = max(10, round(14 * s))
+        extents = [_text_extent(label, px, GRAY_LIGHT) for label, _, _ in items]
+        marks = [line_len if kind == "line" else 2 * radius for _, _, kind in items]
+        total = sum(m + gap_mark + w for m, (w, _) in zip(marks, extents))
+        total += gap_item * (len(items) - 1)
+        if total <= pw - 2 * margin_x:
+            break
+        s *= (pw - 2 * margin_x) / float(total)
+
+    row_h = max(max(h for _, h in extents), 2 * radius + 2)
+    bottom = ph - margin_y
+    if frozen:
+        (_, frozen_h), _ = cv2.getTextSize(FROZEN_TEXT, cv2.FONT_HERSHEY_DUPLEX, FROZEN_SCALE, 1)
+        bottom = min(bottom, ph - FROZEN_BASELINE_OFFSET - frozen_h - gap_mark)
+    cy = bottom - row_h // 2
+
+    x = margin_x
+    for (label, color, kind), mark_w, (text_w, text_h) in zip(items, marks, extents):
+        if kind == "line":
+            cv2.line(canvas, (x, cy), (x + mark_w, cy), color, thickness, cv2.LINE_AA)
+        else:
+            cv2.circle(canvas, (x + radius, cy), radius, color, -1, cv2.LINE_AA)
+        x += mark_w + gap_mark
+        _draw_text(canvas, label, x, cy - text_h // 2, px, GRAY_LIGHT)
+        x += text_w + gap_item
+
+
+# =============================================================================
 # PAINEL DE ESQUELETO + GONIÔMETRO
 # =============================================================================
 
@@ -316,10 +577,13 @@ def _build_skeleton(
     Constrói o painel com o esqueleto da mão e o goniômetro virtual.
     """
     canvas = np.full((ph, pw, 3), BG_DARK, dtype=np.uint8)
-    _center_text(canvas, "GONIOMETRIA DIGITAL", 26, pw, WHITE, 0.60)
+    title_px = int(np.clip(round(pw * 0.03), 20, 50))
+    _draw_centered_text(canvas, OVERLAY_TITLE, max(8, round(ph * 0.025)), title_px, WHITE)
 
     if not landmarks:
-        _center_text(canvas, "Aguardando detecção da mão...", ph // 2, pw, GRAY_MID, 0.45)
+        wait_px = int(np.clip(round(18 * _panel_scale(pw, ph)), 16, 40))
+        _, wait_h = _text_extent(WAITING_TEXT, wait_px, GRAY_MID)
+        _draw_centered_text(canvas, WAITING_TEXT, (ph - wait_h) // 2, wait_px, GRAY_MID)
         return canvas
 
     width, height = pw, ph
@@ -397,18 +661,10 @@ def _build_skeleton(
         1,
     )
 
-    lx, ly = 8, ph - 30
-    cv2.line(canvas, (lx, ly), (lx + 20, ly), COLOR_STAT, 2)
-    _put(canvas, "Fixo", lx + 24, ly + 4, GRAY_LIGHT, 0.28)
-
-    cv2.line(canvas, (lx + 130, ly), (lx + 150, ly), COLOR_MOB, 2)
-    _put(canvas, "Móvel", lx + 154, ly + 4, GRAY_LIGHT, 0.28)
-
-    cv2.circle(canvas, (lx + 210, ly), 4, COLOR_AXIS, -1)
-    _put(canvas, "Eixo", lx + 218, ly + 4, GRAY_LIGHT, 0.28)
+    _draw_legend(canvas, pw, ph, frozen)
 
     if frozen:
-        _center_text(canvas, "[ QUADRO CONGELADO ]", ph - 14, pw, COLOR_BORDER, 0.38)
+        _center_text(canvas, FROZEN_TEXT, ph - FROZEN_BASELINE_OFFSET, pw, COLOR_BORDER, FROZEN_SCALE)
         cv2.rectangle(canvas, (2, 2), (pw - 2, ph - 2), COLOR_BORDER, 2)
 
     return canvas

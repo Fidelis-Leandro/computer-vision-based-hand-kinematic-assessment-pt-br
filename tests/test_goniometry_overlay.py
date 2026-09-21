@@ -25,9 +25,12 @@ Nenhum teste aqui usa câmera, MediaPipe, Arduino ou interface PyQt6 —
 `_build_skeleton()` opera sobre arrays NumPy e objetos simples de landmark.
 """
 
+import inspect
+import logging
 import os
 import sys
 
+import cv2
 import numpy as np
 import pytest
 
@@ -254,3 +257,279 @@ class TestRemovedOverlaySymbolsRemainAbsent:
         o usa, e a segunda asserção protege isso."""
         assert not hasattr(goniometry_overlay, "DigitalGoniometer")
         assert hasattr(goniometry_overlay, "is_in_normal_range")
+
+
+# =============================================================================
+# Texto fixo com acentos e legenda proporcional
+# =============================================================================
+#
+# O título, a legenda e o aviso de espera são desenhados pelo Pillow com a
+# fonte DejaVu Sans do matplotlib; sem ela, o painel usa Hershey com a versão
+# ASCII de cada texto. Os testes de fallback alteram o estado do módulo só
+# por meio do monkeypatch, que o restaura ao fim de cada teste.
+
+RESOLUTIONS = [(640, 480), (1280, 720), (1920, 1080)]
+
+
+def _render_at(pw, ph, landmarks=True, frozen=False):
+    return _build_skeleton(
+        frame=np.zeros((ph, pw, 3), dtype=np.uint8),
+        landmarks=_synthetic_landmarks() if landmarks else [],
+        angles=_synthetic_angles(tam=180.0),
+        pw=pw,
+        ph=ph,
+        frozen=frozen,
+        stability_map=_stability_map("convergindo"),
+    )
+
+
+@pytest.fixture
+def text_state(monkeypatch):
+    """Estado de texto do módulo isolado: caches vazios e fonte a resolver."""
+    monkeypatch.setattr(
+        goniometry_overlay, "_unicode_font_path_cache", goniometry_overlay._FONT_UNRESOLVED
+    )
+    monkeypatch.setattr(goniometry_overlay, "_unicode_fallback_logged", False)
+    monkeypatch.setattr(goniometry_overlay, "_font_cache", {})
+    monkeypatch.setattr(goniometry_overlay, "_text_cache", {})
+    return monkeypatch
+
+
+def _require_unicode_font():
+    if goniometry_overlay._unicode_font_path() is None:
+        pytest.skip("Pillow, matplotlib ou DejaVuSans.ttf indisponível neste ambiente")
+
+
+def _spy_text(monkeypatch, name):
+    """Troca um helper de desenho por um espião que registra o texto recebido."""
+    original = getattr(goniometry_overlay, name)
+    calls = []
+
+    def spy(canvas, text, *args, **kwargs):
+        calls.append(text)
+        return original(canvas, text, *args, **kwargs)
+
+    monkeypatch.setattr(goniometry_overlay, name, spy)
+    return calls
+
+
+def _spy_legend_labels(monkeypatch):
+    """Registra (texto, x, y, px) de cada rótulo da legenda desenhado."""
+    original = goniometry_overlay._draw_text
+    labels = {
+        goniometry_overlay.LEGEND_FIXED,
+        goniometry_overlay.LEGEND_MOBILE,
+        goniometry_overlay.LEGEND_AXIS,
+    }
+    calls = []
+
+    def spy(canvas, text, x, y, px, color):
+        if text in labels:
+            calls.append((text, x, y, px))
+        return original(canvas, text, x, y, px, color)
+
+    monkeypatch.setattr(goniometry_overlay, "_draw_text", spy)
+    return calls
+
+
+class TestBuildSkeletonContract:
+    def test_signature_is_unchanged(self):
+        """A assinatura é o contrato com processing_worker.py."""
+        params = list(inspect.signature(_build_skeleton).parameters)
+        assert params == ["frame", "landmarks", "angles", "pw", "ph", "frozen", "stability_map"]
+
+    @pytest.mark.parametrize("frozen", [False, True])
+    @pytest.mark.parametrize("with_landmarks", [True, False])
+    @pytest.mark.parametrize("pw, ph", RESOLUTIONS)
+    def test_renders_valid_canvas(self, pw, ph, with_landmarks, frozen):
+        canvas = _render_at(pw, ph, landmarks=with_landmarks, frozen=frozen)
+
+        assert isinstance(canvas, np.ndarray)
+        assert canvas.shape == (ph, pw, 3)
+        assert canvas.dtype == np.uint8
+
+
+class TestUnicodeText:
+    def test_title_constant_is_the_accented_name(self):
+        assert goniometry_overlay.OVERLAY_TITLE[0] == "AVALIAÇÃO CINEMÁTICA DA MÃO"
+
+    def test_title_and_mobile_label_go_through_the_unicode_helper(self, text_state):
+        _require_unicode_font()
+        calls = _spy_text(text_state, "_blit_unicode_text")
+
+        _render_at(1280, 720)
+
+        assert "AVALIAÇÃO CINEMÁTICA DA MÃO" in calls
+        assert "Móvel" in calls
+
+    def test_waiting_message_goes_through_the_unicode_helper(self, text_state):
+        _require_unicode_font()
+        calls = _spy_text(text_state, "_blit_unicode_text")
+
+        _render_at(1280, 720, landmarks=False)
+
+        assert "Aguardando detecção da mão..." in calls
+
+    def test_font_and_text_masks_are_reused_between_frames(self, text_state):
+        """A fonte é carregada uma vez por tamanho e cada texto é rasterizado
+        uma vez: o segundo quadro reaproveita exatamente os mesmos objetos."""
+        _require_unicode_font()
+        _render_at(1280, 720)
+        fonts = dict(goniometry_overlay._font_cache)
+        masks = dict(goniometry_overlay._text_cache)
+
+        _render_at(1280, 720)
+
+        assert goniometry_overlay._font_cache.keys() == fonts.keys()
+        assert goniometry_overlay._text_cache.keys() == masks.keys()
+        assert all(goniometry_overlay._font_cache[k] is v for k, v in fonts.items())
+        assert all(goniometry_overlay._text_cache[k] is v for k, v in masks.items())
+
+    @pytest.mark.parametrize("x, y", [(-30, -10), (70, 40), (500, 500), (-500, -500)])
+    def test_unicode_blit_is_clipped_to_the_canvas(self, text_state, x, y):
+        _require_unicode_font()
+        canvas = np.zeros((50, 80, 3), dtype=np.uint8)
+
+        goniometry_overlay._blit_unicode_text(canvas, "Móvel", x, y, 20, (255, 255, 255))
+
+        assert canvas.shape == (50, 80, 3)
+
+    def test_partially_visible_text_is_still_drawn(self, text_state):
+        _require_unicode_font()
+        canvas = np.zeros((50, 80, 3), dtype=np.uint8)
+
+        goniometry_overlay._blit_unicode_text(canvas, "Móvel", -10, -5, 20, (255, 255, 255))
+
+        assert canvas.any()
+
+
+class TestTextFallback:
+    def _assert_ascii_texts(self, puts):
+        assert "AVALIACAO CINEMATICA DA MAO" in puts
+        assert "Movel" in puts
+        assert "Aguardando deteccao da mao..." in puts
+
+    def _render_all(self):
+        for pw, ph in RESOLUTIONS:
+            assert _render_at(pw, ph).shape == (ph, pw, 3)
+        assert _render_at(1280, 720, landmarks=False).shape == (720, 1280, 3)
+
+    def test_missing_font_file_falls_back_to_ascii(self, text_state, tmp_path):
+        import matplotlib
+
+        text_state.setattr(matplotlib, "get_data_path", lambda: str(tmp_path))
+        blits = _spy_text(text_state, "_blit_unicode_text")
+        puts = _spy_text(text_state, "_put")
+
+        self._render_all()
+
+        assert blits == []
+        self._assert_ascii_texts(puts)
+
+    def test_missing_pillow_falls_back_to_ascii(self, text_state):
+        text_state.setitem(sys.modules, "PIL", None)
+        blits = _spy_text(text_state, "_blit_unicode_text")
+        puts = _spy_text(text_state, "_put")
+
+        self._render_all()
+
+        assert blits == []
+        self._assert_ascii_texts(puts)
+
+    def test_rendering_error_falls_back_without_raising(self, text_state):
+        _require_unicode_font()
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("falha simulada de rasterização")
+
+        text_state.setattr(goniometry_overlay, "_unicode_text_sprite", broken)
+        puts = _spy_text(text_state, "_put")
+
+        self._render_all()
+
+        self._assert_ascii_texts(puts)
+        assert goniometry_overlay._unicode_font_path() is None
+
+    def test_fallback_is_logged_only_once(self, text_state, tmp_path, caplog):
+        import matplotlib
+
+        text_state.setattr(matplotlib, "get_data_path", lambda: str(tmp_path))
+
+        with caplog.at_level(logging.WARNING, logger="goniometry_overlay"):
+            self._render_all()
+            self._render_all()
+
+        avisos = [r for r in caplog.records if "fallback ASCII" in r.getMessage()]
+        assert len(avisos) == 1
+
+
+class TestResponsiveLegend:
+    @pytest.mark.parametrize("pw, ph", RESOLUTIONS)
+    def test_legend_band_has_the_three_marker_colors(self, pw, ph):
+        """A faixa inferior esquerda contém as três cores semânticas da
+        legenda. Com os landmarks sintéticos, nenhum braço do goniômetro
+        alcança essa faixa, então as cores só podem vir da legenda."""
+        canvas = _render_at(pw, ph)
+        band = canvas[ph - ph // 12:, : pw // 2]
+
+        for color in (
+            goniometry_overlay.COLOR_STAT,
+            goniometry_overlay.COLOR_MOB,
+            goniometry_overlay.COLOR_AXIS,
+        ):
+            assert np.all(band == color, axis=2).any(), f"cor {color} ausente da legenda"
+
+    @pytest.mark.parametrize("pw, ph", RESOLUTIONS)
+    def test_legend_keeps_clear_of_the_panel_edges(self, pw, ph):
+        canvas = _render_at(pw, ph)
+        background = np.array(goniometry_overlay.BG_DARK, dtype=np.uint8)
+
+        assert np.all(canvas[:, :4] == background), "legenda encostada na borda esquerda"
+        assert np.all(canvas[-4:, :] == background), "legenda encostada na borda inferior"
+
+    @pytest.mark.parametrize("pw, ph", RESOLUTIONS + [(320, 240)])
+    def test_legend_labels_do_not_overlap_and_fit_the_panel(self, monkeypatch, pw, ph):
+        calls = _spy_legend_labels(monkeypatch)
+
+        _render_at(pw, ph)
+
+        assert [c[0] for c in calls] == [
+            goniometry_overlay.LEGEND_FIXED,
+            goniometry_overlay.LEGEND_MOBILE,
+            goniometry_overlay.LEGEND_AXIS,
+        ]
+        right_edges = []
+        for text, x, y, px in calls:
+            w, h = goniometry_overlay._text_extent(text, px, goniometry_overlay.GRAY_LIGHT)
+            assert 0 <= x and x + w <= pw, f"rótulo {text[0]!r} fora da largura do painel"
+            assert 0 <= y and y + h <= ph, f"rótulo {text[0]!r} fora da altura do painel"
+            right_edges.append(x + w)
+        for (_, next_x, _, _), right in zip(calls[1:], right_edges):
+            assert right < next_x, "rótulos da legenda sobrepostos"
+
+    def test_legend_font_grows_with_the_panel(self, monkeypatch):
+        sizes = []
+        for pw, ph in RESOLUTIONS:
+            calls = _spy_legend_labels(monkeypatch)
+            _render_at(pw, ph)
+            sizes.append(calls[0][3])
+            monkeypatch.undo()
+
+        assert sizes == sorted(sizes) and sizes[0] < sizes[-1]
+
+    def test_frozen_legend_sits_above_the_frozen_banner(self, monkeypatch):
+        pw, ph = 640, 480
+        calls = _spy_legend_labels(monkeypatch)
+
+        _render_at(pw, ph, frozen=True)
+
+        (_, banner_h), _ = cv2.getTextSize(
+            goniometry_overlay.FROZEN_TEXT,
+            cv2.FONT_HERSHEY_DUPLEX,
+            goniometry_overlay.FROZEN_SCALE,
+            1,
+        )
+        banner_top = ph - goniometry_overlay.FROZEN_BASELINE_OFFSET - banner_h
+        for text, x, y, px in calls:
+            _, h = goniometry_overlay._text_extent(text, px, goniometry_overlay.GRAY_LIGHT)
+            assert y + h <= banner_top, f"rótulo {text[0]!r} sobre o aviso de quadro congelado"
